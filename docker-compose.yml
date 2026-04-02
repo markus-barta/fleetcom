@@ -19,10 +19,6 @@ services:
       - traefik.http.services.fleetcom.loadbalancer.server.port=8090
       - traefik.docker.network=csb1_traefik
       - traefik.http.routers.fleetcom.middlewares=cloudflarewarp@file
-      # HTTP → HTTPS redirect
-      - traefik.http.routers.fleetcom-http.rule=Host(`fleet.barta.cm`)
-      - traefik.http.routers.fleetcom-http.entrypoints=web
-      - traefik.http.routers.fleetcom-http.middlewares=redirect-to-https@docker
     networks:
       - traefik
     healthcheck:
