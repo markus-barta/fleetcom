@@ -62,12 +62,13 @@ All requests: `curl -s -H "Authorization: Bearer $PPMAPIKEY" https://pm.barta.cm
 
 ## Tech Stack
 
-- **Backend**: Go (stdlib net/http + chi router + SQLite via modernc.org/sqlite)
-- **Frontend**: Single HTML file, no framework, vanilla JS
+- **Backend**: Go (stdlib net/http + chi router + SQLite via modernc.org/sqlite, pure Go, no CGO)
+- **Real-time**: Server-Sent Events (SSE) — instant push to browser on heartbeat arrival
+- **Frontend**: Single HTML file, Alpine.js (17KB, self-hosted, reactive data binding), no build step, no npm
 - **Database**: SQLite (WAL mode, pure Go driver)
-- **Auth**: Password + TOTP, session cookies
-- **Deployment**: Docker on csb1, behind Cloudflare DNS
-- **Agent**: Shell script (cron) or lightweight Go binary on each host
+- **Auth**: Password + TOTP, HttpOnly session cookies (SameSite=Lax, Secure), per-host bearer tokens
+- **Deployment**: Docker on csb1, behind Cloudflare DNS (edge TLS)
+- **Agent**: Shell script (cron every 60s) POSTing JSON heartbeat via HTTPS
 
 ## Architecture
 
@@ -77,13 +78,14 @@ Hosts (dsc0, csb0, csb1, hsb0, ...)
         │
         ▼
 FleetCom Server (csb1, Docker)
-  ├── POST /api/heartbeat (bearer token auth)
-  ├── GET /api/hosts (session cookie auth)
-  ├── GET / (static HTML dashboard)
-  └── SQLite (hosts, containers, agents, sessions)
+  ├── POST /api/heartbeat (bearer token auth, agents push here)
+  ├── GET  /api/events    (SSE stream, pushes updates to browser)
+  ├── POST /login         (password + TOTP → session cookie)
+  ├── GET  /              (static HTML + Alpine.js dashboard)
+  └── SQLite (hosts, containers, agents, sessions, tokens)
         │
         ▼
-Browser (fleet.barta.cm)
+Browser (fleet.barta.cm, Alpine.js + SSE — reactive, no polling)
 ```
 
 ## Secret Safety

@@ -55,13 +55,30 @@ hsb8       🟢       —                    —
 ### Architecture decided
 
 - **Backend**: Go (stdlib net/http + chi + SQLite via modernc.org/sqlite, pure Go, no CGO)
-- **Frontend**: Single HTML file, vanilla JS, no framework, no build step
+- **Real-time**: Server-Sent Events (SSE) — server pushes updates to browser the instant a heartbeat arrives. No polling.
+- **Frontend**: Single HTML file, Alpine.js (17KB, reactive data binding via HTML attributes, no build step, no npm). Self-hosted Alpine.js (not CDN) for zero external runtime dependencies.
 - **Agent**: Shell script (cron every 60s) POSTing JSON heartbeat — no Go binary needed for MVP
-- **Auth**: Password + TOTP, session cookies, per-host bearer tokens for agents
-- **Deployment**: Docker on csb1, Cloudflare DNS
-- **Security**: All HTTPS, Tailscale mesh for host comms, no external dependencies for auth
-- **Database**: SQLite with hosts, containers, agents, sessions tables
+- **Auth**: Password + TOTP, session cookies (HttpOnly, SameSite=Lax, Secure), per-host bearer tokens for agents
+- **Deployment**: Docker on csb1, Cloudflare DNS (edge TLS)
+- **Security**: All HTTPS, Tailscale mesh for host comms, no external dependencies for auth, per-host bearer tokens
+- **Database**: SQLite (WAL mode) with hosts, containers, agents, sessions, tokens tables
 - **Inspired by**: NixFleet (~/Code/nixfleet, ~20K lines Go) — adopt patterns, don't fork
+
+### Why SSE over WebSocket / polling
+
+- Dashboard is read-only (server → browser only) — SSE is purpose-built for this
+- Native browser `EventSource` API — auto-reconnects, no library needed
+- Works through Cloudflare with zero special config
+- Server broadcasts to all connected browsers when any heartbeat arrives — instant UI update
+- Upgrade to WebSocket later if bidirectional comms are needed (Phase 2 orchestration)
+
+### Why Alpine.js over React/Vue/Svelte
+
+- 17 KB, single script tag, zero build step, zero npm, zero node_modules
+- Reactive data binding directly in HTML attributes — no virtual DOM, no JSX, no compilation
+- The entire frontend is one HTML file you can read top to bottom
+- When/if FleetCom grows into a multi-page app (Phase 3+), a heavier framework can be evaluated then
+- Rule: add complexity when the current approach hurts, not before
 
 ### Phases
 
@@ -225,10 +242,12 @@ All hosts are on a Tailscale mesh via Markus's Headscale server at hs.barta.cm. 
 ## Key Decisions Made in This Session
 
 1. **FleetCom replaces NixFleet** — fresh codebase, inspired by patterns
-2. **Go + SQLite + vanilla HTML** — no framework, no external deps
-3. **Heartbeat via HTTPS POST** (not WebSocket for MVP) — simpler, shell script agent
-4. **Container-aware + agent-aware** — grid shows per-container and per-agent status, not just 3 flat dots
-5. **Security first** — TOTP, per-host tokens, Tailscale, all HTTPS
-6. **API-driven** — REST API first, UI is thin client
-7. **Hosted on csb1** — same infra as NixFleet was, behind Cloudflare DNS
-8. **Local TTS planned** — Kokoro (EN+ES) or Chatterbox Turbo (DE) instead of ElevenLabs (DSC26-51)
+2. **Go + SQLite + Alpine.js** — modern and reactive but no build step, no npm, no node_modules
+3. **SSE for real-time updates** — server pushes to browser instantly on heartbeat, no polling
+4. **Heartbeat via HTTPS POST** — shell script agent (cron 60s), not WebSocket
+5. **Container-aware + agent-aware** — grid shows per-container and per-agent status, not just 3 flat dots
+6. **Security first** — TOTP + password, per-host bearer tokens, Tailscale mesh, all HTTPS, HttpOnly cookies
+7. **API-driven** — REST API first, UI is a thin reactive client
+8. **Self-hosted Alpine.js** — no CDN runtime dependency, vendored in static/
+9. **Hosted on csb1** — same infra as NixFleet was, behind Cloudflare DNS
+10. **Local TTS planned** — Kokoro (EN+ES) or Chatterbox Turbo (DE) instead of ElevenLabs (DSC26-51)
