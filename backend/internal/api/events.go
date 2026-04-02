@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/markus-barta/fleetcom/internal/db"
 	"github.com/markus-barta/fleetcom/internal/sse"
@@ -37,6 +38,10 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 		ch := hub.Subscribe()
 		defer hub.Unsubscribe(ch)
 
+		// Keepalive ticker — prevents Cloudflare from killing idle connections
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+
 		for {
 			select {
 			case <-r.Context().Done():
@@ -46,6 +51,9 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 					return
 				}
 				fmt.Fprintf(w, "event: hosts\ndata: %s\n\n", data)
+				flusher.Flush()
+			case <-ticker.C:
+				fmt.Fprintf(w, ": keepalive\n\n")
 				flusher.Flush()
 			}
 		}

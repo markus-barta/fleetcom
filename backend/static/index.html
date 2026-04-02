@@ -233,9 +233,13 @@
     <div x-data="fleetcom()" x-init="connect()">
         <header>
             <h1>FleetCom</h1>
-            <div class="status" :class="connected ? 'color-green' : 'color-red'">
-                <span class="icon"><svg><use href="#icon-signal"/></svg></span>
-                <span x-text="connected ? 'Live' : 'Disconnected'"></span>
+            <div style="display:flex; align-items:center; gap:1.5rem; font-size:0.75rem; color:#8b949e;">
+                <div class="status" :class="connected ? 'color-green' : 'color-red'">
+                    <span class="icon"><svg><use href="#icon-signal"/></svg></span>
+                    <span x-text="connected ? 'Live' : 'Reconnecting...'"></span>
+                </div>
+                <span x-show="hosts.length > 0" x-text="hosts.length + ' host' + (hosts.length !== 1 ? 's' : '')"></span>
+                <span x-show="hosts.length > 0" x-text="countOnline() + ' online'"></span>
             </div>
             <div class="header-right">
                 <a class="nav-link" :class="view === 'dashboard' && 'active'" @click="view = 'dashboard'">Dashboard</a>
@@ -265,7 +269,10 @@
                                         </span>
                                         <span class="hostname" x-text="host.hostname"></span>
                                     </div>
-                                    <span class="meta" x-text="host.os + ' · ' + formatUptime(host.uptime_seconds)"></span>
+                                    <div style="text-align:right;">
+                                        <span class="meta" x-text="host.os + ' · up ' + formatUptime(host.uptime_seconds)"></span>
+                                        <div class="meta" :class="{'color-yellow': secondsAgo(host.last_seen) > 120, 'color-red': secondsAgo(host.last_seen) > 300}" x-text="'seen ' + formatAgo(host.last_seen)"></div>
+                                    </div>
                                 </div>
 
                                 <template x-if="host.containers && host.containers.length > 0">
@@ -377,6 +384,9 @@
 
                     this.es.onopen = () => { this.connected = true; };
                     this.es.onerror = () => { this.connected = false; };
+
+                    // Refresh relative timestamps every 10s
+                    setInterval(() => { this.hosts = [...this.hosts]; }, 10000);
                 },
 
                 async loadTokens() {
@@ -430,9 +440,21 @@
                     return 'gray';
                 },
 
+                countOnline() {
+                    return this.hosts.filter(h => this.secondsAgo(h.last_seen) < 120).length;
+                },
+
                 secondsAgo(isoStr) {
                     if (!isoStr) return 9999;
                     return (Date.now() - new Date(isoStr).getTime()) / 1000;
+                },
+
+                formatAgo(isoStr) {
+                    const s = this.secondsAgo(isoStr);
+                    if (s > 86400) return Math.floor(s / 86400) + 'd ago';
+                    if (s > 3600) return Math.floor(s / 3600) + 'h ago';
+                    if (s > 60) return Math.floor(s / 60) + 'm ago';
+                    return Math.floor(s) + 's ago';
                 },
 
                 formatUptime(seconds) {
