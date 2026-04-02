@@ -23,7 +23,7 @@ All task tracking, planning, and status updates happen in **PPM** at `https://pm
 
 ### PPM API Access
 
-Auth: Bearer token via `$PPMAPIKEY` environment variable.
+Auth: Bearer token via `$PPMAPIKEY` environment variable (loaded from `~/Secrets/ppm.env` via direnv).
 All requests: `curl -s -H "Authorization: Bearer $PPMAPIKEY" https://pm.barta.cm/api/...`
 
 #### Core Endpoints
