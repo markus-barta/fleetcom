@@ -86,6 +86,15 @@ FleetCom Server (csb1, Docker)
 Browser (fleet.barta.cm)
 ```
 
+## Secret Safety
+
+**NEVER** read, cat, print, head, tail, echo, or source secret files to stdout. This includes:
+- `~/Secrets/*`, `.env`, `.env.local`, `.age`, `.gpg`, `/run/secrets/*`, `/run/agenix/*`
+- Any command where secret values could appear in stdout/stderr
+- **Just use the env var** (e.g., `$PPMAPIKEY`) — direnv loads it automatically
+
+If you need to verify a secret exists: check file existence (`ls -la`) or test the variable (`test -n "$PPMAPIKEY"`). **Never print the value.**
+
 ## Security
 
 - All communication over HTTPS (Cloudflare edge TLS)
