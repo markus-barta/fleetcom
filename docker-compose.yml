@@ -1,8 +1,6 @@
 services:
   fleetcom:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    image: ghcr.io/markus-barta/fleetcom:latest
     container_name: fleetcom
     restart: unless-stopped
     volumes:
