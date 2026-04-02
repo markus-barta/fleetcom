@@ -32,7 +32,7 @@ let
     fi
 
     # Uptime
-    UPTIME=$(${pkgs.coreutils}/bin/awk '{printf "%d", $1}' /proc/uptime)
+    UPTIME=$(${pkgs.gawk}/bin/awk '{printf "%d", $1}' /proc/uptime)
 
     # Auto-discover Docker containers
     CONTAINERS="[]"
