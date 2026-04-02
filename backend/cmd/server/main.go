@@ -53,6 +53,10 @@ func main() {
 	fs := http.FileServer(http.Dir("static"))
 	r.Handle("/static/*", http.StripPrefix("/static/", fs))
 
+	// Share links (read-only, token-authenticated)
+	r.Get("/s/{token}", api.SharedDashboard(store))
+	r.Get("/s/{token}/events", api.SharedEvents(store, hub))
+
 	// Protected routes
 	r.Group(func(r chi.Router) {
 		r.Use(a.RequireSession)
@@ -62,6 +66,9 @@ func main() {
 		r.Get("/api/tokens", api.ListTokens(store))
 		r.Post("/api/hosts", api.AddHost(store))
 		r.Delete("/api/hosts", api.DeleteHost(store))
+		r.Get("/api/shares", api.ListShareLinks(store))
+		r.Post("/api/shares", api.CreateShareLink(store))
+		r.Delete("/api/shares", api.DeleteShareLink(store))
 	})
 
 	srv := &http.Server{
