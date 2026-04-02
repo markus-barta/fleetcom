@@ -22,6 +22,8 @@ Read `CLAUDE.md` for the full project context. Then wait for instructions — do
 - API: `curl -s -H "Authorization: Bearer $PPMAPIKEY" https://pm.barta.cm/api/...`
 
 ### Critical Safety Rules
+- **NEVER** read, cat, print, or source secret/env files (`~/Secrets/*`, `.env*`, `.age`, `/run/secrets/*`). Just use the env var — direnv loads it.
+- **NEVER** run commands that could print secrets to stdout/stderr
 - **NEVER** `docker compose down -v` or `docker volume rm` (destroys DB)
 - **NEVER** edit applied migrations
 - **ALWAYS** `go vet` before committing
