@@ -6,8 +6,8 @@
 Central hub for managing DSC-AI agent fleet and NixOS infrastructure. Replaces NixFleet (legacy).
 
 - **Domain**: fleet.barta.cm (+ redirect fleetcom.barta.cm)
-- **PPM Project**: DSC Infrastructure (project ID: 2, key: DSC26)
-- **PPM Epic**: DSC26-52 (FleetCom)
+- **PPM Project**: FleetCom (project ID: 4, key: FLEET)
+- **PPM Epic**: FLEET-1 (FleetCom MVP)
 
 ## Project Management: PPM is the Single Source of Truth
 
@@ -30,9 +30,9 @@ All requests: `curl -s -H "Authorization: Bearer $PPMAPIKEY" https://pm.barta.cm
 
 | Action | Method | Endpoint |
 |--------|--------|----------|
-| List project issues | GET | `/api/projects/2/issues` |
-| Issue tree (hierarchy) | GET | `/api/projects/2/issues/tree` |
-| Create issue in project | POST | `/api/projects/2/issues` |
+| List project issues | GET | `/api/projects/4/issues` |
+| Issue tree (hierarchy) | GET | `/api/projects/4/issues/tree` |
+| Create issue in project | POST | `/api/projects/4/issues` |
 | Single issue | GET | `/api/issues/{id}` |
 | Update issue | PUT | `/api/issues/{id}` |
 | Delete issue | DELETE | `/api/issues/{id}` |

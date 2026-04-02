@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FleetCom</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'SF Mono', 'Fira Code', 'JetBrains Mono', monospace;
+            background: #0f1117;
+            color: #c9d1d9;
+            min-height: 100vh;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem 2rem;
+            border-bottom: 1px solid #21262d;
+            background: #161b22;
+        }
+        header h1 {
+            font-size: 1.25rem;
+            color: #58a6ff;
+            font-weight: 600;
+        }
+        header .status {
+            font-size: 0.75rem;
+            color: #8b949e;
+        }
+        header .status .dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+            vertical-align: middle;
+        }
+        header .status .dot.connected { background: #3fb950; }
+        header .status .dot.disconnected { background: #f85149; }
+        .logout {
+            color: #8b949e;
+            text-decoration: none;
+            font-size: 0.8rem;
+        }
+        .logout:hover { color: #c9d1d9; }
+        main { padding: 1.5rem 2rem; }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+            gap: 1rem;
+        }
+        .host-card {
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 8px;
+            padding: 1.25rem;
+        }
+        .host-card .host-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+        .host-card .hostname {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #e1e4e8;
+        }
+        .host-card .meta {
+            font-size: 0.75rem;
+            color: #8b949e;
+        }
+        .status-dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+        .status-dot.green { background: #3fb950; box-shadow: 0 0 6px #3fb95066; }
+        .status-dot.yellow { background: #d29922; box-shadow: 0 0 6px #d2992266; }
+        .status-dot.red { background: #f85149; box-shadow: 0 0 6px #f8514966; }
+        .status-dot.gray { background: #484f58; }
+        .section-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #6e7681;
+            margin-bottom: 0.4rem;
+            margin-top: 0.75rem;
+        }
+        .items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+        }
+        .item {
+            display: inline-flex;
+            align-items: center;
+            background: #0d1117;
+            border: 1px solid #21262d;
+            border-radius: 4px;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.8rem;
+        }
+        .item .name { color: #c9d1d9; }
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: #6e7681;
+        }
+        .empty-state h2 {
+            font-size: 1.25rem;
+            margin-bottom: 0.5rem;
+            color: #8b949e;
+        }
+    </style>
+</head>
+<body>
+    <div x-data="fleetcom()" x-init="connect()">
+        <header>
+            <h1>FleetCom</h1>
+            <div class="status">
+                <span class="dot" :class="connected ? 'connected' : 'disconnected'"></span>
+                <span x-text="connected ? 'Live' : 'Disconnected'"></span>
+            </div>
+            <a href="/logout" class="logout">Sign out</a>
+        </header>
+
+        <main>
+            <template x-if="hosts.length === 0">
+                <div class="empty-state">
+                    <h2>No hosts reporting</h2>
+                    <p>Deploy the FleetCom agent to start monitoring your fleet.</p>
+                </div>
+            </template>
+
+            <div class="grid">
+                <template x-for="host in hosts" :key="host.hostname">
+                    <div class="host-card">
+                        <div class="host-header">
+                            <div>
+                                <span class="status-dot" :class="hostStatus(host)"></span>
+                                <span class="hostname" x-text="host.hostname"></span>
+                            </div>
+                            <span class="meta" x-text="host.os + ' · ' + formatUptime(host.uptime_seconds)"></span>
+                        </div>
+
+                        <template x-if="host.containers && host.containers.length > 0">
+                            <div>
+                                <div class="section-label">Containers</div>
+                                <div class="items">
+                                    <template x-for="c in host.containers" :key="c.name">
+                                        <div class="item">
+                                            <span class="status-dot" :class="containerStatus(c)"></span>
+                                            <span class="name" x-text="c.name"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+
+                        <template x-if="host.agents && host.agents.length > 0">
+                            <div>
+                                <div class="section-label">Agents</div>
+                                <div class="items">
+                                    <template x-for="a in host.agents" :key="a.name">
+                                        <div class="item">
+                                            <span class="status-dot" :class="agentStatus(a)"></span>
+                                            <span class="name" x-text="a.name"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+
+                        <template x-if="(!host.containers || host.containers.length === 0) && (!host.agents || host.agents.length === 0)">
+                            <div class="meta" style="margin-top: 0.5rem;">No containers or agents</div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/alpine.min.js" defer></script>
+    <script>
+        function fleetcom() {
+            return {
+                hosts: [],
+                connected: false,
+                es: null,
+
+                connect() {
+                    this.es = new EventSource('/api/events');
+
+                    this.es.addEventListener('hosts', (e) => {
+                        const data = JSON.parse(e.data);
+                        this.hosts = data || [];
+                    });
+
+                    this.es.onopen = () => {
+                        this.connected = true;
+                    };
+
+                    this.es.onerror = () => {
+                        this.connected = false;
+                    };
+                },
+
+                hostStatus(host) {
+                    const ago = this.secondsAgo(host.last_seen);
+                    if (ago < 120) return 'green';
+                    if (ago < 300) return 'yellow';
+                    if (ago < 600) return 'red';
+                    return 'gray';
+                },
+
+                containerStatus(c) {
+                    if (c.state === 'running') return 'green';
+                    if (c.state === 'paused') return 'yellow';
+                    if (c.state === 'exited' || c.state === 'dead') return 'red';
+                    return 'gray';
+                },
+
+                agentStatus(a) {
+                    if (a.status === 'online') return 'green';
+                    if (a.status === 'degraded') return 'yellow';
+                    if (a.status === 'offline') return 'red';
+                    return 'gray';
+                },
+
+                secondsAgo(isoStr) {
+                    if (!isoStr) return 9999;
+                    return (Date.now() - new Date(isoStr).getTime()) / 1000;
+                },
+
+                formatUptime(seconds) {
+                    if (!seconds) return '';
+                    const d = Math.floor(seconds / 86400);
+                    const h = Math.floor((seconds % 86400) / 3600);
+                    if (d > 0) return d + 'd ' + h + 'h';
+                    const m = Math.floor((seconds % 3600) / 60);
+                    return h + 'h ' + m + 'm';
+                }
+            };
+        }
+    </script>
+</body>
+</html>

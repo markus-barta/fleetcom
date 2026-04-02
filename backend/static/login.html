@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FleetCom — Login</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            background: #0f1117;
+            color: #e1e4e8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        .login-box {
+            background: #1c1f26;
+            border: 1px solid #2d333b;
+            border-radius: 8px;
+            padding: 2rem;
+            width: 100%;
+            max-width: 360px;
+        }
+        h1 {
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            color: #58a6ff;
+        }
+        label {
+            display: block;
+            font-size: 0.875rem;
+            color: #8b949e;
+            margin-bottom: 0.25rem;
+        }
+        input {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 1rem;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            color: #e1e4e8;
+            font-size: 1rem;
+        }
+        input:focus {
+            outline: none;
+            border-color: #58a6ff;
+        }
+        button {
+            width: 100%;
+            padding: 0.625rem;
+            background: #238636;
+            border: none;
+            border-radius: 4px;
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        button:hover { background: #2ea043; }
+        .error {
+            background: #3d1f1f;
+            border: 1px solid #6e3030;
+            color: #f85149;
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <form class="login-box" method="POST" action="/login">
+        <h1>FleetCom</h1>
+        <div class="error" id="error"></div>
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autofocus>
+        <label for="totp">TOTP Code</label>
+        <input type="text" id="totp" name="totp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6">
+        <button type="submit">Sign in</button>
+    </form>
+</body>
+</html>
