@@ -83,4 +83,13 @@ CREATE TABLE IF NOT EXISTS tokens (
 	created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_tokens_hash ON tokens(token_hash);
+
+CREATE TABLE IF NOT EXISTS share_links (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	token TEXT NOT NULL UNIQUE,
+	label TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL DEFAULT (datetime('now')),
+	expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_share_links_token ON share_links(token);
 `

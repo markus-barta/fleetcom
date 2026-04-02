@@ -241,10 +241,13 @@
                 <span x-show="hosts.length > 0" x-text="hosts.length + ' host' + (hosts.length !== 1 ? 's' : '')"></span>
                 <span x-show="hosts.length > 0" x-text="countOnline() + ' online'"></span>
             </div>
-            <div class="header-right">
+            <div class="header-right" x-show="!shared">
                 <a class="nav-link" :class="view === 'dashboard' && 'active'" @click="view = 'dashboard'">Dashboard</a>
-                <a class="nav-link" :class="view === 'hosts' && 'active'" @click="view = 'hosts'; loadTokens()">Hosts</a>
+                <a class="nav-link" :class="view === 'hosts' && 'active'" @click="view = 'hosts'; loadTokens(); loadShares()">Hosts</a>
                 <a href="/logout" class="nav-link">Sign out</a>
+            </div>
+            <div class="header-right" x-show="shared">
+                <span class="meta">Read-only view</span>
             </div>
         </header>
 
@@ -357,6 +360,40 @@
                             <p>No hosts registered yet. Add one above.</p>
                         </div>
                     </template>
+
+                    <h2 style="margin-top: 2rem;">Share Links</h2>
+                    <p class="meta" style="margin-bottom: 1rem;">Read-only dashboard access — no login needed.</p>
+
+                    <div class="add-host-form">
+                        <input type="text" x-model="shareLabel" placeholder="Label (e.g. David)">
+                        <select x-model="shareHours" style="padding:0.5rem;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#e1e4e8;font-family:inherit;font-size:0.875rem;">
+                            <option value="24">24 hours</option>
+                            <option value="48">2 days</option>
+                            <option value="72">3 days</option>
+                            <option value="168">7 days</option>
+                        </select>
+                        <button class="btn btn-primary" @click="createShare()">Create Link</button>
+                    </div>
+
+                    <template x-if="newShare">
+                        <div class="token-reveal">
+                            <div class="label">Share link for <span x-text="newShare.label || 'guest'"></span></div>
+                            <code x-text="window.location.origin + '/s/' + newShare.token"></code>
+                            <div class="warning">Copy this link now — the token won't be shown again.</div>
+                        </div>
+                    </template>
+
+                    <ul class="token-list">
+                        <template x-for="s in shares" :key="s.id">
+                            <li>
+                                <div>
+                                    <span class="hostname" x-text="s.label || 'guest'"></span>
+                                    <span class="created" x-text="'expires ' + s.expires_at"></span>
+                                </div>
+                                <button class="btn btn-danger" @click="deleteShare(s.id)">Revoke</button>
+                            </li>
+                        </template>
+                    </ul>
                 </div>
             </template>
         </main>
@@ -368,14 +405,26 @@
             return {
                 hosts: [],
                 tokens: [],
+                shares: [],
                 connected: false,
+                shared: false,
                 view: 'dashboard',
                 newHostname: '',
                 newToken: null,
+                newShare: null,
+                shareLabel: '',
+                shareHours: '24',
                 es: null,
 
                 connect() {
-                    this.es = new EventSource('/api/events');
+                    // Detect share link mode: /s/<token>
+                    const m = window.location.pathname.match(/^\/s\/([a-f0-9]+)/);
+                    if (m) {
+                        this.shared = true;
+                        this.es = new EventSource('/s/' + m[1] + '/events');
+                    } else {
+                        this.es = new EventSource('/api/events');
+                    }
 
                     this.es.addEventListener('hosts', (e) => {
                         const data = JSON.parse(e.data);
@@ -416,6 +465,30 @@
                         this.loadTokens();
                         if (this.newToken && this.newToken.hostname === hostname) this.newToken = null;
                     }
+                },
+
+                async loadShares() {
+                    const res = await fetch('/api/shares');
+                    if (res.ok) this.shares = await res.json() || [];
+                },
+
+                async createShare() {
+                    const res = await fetch('/api/shares', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ label: this.shareLabel.trim(), hours: parseInt(this.shareHours) })
+                    });
+                    if (res.ok) {
+                        this.newShare = await res.json();
+                        this.shareLabel = '';
+                        this.loadShares();
+                    }
+                },
+
+                async deleteShare(id) {
+                    if (!confirm('Revoke this share link?')) return;
+                    const res = await fetch('/api/shares?id=' + id, { method: 'DELETE' });
+                    if (res.ok) this.loadShares();
                 },
 
                 hostStatus(host) {
