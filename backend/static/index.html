@@ -39,12 +39,19 @@
         }
         header .status .dot.connected { background: #3fb950; }
         header .status .dot.disconnected { background: #f85149; }
-        .logout {
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .nav-link {
             color: #8b949e;
             text-decoration: none;
             font-size: 0.8rem;
+            cursor: pointer;
         }
-        .logout:hover { color: #c9d1d9; }
+        .nav-link:hover { color: #c9d1d9; }
+        .nav-link.active { color: #58a6ff; }
         main { padding: 1.5rem 2rem; }
         .grid {
             display: grid;
@@ -117,6 +124,96 @@
             margin-bottom: 0.5rem;
             color: #8b949e;
         }
+        /* Admin panel */
+        .admin-panel {
+            max-width: 640px;
+        }
+        .admin-panel h2 {
+            font-size: 1.1rem;
+            color: #e1e4e8;
+            margin-bottom: 1rem;
+        }
+        .add-host-form {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .add-host-form input {
+            flex: 1;
+            padding: 0.5rem 0.75rem;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 4px;
+            color: #e1e4e8;
+            font-family: inherit;
+            font-size: 0.875rem;
+        }
+        .add-host-form input:focus {
+            outline: none;
+            border-color: #58a6ff;
+        }
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-primary {
+            background: #238636;
+            color: #fff;
+        }
+        .btn-primary:hover { background: #2ea043; }
+        .btn-danger {
+            background: transparent;
+            color: #f85149;
+            border: 1px solid #f8514933;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
+        .btn-danger:hover { background: #f8514922; }
+        .token-list {
+            list-style: none;
+        }
+        .token-list li {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.5rem 0.75rem;
+            background: #161b22;
+            border: 1px solid #21262d;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+            font-size: 0.85rem;
+        }
+        .token-list .hostname { color: #e1e4e8; font-weight: 600; }
+        .token-list .created { color: #6e7681; font-size: 0.75rem; margin-left: 1rem; }
+        .token-reveal {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #0d1117;
+            border: 1px solid #238636;
+            border-radius: 4px;
+        }
+        .token-reveal .label {
+            font-size: 0.75rem;
+            color: #3fb950;
+            margin-bottom: 0.25rem;
+        }
+        .token-reveal code {
+            display: block;
+            word-break: break-all;
+            font-size: 0.8rem;
+            color: #e1e4e8;
+            user-select: all;
+        }
+        .token-reveal .warning {
+            font-size: 0.7rem;
+            color: #d29922;
+            margin-top: 0.5rem;
+        }
     </style>
 </head>
 <body>
@@ -127,62 +224,109 @@
                 <span class="dot" :class="connected ? 'connected' : 'disconnected'"></span>
                 <span x-text="connected ? 'Live' : 'Disconnected'"></span>
             </div>
-            <a href="/logout" class="logout">Sign out</a>
+            <div class="header-right">
+                <a class="nav-link" :class="view === 'dashboard' && 'active'" @click="view = 'dashboard'">Dashboard</a>
+                <a class="nav-link" :class="view === 'hosts' && 'active'" @click="view = 'hosts'; loadTokens()">Hosts</a>
+                <a href="/logout" class="nav-link">Sign out</a>
+            </div>
         </header>
 
         <main>
-            <template x-if="hosts.length === 0">
-                <div class="empty-state">
-                    <h2>No hosts reporting</h2>
-                    <p>Deploy the FleetCom agent to start monitoring your fleet.</p>
+            <!-- Dashboard view -->
+            <template x-if="view === 'dashboard'">
+                <div>
+                    <template x-if="hosts.length === 0">
+                        <div class="empty-state">
+                            <h2>No hosts reporting</h2>
+                            <p>Go to Hosts to add a host and get its agent token.</p>
+                        </div>
+                    </template>
+
+                    <div class="grid">
+                        <template x-for="host in hosts" :key="host.hostname">
+                            <div class="host-card">
+                                <div class="host-header">
+                                    <div>
+                                        <span class="status-dot" :class="hostStatus(host)"></span>
+                                        <span class="hostname" x-text="host.hostname"></span>
+                                    </div>
+                                    <span class="meta" x-text="host.os + ' · ' + formatUptime(host.uptime_seconds)"></span>
+                                </div>
+
+                                <template x-if="host.containers && host.containers.length > 0">
+                                    <div>
+                                        <div class="section-label">Containers</div>
+                                        <div class="items">
+                                            <template x-for="c in host.containers" :key="c.name">
+                                                <div class="item">
+                                                    <span class="status-dot" :class="containerStatus(c)"></span>
+                                                    <span class="name" x-text="c.name"></span>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+
+                                <template x-if="host.agents && host.agents.length > 0">
+                                    <div>
+                                        <div class="section-label">Agents</div>
+                                        <div class="items">
+                                            <template x-for="a in host.agents" :key="a.name">
+                                                <div class="item">
+                                                    <span class="status-dot" :class="agentStatus(a)"></span>
+                                                    <span class="name" x-text="a.name"></span>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+
+                                <template x-if="(!host.containers || host.containers.length === 0) && (!host.agents || host.agents.length === 0)">
+                                    <div class="meta" style="margin-top: 0.5rem;">No containers or agents</div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
                 </div>
             </template>
 
-            <div class="grid">
-                <template x-for="host in hosts" :key="host.hostname">
-                    <div class="host-card">
-                        <div class="host-header">
-                            <div>
-                                <span class="status-dot" :class="hostStatus(host)"></span>
-                                <span class="hostname" x-text="host.hostname"></span>
-                            </div>
-                            <span class="meta" x-text="host.os + ' · ' + formatUptime(host.uptime_seconds)"></span>
-                        </div>
+            <!-- Hosts management view -->
+            <template x-if="view === 'hosts'">
+                <div class="admin-panel">
+                    <h2>Manage Hosts</h2>
 
-                        <template x-if="host.containers && host.containers.length > 0">
-                            <div>
-                                <div class="section-label">Containers</div>
-                                <div class="items">
-                                    <template x-for="c in host.containers" :key="c.name">
-                                        <div class="item">
-                                            <span class="status-dot" :class="containerStatus(c)"></span>
-                                            <span class="name" x-text="c.name"></span>
-                                        </div>
-                                    </template>
-                                </div>
-                            </div>
-                        </template>
-
-                        <template x-if="host.agents && host.agents.length > 0">
-                            <div>
-                                <div class="section-label">Agents</div>
-                                <div class="items">
-                                    <template x-for="a in host.agents" :key="a.name">
-                                        <div class="item">
-                                            <span class="status-dot" :class="agentStatus(a)"></span>
-                                            <span class="name" x-text="a.name"></span>
-                                        </div>
-                                    </template>
-                                </div>
-                            </div>
-                        </template>
-
-                        <template x-if="(!host.containers || host.containers.length === 0) && (!host.agents || host.agents.length === 0)">
-                            <div class="meta" style="margin-top: 0.5rem;">No containers or agents</div>
-                        </template>
+                    <div class="add-host-form">
+                        <input type="text" x-model="newHostname" placeholder="Hostname (e.g. dsc0)" @keydown.enter="addHost()">
+                        <button class="btn btn-primary" @click="addHost()">Add Host</button>
                     </div>
-                </template>
-            </div>
+
+                    <template x-if="newToken">
+                        <div class="token-reveal">
+                            <div class="label">Agent token for <span x-text="newToken.hostname"></span></div>
+                            <code x-text="newToken.token"></code>
+                            <div class="warning">Copy this token now — it won't be shown again.</div>
+                        </div>
+                    </template>
+
+                    <ul class="token-list">
+                        <template x-for="t in tokens" :key="t.hostname">
+                            <li>
+                                <div>
+                                    <span class="hostname" x-text="t.hostname"></span>
+                                    <span class="created" x-text="t.created_at"></span>
+                                </div>
+                                <button class="btn btn-danger" @click="removeHost(t.hostname)">Remove</button>
+                            </li>
+                        </template>
+                    </ul>
+
+                    <template x-if="tokens.length === 0">
+                        <div class="empty-state" style="padding: 2rem;">
+                            <p>No hosts registered yet. Add one above.</p>
+                        </div>
+                    </template>
+                </div>
+            </template>
         </main>
     </div>
 
@@ -191,7 +335,11 @@
         function fleetcom() {
             return {
                 hosts: [],
+                tokens: [],
                 connected: false,
+                view: 'dashboard',
+                newHostname: '',
+                newToken: null,
                 es: null,
 
                 connect() {
@@ -209,6 +357,45 @@
                     this.es.onerror = () => {
                         this.connected = false;
                     };
+                },
+
+                async loadTokens() {
+                    const res = await fetch('/api/tokens');
+                    if (res.ok) {
+                        this.tokens = await res.json() || [];
+                    }
+                },
+
+                async addHost() {
+                    const hostname = this.newHostname.trim();
+                    if (!hostname) return;
+
+                    const res = await fetch('/api/hosts', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ hostname })
+                    });
+
+                    if (res.ok) {
+                        this.newToken = await res.json();
+                        this.newHostname = '';
+                        this.loadTokens();
+                    }
+                },
+
+                async removeHost(hostname) {
+                    if (!confirm('Remove ' + hostname + '? Its agent will stop authenticating.')) return;
+
+                    const res = await fetch('/api/hosts?hostname=' + encodeURIComponent(hostname), {
+                        method: 'DELETE'
+                    });
+
+                    if (res.ok) {
+                        this.loadTokens();
+                        if (this.newToken && this.newToken.hostname === hostname) {
+                            this.newToken = null;
+                        }
+                    }
                 },
 
                 hostStatus(host) {

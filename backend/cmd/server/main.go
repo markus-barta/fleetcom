@@ -58,6 +58,10 @@ func main() {
 		r.Use(a.RequireSession)
 		r.Get("/", api.Dashboard)
 		r.Get("/api/events", api.Events(store, hub))
+		r.Get("/api/hosts", api.ListHosts(store))
+		r.Get("/api/tokens", api.ListTokens(store))
+		r.Post("/api/hosts", api.AddHost(store))
+		r.Delete("/api/hosts", api.DeleteHost(store))
 	})
 
 	srv := &http.Server{
