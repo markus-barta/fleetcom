@@ -26,19 +26,12 @@
             font-weight: 600;
         }
         header .status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
             font-size: 0.75rem;
             color: #8b949e;
         }
-        header .status .dot {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            margin-right: 4px;
-            vertical-align: middle;
-        }
-        header .status .dot.connected { background: #3fb950; }
-        header .status .dot.disconnected { background: #f85149; }
         .header-right {
             display: flex;
             align-items: center;
@@ -55,20 +48,27 @@
         main { padding: 1.5rem 2rem; }
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
             gap: 1rem;
         }
         .host-card {
             background: #161b22;
             border: 1px solid #21262d;
-            border-radius: 8px;
-            padding: 1.25rem;
+            border-radius: 10px;
+            padding: 1.25rem 1.5rem;
+            transition: border-color 0.15s;
         }
+        .host-card:hover { border-color: #30363d; }
         .host-card .host-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
             margin-bottom: 1rem;
+        }
+        .host-card .host-header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         .host-card .hostname {
             font-size: 1.1rem;
@@ -79,18 +79,22 @@
             font-size: 0.75rem;
             color: #8b949e;
         }
-        .status-dot {
-            display: inline-block;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            margin-right: 6px;
-            vertical-align: middle;
-        }
-        .status-dot.green { background: #3fb950; box-shadow: 0 0 6px #3fb95066; }
-        .status-dot.yellow { background: #d29922; box-shadow: 0 0 6px #d2992266; }
-        .status-dot.red { background: #f85149; box-shadow: 0 0 6px #f8514966; }
-        .status-dot.gray { background: #484f58; }
+        /* Icons */
+        .icon { display: inline-flex; align-items: center; flex-shrink: 0; }
+        .icon svg { width: 16px; height: 16px; }
+        .icon-host svg { width: 20px; height: 20px; }
+        .icon-lg svg { width: 18px; height: 18px; }
+        .color-green { color: #3fb950; }
+        .color-yellow { color: #d29922; }
+        .color-red { color: #f85149; }
+        .color-gray { color: #484f58; }
+        .color-green svg { fill: #3fb950; stroke: #3fb950; }
+        .color-yellow svg { fill: #d29922; stroke: #d29922; }
+        .color-red svg { fill: #f85149; stroke: #f85149; }
+        .color-gray svg { fill: #484f58; stroke: #484f58; }
+        .glow-green { filter: drop-shadow(0 0 4px #3fb95066); }
+        .glow-yellow { filter: drop-shadow(0 0 4px #d2992266); }
+        .glow-red { filter: drop-shadow(0 0 4px #f8514966); }
         .section-label {
             font-size: 0.7rem;
             text-transform: uppercase;
@@ -98,7 +102,11 @@
             color: #6e7681;
             margin-bottom: 0.4rem;
             margin-top: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
+        .section-label .icon svg { width: 13px; height: 13px; fill: #6e7681; stroke: #6e7681; }
         .items {
             display: flex;
             flex-wrap: wrap;
@@ -107,10 +115,11 @@
         .item {
             display: inline-flex;
             align-items: center;
+            gap: 6px;
             background: #0d1117;
             border: 1px solid #21262d;
-            border-radius: 4px;
-            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            padding: 0.3rem 0.6rem;
             font-size: 0.8rem;
         }
         .item .name { color: #c9d1d9; }
@@ -125,9 +134,7 @@
             color: #8b949e;
         }
         /* Admin panel */
-        .admin-panel {
-            max-width: 640px;
-        }
+        .admin-panel { max-width: 640px; }
         .admin-panel h2 {
             font-size: 1.1rem;
             color: #e1e4e8;
@@ -148,10 +155,7 @@
             font-family: inherit;
             font-size: 0.875rem;
         }
-        .add-host-form input:focus {
-            outline: none;
-            border-color: #58a6ff;
-        }
+        .add-host-form input:focus { outline: none; border-color: #58a6ff; }
         .btn {
             padding: 0.5rem 1rem;
             border: none;
@@ -161,10 +165,7 @@
             font-weight: 600;
             cursor: pointer;
         }
-        .btn-primary {
-            background: #238636;
-            color: #fff;
-        }
+        .btn-primary { background: #238636; color: #fff; }
         .btn-primary:hover { background: #2ea043; }
         .btn-danger {
             background: transparent;
@@ -174,9 +175,7 @@
             font-size: 0.75rem;
         }
         .btn-danger:hover { background: #f8514922; }
-        .token-list {
-            list-style: none;
-        }
+        .token-list { list-style: none; }
         .token-list li {
             display: flex;
             align-items: center;
@@ -197,11 +196,7 @@
             border: 1px solid #238636;
             border-radius: 4px;
         }
-        .token-reveal .label {
-            font-size: 0.75rem;
-            color: #3fb950;
-            margin-bottom: 0.25rem;
-        }
+        .token-reveal .label { font-size: 0.75rem; color: #3fb950; margin-bottom: 0.25rem; }
         .token-reveal code {
             display: block;
             word-break: break-all;
@@ -209,19 +204,37 @@
             color: #e1e4e8;
             user-select: all;
         }
-        .token-reveal .warning {
-            font-size: 0.7rem;
-            color: #d29922;
-            margin-top: 0.5rem;
-        }
+        .token-reveal .warning { font-size: 0.7rem; color: #d29922; margin-top: 0.5rem; }
     </style>
 </head>
 <body>
+    <!-- SVG icon definitions (hidden) -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="display:none;">
+        <defs>
+            <!-- Lucide: Server (host) -->
+            <symbol id="icon-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>
+            </symbol>
+            <!-- Docker whale (simplified official logo) -->
+            <symbol id="icon-docker" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.186.186 0 00-.187.186v1.887c0 .102.084.185.187.185zm-2.954-5.43h2.118a.186.186 0 00.187-.185V3.576a.186.186 0 00-.187-.186h-2.118a.186.186 0 00-.187.186v1.887c0 .102.084.185.187.185zm0 2.716h2.118a.186.186 0 00.187-.186V6.291a.186.186 0 00-.187-.186h-2.118a.186.186 0 00-.187.186v1.887c0 .102.084.186.187.186zm-2.93 0h2.12a.186.186 0 00.186-.186V6.291a.186.186 0 00-.186-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.083.186.186.186zm-2.964 0h2.119a.186.186 0 00.185-.186V6.291a.186.186 0 00-.185-.186H5.136a.186.186 0 00-.186.186v1.887c0 .102.084.186.186.186zm5.893 2.715h2.118a.186.186 0 00.186-.186V9.006a.186.186 0 00-.186-.186h-2.118a.186.186 0 00-.187.186v1.887c0 .102.084.185.187.185zm-2.93 0h2.12a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.083.185.186.185zm-2.964 0h2.119a.186.186 0 00.185-.185V9.006a.186.186 0 00-.185-.186H5.136a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185zm-2.92 0h2.119a.186.186 0 00.185-.185V9.006a.186.186 0 00-.185-.186H2.216a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185zM23.078 13.15c-.322-.18-.637-.26-.943-.252-.19.006-.374.04-.55.097-.375-.94-1.084-1.56-2.003-1.834l-.15-.04-.078.14c-.158.31-.255.66-.29 1.03-.056.592.073 1.146.368 1.618-.173.1-.37.19-.575.26-.365.126-.762.193-1.167.2H.482l-.037.215c-.12.78-.12 1.59.008 2.39.17 1.07.527 2.016 1.05 2.8.566.838 1.316 1.486 2.236 1.92.99.464 2.245.71 3.543.71.66 0 1.33-.063 1.998-.192.916-.175 1.796-.49 2.59-.92.662-.355 1.257-.79 1.773-1.29.82-.79 1.47-1.744 1.97-2.76h.17c1.057 0 1.71-.42 2.072-.78.24-.236.42-.518.54-.83l.075-.2-.07-.04z"/>
+            </symbol>
+            <!-- Lucide: Sparkles (AI agent) -->
+            <symbol id="icon-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .963L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/>
+            </symbol>
+            <!-- Lucide: Signal (connection status) -->
+            <symbol id="icon-signal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M2 20h.01"/><path d="M7 20v-4"/><path d="M12 20v-8"/><path d="M17 20V8"/><path d="M22 4v16"/>
+            </symbol>
+        </defs>
+    </svg>
+
     <div x-data="fleetcom()" x-init="connect()">
         <header>
             <h1>FleetCom</h1>
-            <div class="status">
-                <span class="dot" :class="connected ? 'connected' : 'disconnected'"></span>
+            <div class="status" :class="connected ? 'color-green' : 'color-red'">
+                <span class="icon"><svg><use href="#icon-signal"/></svg></span>
                 <span x-text="connected ? 'Live' : 'Disconnected'"></span>
             </div>
             <div class="header-right">
@@ -246,8 +259,10 @@
                         <template x-for="host in hosts" :key="host.hostname">
                             <div class="host-card">
                                 <div class="host-header">
-                                    <div>
-                                        <span class="status-dot" :class="hostStatus(host)"></span>
+                                    <div class="host-header-left">
+                                        <span class="icon icon-host" :class="'color-' + hostStatus(host) + ' glow-' + hostStatus(host)">
+                                            <svg><use href="#icon-server"/></svg>
+                                        </span>
                                         <span class="hostname" x-text="host.hostname"></span>
                                     </div>
                                     <span class="meta" x-text="host.os + ' · ' + formatUptime(host.uptime_seconds)"></span>
@@ -255,11 +270,16 @@
 
                                 <template x-if="host.containers && host.containers.length > 0">
                                     <div>
-                                        <div class="section-label">Containers</div>
+                                        <div class="section-label">
+                                            <span class="icon"><svg><use href="#icon-docker"/></svg></span>
+                                            Containers
+                                        </div>
                                         <div class="items">
                                             <template x-for="c in host.containers" :key="c.name">
                                                 <div class="item">
-                                                    <span class="status-dot" :class="containerStatus(c)"></span>
+                                                    <span class="icon" :class="'color-' + containerStatus(c)">
+                                                        <svg><use href="#icon-docker"/></svg>
+                                                    </span>
                                                     <span class="name" x-text="c.name"></span>
                                                 </div>
                                             </template>
@@ -269,11 +289,16 @@
 
                                 <template x-if="host.agents && host.agents.length > 0">
                                     <div>
-                                        <div class="section-label">Agents</div>
+                                        <div class="section-label">
+                                            <span class="icon"><svg><use href="#icon-sparkles"/></svg></span>
+                                            Agents
+                                        </div>
                                         <div class="items">
                                             <template x-for="a in host.agents" :key="a.name">
                                                 <div class="item">
-                                                    <span class="status-dot" :class="agentStatus(a)"></span>
+                                                    <span class="icon" :class="'color-' + agentStatus(a) + ' glow-' + agentStatus(a)">
+                                                        <svg><use href="#icon-sparkles"/></svg>
+                                                    </span>
                                                     <span class="name" x-text="a.name"></span>
                                                 </div>
                                             </template>
@@ -350,32 +375,23 @@
                         this.hosts = data || [];
                     });
 
-                    this.es.onopen = () => {
-                        this.connected = true;
-                    };
-
-                    this.es.onerror = () => {
-                        this.connected = false;
-                    };
+                    this.es.onopen = () => { this.connected = true; };
+                    this.es.onerror = () => { this.connected = false; };
                 },
 
                 async loadTokens() {
                     const res = await fetch('/api/tokens');
-                    if (res.ok) {
-                        this.tokens = await res.json() || [];
-                    }
+                    if (res.ok) this.tokens = await res.json() || [];
                 },
 
                 async addHost() {
                     const hostname = this.newHostname.trim();
                     if (!hostname) return;
-
                     const res = await fetch('/api/hosts', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ hostname })
                     });
-
                     if (res.ok) {
                         this.newToken = await res.json();
                         this.newHostname = '';
@@ -385,16 +401,10 @@
 
                 async removeHost(hostname) {
                     if (!confirm('Remove ' + hostname + '? Its agent will stop authenticating.')) return;
-
-                    const res = await fetch('/api/hosts?hostname=' + encodeURIComponent(hostname), {
-                        method: 'DELETE'
-                    });
-
+                    const res = await fetch('/api/hosts?hostname=' + encodeURIComponent(hostname), { method: 'DELETE' });
                     if (res.ok) {
                         this.loadTokens();
-                        if (this.newToken && this.newToken.hostname === hostname) {
-                            this.newToken = null;
-                        }
+                        if (this.newToken && this.newToken.hostname === hostname) this.newToken = null;
                     }
                 },
 
