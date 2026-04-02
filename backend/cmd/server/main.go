@@ -1,0 +1,90 @@
+package main
+
+import (
+	"context"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/markus-barta/fleetcom/internal/api"
+	"github.com/markus-barta/fleetcom/internal/auth"
+	"github.com/markus-barta/fleetcom/internal/db"
+	"github.com/markus-barta/fleetcom/internal/sse"
+)
+
+func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8090"
+	}
+
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "fleetcom.db"
+	}
+
+	store, err := db.Open(dbPath)
+	if err != nil {
+		log.Fatalf("failed to open database: %v", err)
+	}
+	defer store.Close()
+
+	hub := sse.NewHub()
+	a := auth.New(store)
+
+	r := chi.NewRouter()
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+
+	// Public routes
+	r.Get("/healthz", api.Healthz)
+	r.Post("/api/heartbeat", api.Heartbeat(store, hub))
+	r.Get("/login", api.LoginPage)
+	r.Post("/login", a.HandleLogin)
+	r.Get("/logout", a.HandleLogout)
+
+	// Static files (public — CSS, JS, images)
+	fs := http.FileServer(http.Dir("static"))
+	r.Handle("/static/*", http.StripPrefix("/static/", fs))
+
+	// Protected routes
+	r.Group(func(r chi.Router) {
+		r.Use(a.RequireSession)
+		r.Get("/", api.Dashboard)
+		r.Get("/api/events", api.Events(store, hub))
+	})
+
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      r,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Graceful shutdown
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		log.Printf("FleetCom listening on :%s", port)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	<-done
+	log.Println("shutting down...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("shutdown error: %v", err)
+	}
+}

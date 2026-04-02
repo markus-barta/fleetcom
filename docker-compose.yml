@@ -1,0 +1,24 @@
+services:
+  fleetcom:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fleetcom
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - fleetcom-data:/app/data
+    environment:
+      - PORT=8090
+      - DB_PATH=/app/data/fleetcom.db
+      - FLEETCOM_PASSWORD_HASH=${FLEETCOM_PASSWORD_HASH}
+      - FLEETCOM_TOTP_SECRET=${FLEETCOM_TOTP_SECRET:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  fleetcom-data:
