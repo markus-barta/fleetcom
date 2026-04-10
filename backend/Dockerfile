@@ -1,10 +1,19 @@
 FROM golang:1.25-alpine AS builder
 
+ARG VERSION=dev
+ARG COMMIT=unknown
+ARG BUILD_TIME=unknown
+
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /fleetcom-server ./cmd/server
+RUN CGO_ENABLED=0 go build \
+    -ldflags "-s -w \
+      -X github.com/markus-barta/fleetcom/internal/version.Version=${VERSION} \
+      -X github.com/markus-barta/fleetcom/internal/version.Commit=${COMMIT} \
+      -X github.com/markus-barta/fleetcom/internal/version.BuildTime=${BUILD_TIME}" \
+    -o /fleetcom-server ./cmd/server
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata
