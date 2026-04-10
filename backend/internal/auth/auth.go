@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	sessionCookie  = "fleetcom_session"
-	sessionMaxAge  = 7 * 24 * time.Hour
+	sessionCookie = "fleetcom_session"
+	sessionMaxAge = 7 * 24 * time.Hour
 )
 
 type Auth struct {

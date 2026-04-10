@@ -44,6 +44,8 @@ func main() {
 
 	// Public routes
 	r.Get("/healthz", api.Healthz)
+	r.Get("/api/version", api.Version)
+	r.Get("/LICENSE", api.License)
 	r.Post("/api/heartbeat", api.Heartbeat(store, hub))
 	r.Get("/login", api.LoginPage)
 	r.Post("/login", a.HandleLogin)

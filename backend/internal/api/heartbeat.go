@@ -13,12 +13,12 @@ import (
 )
 
 type HeartbeatPayload struct {
-	Hostname      string               `json:"hostname"`
-	OS            string               `json:"os"`
-	Kernel        string               `json:"kernel"`
-	UptimeSeconds int64                `json:"uptime_seconds"`
-	Containers    []ContainerPayload   `json:"containers"`
-	Agents        []AgentPayload       `json:"agents"`
+	Hostname      string             `json:"hostname"`
+	OS            string             `json:"os"`
+	Kernel        string             `json:"kernel"`
+	UptimeSeconds int64              `json:"uptime_seconds"`
+	Containers    []ContainerPayload `json:"containers"`
+	Agents        []AgentPayload     `json:"agents"`
 }
 
 type ContainerPayload struct {
