@@ -322,7 +322,10 @@
         }
         .card:hover { background: var(--bg-2); }
 
-        .card.state-ok { border-left-color: var(--ok); }
+        .card.state-ok {
+            border-left-color: var(--ok);
+            animation: ok-breathe 6s ease-in-out infinite;
+        }
         .card.state-warn {
             border-left-color: var(--warn);
             border-color: var(--warn-border);
@@ -337,11 +340,22 @@
         .card.state-dead {
             border-left-color: var(--dead);
             border-color: var(--dead-border);
-            background: var(--dead-bg);
-            filter: grayscale(0.45);
-            opacity: 0.72;
+            background:
+                repeating-linear-gradient(
+                    135deg,
+                    transparent 0 18px,
+                    rgba(255, 255, 255, 0.018) 18px 19px
+                ),
+                var(--dead-bg);
+            filter: grayscale(0.7);
+            opacity: 0.48;
         }
+        .card.state-dead:hover { opacity: 0.72; }
 
+        @keyframes ok-breathe {
+            0%, 100% { box-shadow: -1px 0 14px -4px rgba(61, 220, 151, 0.18); }
+            50%      { box-shadow: -1px 0 22px -2px rgba(61, 220, 151, 0.38); }
+        }
         @keyframes crit-pulse {
             0%, 100% { box-shadow: 0 0 0 0 transparent, 0 0 12px rgba(255, 77, 109, 0.06); }
             50%      { box-shadow: inset 3px 0 0 0 var(--crit), 0 0 32px rgba(255, 77, 109, 0.24); }
@@ -377,10 +391,31 @@
             border: 1px solid currentColor;
             line-height: 1.2;
         }
-        .card.state-ok .state-pill { color: var(--ok); }
+        .card.state-ok .state-pill {
+            color: var(--ok);
+            background: rgba(61, 220, 151, 0.05);
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .card.state-ok .state-pill::before {
+            content: '';
+            display: inline-block;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--ok);
+            box-shadow: 0 0 6px var(--ok), 0 0 10px rgba(61, 220, 151, 0.5);
+            animation: heartbeat 1.6s ease-in-out infinite;
+        }
         .card.state-warn .state-pill { color: var(--warn); background: rgba(255, 184, 77, 0.05); }
         .card.state-crit .state-pill { color: var(--crit); background: rgba(255, 77, 109, 0.10); }
         .card.state-dead .state-pill { color: var(--dead); }
+
+        @keyframes heartbeat {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50%      { opacity: 0.35; transform: scale(0.8); }
+        }
 
         .card-head-right {
             text-align: right;
@@ -462,6 +497,37 @@
         .chip.s-dead .dot { background: var(--dead); }
         .chip.s-dead { opacity: 0.6; }
 
+        /* Agent chip — sparkle icon instead of dot */
+        .chip-agent .spark {
+            width: 11px;
+            height: 11px;
+            flex-shrink: 0;
+            fill: none;
+            stroke: var(--ink-faint);
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+        .chip-agent.s-ok .spark {
+            stroke: var(--ok);
+            filter: drop-shadow(0 0 3px rgba(61, 220, 151, 0.75));
+            animation: spark-twinkle 3.4s ease-in-out infinite;
+        }
+        .chip-agent.s-warn .spark {
+            stroke: var(--warn);
+            filter: drop-shadow(0 0 3px rgba(255, 184, 77, 0.75));
+        }
+        .chip-agent.s-crit .spark {
+            stroke: var(--crit);
+            filter: drop-shadow(0 0 4px rgba(255, 77, 109, 0.85));
+        }
+        .chip-agent.s-dead .spark { stroke: var(--dead); }
+
+        @keyframes spark-twinkle {
+            0%, 100% { opacity: 1; transform: rotate(0deg); }
+            50%      { opacity: 0.65; transform: rotate(12deg); }
+        }
+
         .card-empty {
             font-size: 9px;
             color: var(--ink-ghost);
@@ -533,11 +599,18 @@
         .fleet-table tr.row-crit { background: var(--crit-bg); }
         .fleet-table tr.row-crit .col-host { color: var(--crit); }
         .fleet-table tr.row-dead {
-            opacity: 0.55;
-            filter: grayscale(0.6);
+            opacity: 0.42;
+            filter: grayscale(0.75);
+            background: repeating-linear-gradient(
+                135deg,
+                transparent 0 14px,
+                rgba(255, 255, 255, 0.02) 14px 15px
+            );
         }
+        .fleet-table tr.row-dead:hover { opacity: 0.7; }
         .fleet-table tr.row-dead .col-state .dot { background: var(--dead); }
-        .fleet-table tr.row-dead .col-host { color: var(--ink-ghost); }
+        .fleet-table tr.row-dead .col-host { color: var(--ink-ghost); text-decoration: line-through; text-decoration-color: var(--ink-faint); }
+        .fleet-table tr.row-ok .col-state .dot { animation: heartbeat 1.6s ease-in-out infinite; }
 
         /* Bar strip inside compact table */
         .bar-strip {
@@ -845,13 +918,13 @@
                         <span class="label">Hosts</span>
                         <span class="value"><span x-text="hostsUp"></span><span class="sub">/</span><span x-text="hosts.length"></span></span>
                     </div>
-                    <div class="stat">
+                    <div class="stat" :class="totalContainers > 0 && runningContainers < totalContainers ? 'state-warn' : ''">
                         <span class="label">Containers</span>
-                        <span class="value" x-text="totalContainers"></span>
+                        <span class="value"><span x-text="runningContainers"></span><span class="sub">/</span><span x-text="totalContainers"></span></span>
                     </div>
-                    <div class="stat">
+                    <div class="stat" :class="totalAgents > 0 && onlineAgents < totalAgents ? 'state-warn' : ''">
                         <span class="label">Agents</span>
-                        <span class="value" x-text="totalAgents"></span>
+                        <span class="value"><span x-text="onlineAgents"></span><span class="sub">/</span><span x-text="totalAgents"></span></span>
                     </div>
                 </div>
             </div>
@@ -906,7 +979,7 @@
                                     <template x-if="host.containers && host.containers.length > 0">
                                         <div class="card-section">
                                             <div class="card-section-label">
-                                                <span>Containers</span><span class="count" x-text="'· ' + host.containers.length"></span>
+                                                <span>Containers</span><span class="count" x-text="'· ' + countRunning(host.containers) + '/' + host.containers.length"></span>
                                             </div>
                                             <div class="chips" :class="host.containers.length > 8 ? 'dense' : ''">
                                                 <template x-for="c in host.containers" :key="c.name">
@@ -922,12 +995,12 @@
                                     <template x-if="host.agents && host.agents.length > 0">
                                         <div class="card-section">
                                             <div class="card-section-label">
-                                                <span>Agents</span><span class="count" x-text="'· ' + host.agents.length"></span>
+                                                <span>Agents</span><span class="count" x-text="'· ' + countOnlineAgents(host.agents) + '/' + host.agents.length"></span>
                                             </div>
                                             <div class="chips">
                                                 <template x-for="a in host.agents" :key="a.name">
-                                                    <div class="chip" :class="'s-' + agentStatus(a)" :title="a.name + ' · ' + a.status">
-                                                        <span class="dot"></span>
+                                                    <div class="chip chip-agent" :class="'s-' + agentStatus(a)" :title="a.name + ' · ' + a.status">
+                                                        <svg class="spark" viewBox="0 0 24 24"><use href="#icon-sparkles"/></svg>
                                                         <span class="name" x-text="a.name"></span>
                                                     </div>
                                                 </template>
@@ -1317,8 +1390,21 @@
                 get totalContainers() {
                     return this.hosts.reduce((n, h) => n + ((h.containers && h.containers.length) || 0), 0);
                 },
+                get runningContainers() {
+                    return this.hosts.reduce((n, h) => n + this.countRunning(h.containers), 0);
+                },
                 get totalAgents() {
                     return this.hosts.reduce((n, h) => n + ((h.agents && h.agents.length) || 0), 0);
+                },
+                get onlineAgents() {
+                    return this.hosts.reduce((n, h) => n + this.countOnlineAgents(h.agents), 0);
+                },
+
+                countRunning(containers) {
+                    return (containers || []).filter(c => c.state === 'running').length;
+                },
+                countOnlineAgents(agents) {
+                    return (agents || []).filter(a => a.status === 'online').length;
                 },
 
                 // ---------- status helpers ----------
