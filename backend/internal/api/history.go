@@ -8,11 +8,12 @@ import (
 )
 
 type historyResponse struct {
-	EntityType string      `json:"entity_type"`
-	EntityKey  string      `json:"entity_key"`
-	Scale      string      `json:"scale"`
-	Window     int64       `json:"window_seconds"`
-	Buckets    []db.Bucket `json:"buckets"`
+	EntityType  string      `json:"entity_type"`
+	EntityKey   string      `json:"entity_key"`
+	Scale       string      `json:"scale"`
+	Window      int64       `json:"window_seconds"`
+	FirstSample string      `json:"first_sample"`
+	Buckets     []db.Bucket `json:"buckets"`
 }
 
 // History returns bucketed status samples for a single entity+scale.
@@ -44,13 +45,20 @@ func History(store *db.Store) http.HandlerFunc {
 			return
 		}
 
+		firstSample, err := store.EntityFirstSample(entityType, entityKey)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(historyResponse{
-			EntityType: entityType,
-			EntityKey:  entityKey,
-			Scale:      scaleName,
-			Window:     int64(scale.Window.Seconds()),
-			Buckets:    buckets,
+			EntityType:  entityType,
+			EntityKey:   entityKey,
+			Scale:       scaleName,
+			Window:      int64(scale.Window.Seconds()),
+			FirstSample: firstSample,
+			Buckets:     buckets,
 		})
 	}
 }
