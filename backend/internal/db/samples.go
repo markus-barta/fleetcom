@@ -169,6 +169,24 @@ func (s *Store) HistoryBuckets(entityType, entityKey string, scale ScaleSpec) ([
 	return out, rows.Err()
 }
 
+// EntityFirstSample returns the timestamp of the oldest sample for an entity,
+// or "" if none exist. Lets the client derive per-scale coverage from one
+// fetch instead of probing every scale.
+func (s *Store) EntityFirstSample(entityType, entityKey string) (string, error) {
+	var ts sql.NullString
+	err := s.DB.QueryRow(
+		`SELECT MIN(ts) FROM status_samples WHERE entity_type = ? AND entity_key = ?`,
+		entityType, entityKey,
+	).Scan(&ts)
+	if err != nil {
+		return "", fmt.Errorf("query first sample: %w", err)
+	}
+	if !ts.Valid {
+		return "", nil
+	}
+	return ts.String, nil
+}
+
 // PurgeOldSamples deletes samples older than the retention window. Runs on
 // startup and periodically via a background goroutine.
 func (s *Store) PurgeOldSamples(retention time.Duration) (int64, error) {
