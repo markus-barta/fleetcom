@@ -37,6 +37,25 @@ func main() {
 	hub := sse.NewHub()
 	a := auth.New(store)
 
+	// Purge samples older than 35 days; run on startup and every 6 hours.
+	const sampleRetention = 35 * 24 * time.Hour
+	if n, err := store.PurgeOldSamples(sampleRetention); err != nil {
+		log.Printf("initial sample purge failed: %v", err)
+	} else if n > 0 {
+		log.Printf("purged %d old status samples", n)
+	}
+	go func() {
+		ticker := time.NewTicker(6 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if n, err := store.PurgeOldSamples(sampleRetention); err != nil {
+				log.Printf("sample purge failed: %v", err)
+			} else if n > 0 {
+				log.Printf("purged %d old status samples", n)
+			}
+		}
+	}()
+
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
@@ -71,6 +90,7 @@ func main() {
 		r.Get("/api/shares", api.ListShareLinks(store))
 		r.Post("/api/shares", api.CreateShareLink(store))
 		r.Delete("/api/shares", api.DeleteShareLink(store))
+		r.Get("/api/history", api.History(store))
 	})
 
 	srv := &http.Server{

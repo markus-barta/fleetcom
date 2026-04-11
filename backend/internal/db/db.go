@@ -92,4 +92,14 @@ CREATE TABLE IF NOT EXISTS share_links (
 	expires_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_share_links_token ON share_links(token);
+
+CREATE TABLE IF NOT EXISTS status_samples (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	entity_type TEXT NOT NULL,
+	entity_key TEXT NOT NULL,
+	ts TEXT NOT NULL,
+	status TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_samples_entity_ts ON status_samples(entity_type, entity_key, ts);
+CREATE INDEX IF NOT EXISTS idx_samples_ts ON status_samples(ts);
 `

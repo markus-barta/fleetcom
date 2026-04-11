@@ -497,31 +497,147 @@
         .chip.s-dead .dot { background: var(--dead); }
         .chip.s-dead { opacity: 0.6; }
 
+        /* Container chip — shipping-container crate icon */
+        .chip-container .crate {
+            width: 13px;
+            height: 13px;
+            flex-shrink: 0;
+            color: var(--ink-faint);
+        }
+        .chip-container.s-ok .crate {
+            color: var(--ok);
+            filter: drop-shadow(0 0 3px rgba(61, 220, 151, 0.75));
+        }
+        .chip-container.s-warn .crate {
+            color: var(--warn);
+            filter: drop-shadow(0 0 3px rgba(255, 184, 77, 0.75));
+        }
+        .chip-container.s-crit .crate {
+            color: var(--crit);
+            filter: drop-shadow(0 0 4px rgba(255, 77, 109, 0.85));
+        }
+        .chip-container.s-dead .crate { color: var(--dead); }
+
+        .chip.is-open {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 1px var(--accent), 0 0 10px rgba(106, 176, 255, 0.25);
+        }
+        .chip { cursor: pointer; }
+
+        /* ============================================================
+           HISTORY STRIPS — industrial strip-recorder for uptime/outages
+           ============================================================ */
+        .history {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            margin-top: 0.55rem;
+            padding: 0.5rem 0.6rem 0.55rem;
+            background: var(--bg-0);
+            border: 1px solid var(--line);
+            border-left: 2px solid var(--line-2);
+        }
+        .history-title {
+            font-size: 9px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--ink-ghost);
+            margin-bottom: 0.3rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+        }
+        .history-title .subject {
+            color: var(--ink-dim);
+            text-transform: none;
+            letter-spacing: 0;
+            font-size: 10px;
+        }
+        .strip-row {
+            display: grid;
+            grid-template-columns: 22px 1fr;
+            align-items: center;
+            gap: 8px;
+            min-height: 14px;
+        }
+        .strip-label {
+            font-size: 9px;
+            color: var(--ink-ghost);
+            letter-spacing: 0.08em;
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .strip {
+            display: grid;
+            grid-template-columns: repeat(60, 1fr);
+            gap: 1px;
+            height: 14px;
+            background:
+                repeating-linear-gradient(
+                    to right,
+                    transparent 0,
+                    transparent calc(20% - 1px),
+                    rgba(255, 255, 255, 0.025) calc(20% - 1px),
+                    rgba(255, 255, 255, 0.025) 20%
+                );
+            padding: 1px 0;
+        }
+        .strip .cell {
+            background: var(--ink-faint);
+            min-width: 1px;
+            border-radius: 0.5px;
+            transition: background 120ms ease;
+        }
+        .strip .cell.s-ok   { background: var(--ok);   box-shadow: 0 0 2px rgba(61, 220, 151, 0.55); }
+        .strip .cell.s-warn { background: var(--warn); box-shadow: 0 0 2px rgba(255, 184, 77, 0.55); }
+        .strip .cell.s-crit { background: var(--crit); box-shadow: 0 0 3px rgba(255, 77, 109, 0.7); }
+        .strip .cell.s-dead { background: var(--dead); }
+        .strip .cell.s-none {
+            background:
+                linear-gradient(135deg,
+                    transparent 0, transparent 45%,
+                    var(--ink-faint) 45%, var(--ink-faint) 55%,
+                    transparent 55%, transparent 100%);
+            background-size: 3px 3px;
+            opacity: 0.4;
+        }
+        .strip .cell.now { outline: 1px solid rgba(232, 230, 223, 0.25); }
+        .strip .cell:hover { filter: brightness(1.4); }
+
+        .history.loading .strip .cell { animation: strip-pulse 1.6s ease-in-out infinite; }
+        @keyframes strip-pulse {
+            0%, 100% { opacity: 0.4; }
+            50%      { opacity: 0.75; }
+        }
+
         /* Agent chip — sparkle icon instead of dot */
         .chip-agent .spark {
             width: 11px;
             height: 11px;
             flex-shrink: 0;
-            fill: none;
+            fill: var(--ink-faint);
             stroke: var(--ink-faint);
-            stroke-width: 2;
+            stroke-width: 1;
             stroke-linecap: round;
             stroke-linejoin: round;
         }
         .chip-agent.s-ok .spark {
+            fill: var(--ok);
             stroke: var(--ok);
-            filter: drop-shadow(0 0 3px rgba(61, 220, 151, 0.75));
+            filter: drop-shadow(0 0 4px rgba(61, 220, 151, 0.85));
             animation: spark-twinkle 3.4s ease-in-out infinite;
         }
         .chip-agent.s-warn .spark {
+            fill: var(--warn);
             stroke: var(--warn);
-            filter: drop-shadow(0 0 3px rgba(255, 184, 77, 0.75));
+            filter: drop-shadow(0 0 4px rgba(255, 184, 77, 0.85));
         }
         .chip-agent.s-crit .spark {
+            fill: var(--crit);
             stroke: var(--crit);
-            filter: drop-shadow(0 0 4px rgba(255, 77, 109, 0.85));
+            filter: drop-shadow(0 0 5px rgba(255, 77, 109, 0.9));
         }
-        .chip-agent.s-dead .spark { stroke: var(--dead); }
+        .chip-agent.s-dead .spark { fill: var(--dead); stroke: var(--dead); }
 
         @keyframes spark-twinkle {
             0%, 100% { opacity: 1; transform: rotate(0deg); }
@@ -886,6 +1002,10 @@
             <symbol id="icon-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .963L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/>
             </symbol>
+            <symbol id="icon-container" viewBox="0 0 24 24">
+                <rect x="2" y="7" width="20" height="10" rx="0.6" ry="0.6" fill="currentColor"/>
+                <path d="M6 9.5v5M10 9.5v5M14 9.5v5M18 9.5v5" stroke="rgba(0,0,0,0.45)" stroke-width="1.4" stroke-linecap="round" fill="none"/>
+            </symbol>
             <symbol id="icon-github" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                 <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
             </symbol>
@@ -964,7 +1084,7 @@
                     <template x-if="viewMode === 'detail' && hosts.length > 0">
                         <div class="grid">
                             <template x-for="host in hosts" :key="host.hostname">
-                                <div class="card" :class="'state-' + hostStatus(host)">
+                                <div class="card" :class="'state-' + hostStatus(host)" x-init="loadHistory('host', host.hostname)">
                                     <div class="card-head">
                                         <div class="card-head-left">
                                             <span class="hostname" x-text="host.hostname"></span>
@@ -983,12 +1103,37 @@
                                             </div>
                                             <div class="chips" :class="host.containers.length > 8 ? 'dense' : ''">
                                                 <template x-for="c in host.containers" :key="c.name">
-                                                    <div class="chip" :class="'s-' + containerStatus(c)" :title="c.name + ' · ' + c.state">
-                                                        <span class="dot"></span>
+                                                    <div class="chip chip-container"
+                                                         :class="['s-' + containerStatus(c), isChipOpen('container', host.hostname + '/' + c.name) ? 'is-open' : '']"
+                                                         :title="c.name + ' · ' + c.state"
+                                                         @click="toggleChip('container', host.hostname + '/' + c.name)">
+                                                        <svg class="crate" viewBox="0 0 24 24"><use href="#icon-container"/></svg>
                                                         <span class="name" x-text="c.name"></span>
                                                     </div>
                                                 </template>
                                             </div>
+                                            <template x-for="c in host.containers" :key="'hist-' + c.name">
+                                                <template x-if="isChipOpen('container', host.hostname + '/' + c.name)">
+                                                    <div class="history" :class="isLoadingHistory('container', host.hostname + '/' + c.name) ? 'loading' : ''">
+                                                        <div class="history-title">
+                                                            <span>Uptime History</span>
+                                                            <span class="subject" x-text="c.name + ' · ' + c.state"></span>
+                                                        </div>
+                                                        <template x-for="scale in scales" :key="'cs-' + c.name + scale">
+                                                            <div class="strip-row">
+                                                                <div class="strip-label" x-text="scale"></div>
+                                                                <div class="strip">
+                                                                    <template x-for="i in 60" :key="'cc-' + c.name + scale + i">
+                                                                        <div class="cell"
+                                                                             :class="[cellStatus('container', host.hostname + '/' + c.name, scale, i-1), i===60 ? 'now' : '']"
+                                                                             :title="cellTitle('container', host.hostname + '/' + c.name, scale, i-1)"></div>
+                                                                    </template>
+                                                                </div>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </template>
+                                            </template>
                                         </div>
                                     </template>
 
@@ -999,18 +1144,62 @@
                                             </div>
                                             <div class="chips">
                                                 <template x-for="a in host.agents" :key="a.name">
-                                                    <div class="chip chip-agent" :class="'s-' + agentStatus(a)" :title="a.name + ' · ' + a.status">
+                                                    <div class="chip chip-agent"
+                                                         :class="['s-' + agentStatus(a), isChipOpen('agent', host.hostname + '/' + a.name) ? 'is-open' : '']"
+                                                         :title="a.name + ' · ' + a.status"
+                                                         @click="toggleChip('agent', host.hostname + '/' + a.name)">
                                                         <svg class="spark" viewBox="0 0 24 24"><use href="#icon-sparkles"/></svg>
                                                         <span class="name" x-text="a.name"></span>
                                                     </div>
                                                 </template>
                                             </div>
+                                            <template x-for="a in host.agents" :key="'hist-' + a.name">
+                                                <template x-if="isChipOpen('agent', host.hostname + '/' + a.name)">
+                                                    <div class="history" :class="isLoadingHistory('agent', host.hostname + '/' + a.name) ? 'loading' : ''">
+                                                        <div class="history-title">
+                                                            <span>Uptime History</span>
+                                                            <span class="subject" x-text="a.name + ' · ' + a.status"></span>
+                                                        </div>
+                                                        <template x-for="scale in scales" :key="'as-' + a.name + scale">
+                                                            <div class="strip-row">
+                                                                <div class="strip-label" x-text="scale"></div>
+                                                                <div class="strip">
+                                                                    <template x-for="i in 60" :key="'ac-' + a.name + scale + i">
+                                                                        <div class="cell"
+                                                                             :class="[cellStatus('agent', host.hostname + '/' + a.name, scale, i-1), i===60 ? 'now' : '']"
+                                                                             :title="cellTitle('agent', host.hostname + '/' + a.name, scale, i-1)"></div>
+                                                                    </template>
+                                                                </div>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </template>
+                                            </template>
                                         </div>
                                     </template>
 
                                     <template x-if="(!host.containers || host.containers.length === 0) && (!host.agents || host.agents.length === 0)">
                                         <div class="card-empty">No containers or agents reported</div>
                                     </template>
+
+                                    <div class="history" :class="isLoadingHistory('host', host.hostname) ? 'loading' : ''">
+                                        <div class="history-title">
+                                            <span>Host Uptime</span>
+                                            <span class="subject" x-text="host.hostname"></span>
+                                        </div>
+                                        <template x-for="scale in scales" :key="'hs-' + host.hostname + scale">
+                                            <div class="strip-row">
+                                                <div class="strip-label" x-text="scale"></div>
+                                                <div class="strip">
+                                                    <template x-for="i in 60" :key="'hc-' + host.hostname + scale + i">
+                                                        <div class="cell"
+                                                             :class="[cellStatus('host', host.hostname, scale, i-1), i===60 ? 'now' : '']"
+                                                             :title="cellTitle('host', host.hostname, scale, i-1)"></div>
+                                                    </template>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
                                 </div>
                             </template>
                         </div>
@@ -1199,15 +1388,37 @@
                 clockDate: '',
                 clockTime: '',
 
+                // History strips: key = `${type}:${entityKey}` → { scale: [buckets] }
+                history: {},
+                historyLoading: {},
+                // Which chip is expanded in its card (key = `${type}:${entityKey}`, one at a time globally)
+                openChip: null,
+                scales: ['1h', '1d', '1w', '1mo'],
+
                 init() {
                     this.viewMode = localStorage.getItem('fleetcom.view') || 'detail';
                     this.startClock();
                     this.loadVersion();
                     this.connect();
                     this.startConnWatchdog();
+                    this.startHistoryRefresher();
                     document.addEventListener('visibilitychange', () => {
                         if (document.visibilityState === 'visible') this.kickIfStale();
                     });
+                },
+
+                startHistoryRefresher() {
+                    // Re-fetch history every 60s for any entity that has it loaded,
+                    // so the strips roll forward with new heartbeats.
+                    setInterval(() => {
+                        if (document.visibilityState !== 'visible') return;
+                        const keys = Object.keys(this.history);
+                        for (const k of keys) {
+                            const [type, ...rest] = k.split(':');
+                            const entityKey = rest.join(':');
+                            this.refreshHistory(type, entityKey);
+                        }
+                    }, 60000);
                 },
 
                 setViewMode(m) {
@@ -1347,6 +1558,75 @@
                         this.newHostname = '';
                         this.loadTokens();
                     }
+                },
+
+                // ---------- history strips ----------
+                historyKey(type, entityKey) { return type + ':' + entityKey; },
+
+                historyFor(type, entityKey) {
+                    return this.history[this.historyKey(type, entityKey)] || null;
+                },
+
+                async loadHistory(type, entityKey) {
+                    const key = this.historyKey(type, entityKey);
+                    if (this.history[key] || this.historyLoading[key]) return;
+                    this.historyLoading[key] = true;
+                    try {
+                        const results = await Promise.all(this.scales.map(async scale => {
+                            const url = '/api/history?entity_type=' + encodeURIComponent(type)
+                                + '&entity_key=' + encodeURIComponent(entityKey)
+                                + '&scale=' + scale;
+                            const res = await fetch(url);
+                            if (!res.ok) return { scale, buckets: [] };
+                            return await res.json();
+                        }));
+                        const out = {};
+                        for (const r of results) out[r.scale] = r.buckets || [];
+                        this.history[key] = out;
+                    } catch (_) {
+                        this.history[key] = {};
+                    } finally {
+                        delete this.historyLoading[key];
+                    }
+                },
+
+                async refreshHistory(type, entityKey) {
+                    const key = this.historyKey(type, entityKey);
+                    delete this.history[key];
+                    await this.loadHistory(type, entityKey);
+                },
+
+                toggleChip(type, entityKey) {
+                    const key = this.historyKey(type, entityKey);
+                    if (this.openChip === key) {
+                        this.openChip = null;
+                    } else {
+                        this.openChip = key;
+                        this.loadHistory(type, entityKey);
+                    }
+                },
+
+                isChipOpen(type, entityKey) {
+                    return this.openChip === this.historyKey(type, entityKey);
+                },
+
+                cellStatus(type, entityKey, scale, idx) {
+                    const h = this.historyFor(type, entityKey);
+                    if (!h || !h[scale]) return 's-none';
+                    const b = h[scale][idx];
+                    return b ? 's-' + b.status : 's-none';
+                },
+
+                cellTitle(type, entityKey, scale, idx) {
+                    const h = this.historyFor(type, entityKey);
+                    if (!h || !h[scale]) return '';
+                    const b = h[scale][idx];
+                    if (!b || b.status === 'none') return scale + ' · no data';
+                    return scale + ' · ' + b.status + ' · ' + (b.p || 0) + '% ok · n=' + (b.n || 0);
+                },
+
+                isLoadingHistory(type, entityKey) {
+                    return !!this.historyLoading[this.historyKey(type, entityKey)];
                 },
 
                 async removeHost(hostname) {
