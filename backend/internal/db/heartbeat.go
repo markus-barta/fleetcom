@@ -81,6 +81,10 @@ func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64
 		}
 	}
 
+	if err := recordSamples(tx, now, hostname, containers, agents); err != nil {
+		return err
+	}
+
 	return tx.Commit()
 }
 
