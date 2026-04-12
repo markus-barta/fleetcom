@@ -195,7 +195,7 @@
         .clock .sep { color: var(--ink-faint); margin: 0 0.35rem; }
         .clock .tz { color: var(--ink-ghost); font-size: 9px; letter-spacing: 0.18em; margin-left: 0.4rem; }
 
-        /* View toggle */
+        /* View toggle (moved to sub-header) */
         .view-toggle {
             display: inline-flex;
             border: 1px solid var(--line-2);
@@ -221,25 +221,30 @@
             box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
         }
 
+        /* Main nav tabs (header center) */
         .nav {
             display: flex;
             align-items: center;
-            gap: 1.1rem;
+            gap: 0.25rem;
         }
         .nav a {
             font-size: 10px;
             letter-spacing: 0.16em;
             text-transform: uppercase;
             font-weight: 600;
-            color: var(--ink-dim);
+            color: var(--ink-ghost);
             text-decoration: none;
             cursor: pointer;
-            padding: 0.3rem 0;
-            border-bottom: 1px solid transparent;
-            transition: color 0.12s, border-color 0.12s;
+            padding: 0.4rem 0.85rem;
+            border: 1px solid transparent;
+            transition: color 0.12s, background 0.12s, border-color 0.12s;
         }
-        .nav a:hover { color: var(--ink); }
-        .nav a.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .nav a:hover { color: var(--ink-dim); background: var(--bg-2); }
+        .nav a.active {
+            color: var(--accent);
+            border-color: var(--accent);
+            background: rgba(106, 176, 255, 0.06);
+        }
         .nav .readonly {
             color: var(--ink-ghost);
             font-size: 9px;
@@ -248,6 +253,24 @@
             padding: 0.3rem 0.6rem;
             border: 1px solid var(--line);
         }
+
+        /* Sign-out link */
+        .signout {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            font-size: 9px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            font-weight: 600;
+            color: var(--ink-ghost);
+            text-decoration: none;
+            padding: 0.35rem 0.5rem;
+            transition: color 0.12s;
+            white-space: nowrap;
+        }
+        .signout:hover { color: var(--ink-dim); }
+        .signout svg { width: 13px; height: 13px; flex-shrink: 0; }
 
         /* ============================================================
            SUB-HEADER
@@ -1135,11 +1158,12 @@
            RESPONSIVE
            ============================================================ */
         @media (max-width: 1100px) {
-            header { grid-template-columns: 1fr; gap: 0.75rem; padding: 0.75rem 1rem; }
+            header { grid-template-columns: 1fr; gap: 0.5rem; padding: 0.6rem 1rem; }
             .header-left, .header-center, .header-right {
                 justify-content: flex-start;
                 flex-wrap: wrap;
             }
+            .header-right { gap: 0.75rem; }
             .sub-header { flex-wrap: wrap; gap: 0.6rem; top: auto; position: relative; }
         }
         @media (max-width: 720px) {
@@ -1279,6 +1303,9 @@
             <symbol id="icon-github" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                 <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
             </symbol>
+            <symbol id="icon-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>
+            </symbol>
             <symbol id="icon-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
                 <circle cx="12" cy="12" r="3"/>
@@ -1304,24 +1331,23 @@
             </div>
 
             <div class="header-center">
-                <div class="clock">
-                    <span x-text="clockDate"></span><span class="sep">·</span><span x-text="clockTime"></span><span class="tz">UTC</span>
-                </div>
-            </div>
-
-            <div class="header-right">
-                <div class="view-toggle" x-show="view === 'dashboard'">
-                    <button :class="viewMode === 'detail' && 'active'" @click="setViewMode('detail')">Detail</button>
-                    <button :class="viewMode === 'compact' && 'active'" @click="setViewMode('compact')">Compact</button>
-                </div>
                 <nav class="nav" x-show="!shared">
                     <a :class="view === 'dashboard' && 'active'" @click="view = 'dashboard'">Dashboard</a>
                     <a :class="view === 'settings' && 'active'" @click="openSettings()">Settings</a>
-                    <a href="/logout">Sign out</a>
                 </nav>
                 <nav class="nav" x-show="shared">
                     <span class="readonly">Read-only</span>
                 </nav>
+            </div>
+
+            <div class="header-right">
+                <a href="/logout" class="signout" x-show="!shared">
+                    <svg viewBox="0 0 24 24"><use href="#icon-logout"/></svg>
+                    <span>Sign out</span>
+                </a>
+                <div class="clock">
+                    <span x-text="clockDate"></span><span class="sep">·</span><span x-text="clockTime"></span><span class="tz">UTC</span>
+                </div>
             </div>
         </header>
 
@@ -1360,6 +1386,13 @@
                     <button class="strip-ghost-btn" @click="nudgeGlobalScale(-1)" title="Zoom in">&minus;</button>
                     <button class="strip-ghost-btn" @click="nudgeGlobalScale(1)" title="Zoom out">+</button>
                     <button class="strip-ghost-btn revert-btn" @click="resetAllStrips()" title="Reset all strips to global scale">&#x21ba;</button>
+                </div>
+
+                <div class="sub-header-sep"></div>
+
+                <div class="view-toggle">
+                    <button :class="viewMode === 'detail' && 'active'" @click="setViewMode('detail')">Detail</button>
+                    <button :class="viewMode === 'compact' && 'active'" @click="setViewMode('compact')">Compact</button>
                 </div>
             </div>
         </div>
