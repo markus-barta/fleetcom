@@ -33,8 +33,22 @@ func (s *Store) Close() error {
 }
 
 func migrate(db *sql.DB) error {
-	_, err := db.Exec(schema)
-	return err
+	if _, err := db.Exec(schema); err != nil {
+		return err
+	}
+	// Incremental migrations for existing databases.
+	// Each ALTER TABLE is idempotent — it silently fails if the column already exists.
+	alterStmts := []string{
+		`ALTER TABLE containers ADD COLUMN health TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE containers ADD COLUMN restart_count INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE containers ADD COLUMN started_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE containers ADD COLUMN exit_code INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE containers ADD COLUMN oom_killed INTEGER NOT NULL DEFAULT 0`,
+	}
+	for _, stmt := range alterStmts {
+		db.Exec(stmt) // ignore "duplicate column" errors
+	}
+	return nil
 }
 
 const schema = `
