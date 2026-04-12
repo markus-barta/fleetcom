@@ -530,12 +530,21 @@
             flex-shrink: 0;
             filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
         }
-        /* Semi-transparent card elements — let host image shine through */
+        /* Semi-transparent card elements — let host image shine through.
+           backdrop-filter gives readability without hiding the image. */
         .card .strip-block {
-            background: rgba(10, 13, 16, 0.88);
+            background: rgba(10, 13, 16, 0.82);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
         }
         .card .chip {
-            background: rgba(8, 10, 16, 0.85);
+            background: rgba(8, 10, 16, 0.78);
+            backdrop-filter: blur(3px);
+            -webkit-backdrop-filter: blur(3px);
+        }
+        .card .card-section-label {
+            backdrop-filter: blur(2px);
+            -webkit-backdrop-filter: blur(2px);
         }
 
         /* Gear icon — top right of card, "Configure" label on hover */
@@ -917,11 +926,27 @@
         .grid-detail .card {
             padding: 1.6rem 2rem 1.8rem;
         }
+        /* Detail cards get a subtle left-to-right inner veil so text
+           on the left reads crisp while the image on the right breathes */
+        .grid-detail .card::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 0;
+            background: linear-gradient(
+                100deg,
+                rgba(14, 17, 24, 0.55) 0%,
+                rgba(14, 17, 24, 0.15) 55%,
+                transparent 75%
+            );
+        }
         .grid-detail .card-bg-img {
             width: calc(var(--card-img-size, 170px) * 1.35);
             height: calc(var(--card-img-size, 170px) * 1.35);
             top: 1rem;
             right: 1rem;
+            opacity: 0.8;
         }
         .grid-detail .hostname {
             font-size: 20px;
@@ -938,10 +963,11 @@
             grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
             gap: 0.5rem;
             margin-top: 0.65rem;
-            margin-right: 250px;
             padding: 0.6rem 0.8rem;
-            background: rgba(10, 13, 16, 0.85);
-            border: 1px solid var(--line);
+            background: rgba(10, 13, 16, 0.6);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            border: 1px solid rgba(28, 32, 43, 0.6);
             font-size: 10px;
         }
         .detail-field {
