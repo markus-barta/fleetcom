@@ -19,6 +19,15 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			return
 		}
 
+		// Extend the write deadline for this long-lived SSE connection.
+		// The server's global WriteTimeout (30s) would otherwise kill
+		// the stream before the first keepalive fires.
+		rc := http.NewResponseController(w)
+		extendDeadline := func() {
+			_ = rc.SetWriteDeadline(time.Now().Add(60 * time.Second))
+		}
+		extendDeadline()
+
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
@@ -50,9 +59,11 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 				if !ok {
 					return
 				}
+				extendDeadline()
 				fmt.Fprintf(w, "event: hosts\ndata: %s\n\n", data)
 				flusher.Flush()
 			case <-ticker.C:
+				extendDeadline()
 				fmt.Fprintf(w, ": keepalive\n\n")
 				flusher.Flush()
 			}

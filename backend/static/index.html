@@ -195,39 +195,6 @@
         .clock .sep { color: var(--ink-faint); margin: 0 0.35rem; }
         .clock .tz { color: var(--ink-ghost); font-size: 9px; letter-spacing: 0.18em; margin-left: 0.4rem; }
 
-        .stats {
-            display: flex;
-            align-items: center;
-            gap: 1.25rem;
-        }
-        .stat {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 2px;
-            line-height: 1;
-        }
-        .stat .label {
-            font-size: 8px;
-            letter-spacing: 0.2em;
-            color: var(--ink-ghost);
-            text-transform: uppercase;
-            font-weight: 500;
-        }
-        .stat .value {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--ink);
-            font-variant-numeric: tabular-nums;
-        }
-        .stat .value .sub {
-            color: var(--ink-ghost);
-            font-weight: 300;
-            padding: 0 1px;
-        }
-        .stat.state-warn .value { color: var(--warn); }
-        .stat.state-crit .value { color: var(--crit); }
-
         /* View toggle */
         .view-toggle {
             display: inline-flex;
@@ -280,6 +247,84 @@
             text-transform: uppercase;
             padding: 0.3rem 0.6rem;
             border: 1px solid var(--line);
+        }
+
+        /* ============================================================
+           SUB-HEADER
+           ============================================================ */
+        .sub-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.5rem 1.5rem;
+            border-bottom: 1px solid var(--line);
+            background: rgba(14, 17, 24, 0.45);
+            gap: 1.5rem;
+            position: sticky;
+            top: 47px;
+            z-index: 9;
+        }
+
+        .sub-header-center {
+            display: flex;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .fleet-stat {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .fleet-stat .stat-icon {
+            width: 16px;
+            height: 16px;
+            color: var(--ink-ghost);
+            flex-shrink: 0;
+        }
+        .fleet-stat.state-warn .stat-icon { color: var(--warn); }
+        .fleet-stat.state-crit .stat-icon { color: var(--crit); }
+        .fleet-stat .stat-label {
+            font-size: 9px;
+            letter-spacing: 0.18em;
+            color: var(--ink-ghost);
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        .fleet-stat .stat-value {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--ink);
+            font-variant-numeric: tabular-nums;
+        }
+        .fleet-stat .stat-value .sub {
+            color: var(--ink-ghost);
+            font-weight: 300;
+            padding: 0 1px;
+        }
+        .fleet-stat.state-warn .stat-value { color: var(--warn); }
+        .fleet-stat.state-crit .stat-value { color: var(--crit); }
+
+        .sub-header-sep {
+            width: 1px;
+            height: 18px;
+            background: var(--line-2);
+            flex-shrink: 0;
+        }
+
+        /* Global scale controls */
+        .global-scale {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .global-scale .gs-label {
+            font-size: 8px;
+            letter-spacing: 0.18em;
+            color: var(--ink-ghost);
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-right: 4px;
         }
 
         /* ============================================================
@@ -530,7 +575,7 @@
         .strip-block {
             display: flex;
             align-items: center;
-            gap: 7px;
+            gap: 5px;
             margin-top: 0.45rem;
             padding: 4px 8px;
             background: var(--bg-0);
@@ -583,32 +628,67 @@
         .strip-context.s-crit { color: var(--crit); }
         .strip-context.s-dead { color: var(--ink-ghost); opacity: 0.7; }
 
-        .strip-tabs {
+        /* Strip scale controls */
+        .strip-controls {
             display: inline-flex;
             align-items: center;
             gap: 2px;
             flex-shrink: 0;
         }
-        .strip-tab {
+        .strip-scale-btn {
+            background: rgba(106, 176, 255, 0.1);
+            border: 1px solid var(--accent);
+            color: var(--accent);
+            font-family: inherit;
+            font-size: 8px;
+            letter-spacing: 0.08em;
+            padding: 0 5px;
+            height: 15px;
+            line-height: 13px;
+            cursor: pointer;
+            text-transform: uppercase;
+            font-weight: 700;
+            min-width: 30px;
+            text-align: center;
+        }
+        .strip-scale-btn:hover { background: rgba(106, 176, 255, 0.2); }
+        .strip-scale-btn.has-override {
+            background: rgba(255, 184, 77, 0.12);
+            border-color: var(--warn);
+            color: var(--warn);
+        }
+        .strip-scale-btn.has-override:hover { background: rgba(255, 184, 77, 0.2); }
+
+        .strip-ghost-btn {
             background: transparent;
             border: 1px solid var(--line);
             color: var(--ink-ghost);
             font-family: inherit;
-            font-size: 7px;
-            letter-spacing: 0.1em;
-            padding: 0 4px;
-            height: 13px;
-            line-height: 11px;
+            font-size: 9px;
+            padding: 0;
+            width: 15px;
+            height: 15px;
+            line-height: 13px;
+            text-align: center;
             cursor: pointer;
-            text-transform: uppercase;
             font-weight: 700;
+            transition: all 0.1s;
         }
-        .strip-tab:hover { color: var(--ink-dim); border-color: var(--line-2); }
-        .strip-tab.active {
-            background: rgba(106, 176, 255, 0.1);
-            color: var(--accent);
-            border-color: var(--accent);
+        .strip-ghost-btn:hover {
+            color: var(--ink-dim);
+            border-color: var(--line-2);
+            background: var(--bg-2);
         }
+        .strip-ghost-btn.revert-btn {
+            color: var(--ink-faint);
+            font-size: 10px;
+        }
+        .strip-ghost-btn.revert-btn:hover {
+            color: var(--warn);
+            border-color: rgba(255, 184, 77, 0.35);
+        }
+        .strip-ghost-btn.revert-btn.hidden { display: none; }
+
         .strip-canvas {
             display: block;
             flex: 1 1 auto;
@@ -947,7 +1027,7 @@
             flex-shrink: 0;
             border-top: 1px solid var(--line);
             background: linear-gradient(180deg, transparent, rgba(14, 17, 24, 0.6));
-            padding: 0.75rem 1.5rem;
+            padding: 0.6rem 1.5rem;
             margin-top: 2rem;
             position: relative;
             z-index: 2;
@@ -957,7 +1037,7 @@
             align-items: center;
             justify-content: center;
             flex-wrap: wrap;
-            gap: 0.4rem 1rem;
+            gap: 0.4rem 0.75rem;
             font-size: 10px;
             letter-spacing: 0.04em;
             color: var(--ink-ghost);
@@ -967,28 +1047,33 @@
         .footer-inner .brand-f {
             color: var(--ink-dim);
             font-weight: 700;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
+            letter-spacing: 0.08em;
         }
         .footer-inner .brand-f .version {
             color: var(--accent);
             font-weight: 500;
-            margin-left: 0.35rem;
             letter-spacing: 0.02em;
-            text-transform: none;
         }
-        .footer-inner .ts {
+        .footer-inner .deployed {
+            font-size: 9px;
+            letter-spacing: 0.1em;
             color: var(--ink-ghost);
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        .footer-inner .deployed .ts {
+            color: var(--ink-dim);
             font-variant-numeric: tabular-nums;
+            text-transform: none;
+            font-weight: 400;
         }
         .footer-inner a {
             display: inline-flex;
             align-items: center;
-            gap: 0.4rem;
+            gap: 0.35rem;
             color: var(--ink-dim);
             text-decoration: none;
             transition: color 0.15s;
-            letter-spacing: 0.08em;
         }
         .footer-inner a:hover { color: var(--ink); }
         .footer-inner a svg { width: 13px; height: 13px; display: block; }
@@ -996,7 +1081,7 @@
             font-variant-numeric: tabular-nums;
             letter-spacing: 0.02em;
         }
-        .footer-inner a.commit::before {
+        .footer-inner a.commit .hash::before {
             content: '#';
             color: var(--ink-faint);
             margin-right: 1px;
@@ -1011,6 +1096,7 @@
                 justify-content: flex-start;
                 flex-wrap: wrap;
             }
+            .sub-header { flex-wrap: wrap; gap: 0.6rem; top: auto; position: relative; }
         }
         @media (max-width: 720px) {
             main { padding: 1rem; }
@@ -1068,20 +1154,6 @@
                 <div class="clock">
                     <span x-text="clockDate"></span><span class="sep">·</span><span x-text="clockTime"></span><span class="tz">UTC</span>
                 </div>
-                <div class="stats">
-                    <div class="stat" :class="hostsDown > 0 ? (hostsUp === 0 ? 'state-crit' : 'state-warn') : ''">
-                        <span class="label">Hosts</span>
-                        <span class="value"><span x-text="hostsUp"></span><span class="sub">/</span><span x-text="hosts.length"></span></span>
-                    </div>
-                    <div class="stat" :class="totalContainers > 0 && runningContainers < totalContainers ? 'state-warn' : ''">
-                        <span class="label">Containers</span>
-                        <span class="value"><span x-text="runningContainers"></span><span class="sub">/</span><span x-text="totalContainers"></span></span>
-                    </div>
-                    <div class="stat" :class="totalAgents > 0 && onlineAgents < totalAgents ? 'state-warn' : ''">
-                        <span class="label">Agents</span>
-                        <span class="value"><span x-text="onlineAgents"></span><span class="sub">/</span><span x-text="totalAgents"></span></span>
-                    </div>
-                </div>
             </div>
 
             <div class="header-right">
@@ -1099,6 +1171,45 @@
                 </nav>
             </div>
         </header>
+
+        <div class="sub-header" x-show="view === 'dashboard'">
+            <div class="sub-header-center">
+                <div class="fleet-stat" :class="hostsDown > 0 ? (hostsUp === 0 ? 'state-crit' : 'state-warn') : ''">
+                    <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="20" height="8" x="2" y="2" rx="0.5" ry="0.5"/><rect width="20" height="8" x="2" y="14" rx="0.5" ry="0.5"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>
+                    </svg>
+                    <span class="stat-label">Hosts</span>
+                    <span class="stat-value"><span x-text="hostsUp"></span><span class="sub">/</span><span x-text="hosts.length"></span></span>
+                </div>
+
+                <div class="fleet-stat" :class="totalContainers > 0 && runningContainers < totalContainers ? 'state-warn' : ''">
+                    <svg class="stat-icon" viewBox="0 0 24 24">
+                        <rect x="2" y="7" width="20" height="10" rx="0.6" ry="0.6" fill="currentColor"/>
+                        <path d="M6 9.5v5M10 9.5v5M14 9.5v5M18 9.5v5" stroke="rgba(0,0,0,0.45)" stroke-width="1.4" stroke-linecap="round" fill="none"/>
+                    </svg>
+                    <span class="stat-label">Containers</span>
+                    <span class="stat-value"><span x-text="runningContainers"></span><span class="sub">/</span><span x-text="totalContainers"></span></span>
+                </div>
+
+                <div class="fleet-stat" :class="totalAgents > 0 && onlineAgents < totalAgents ? 'state-warn' : ''">
+                    <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .963L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/>
+                    </svg>
+                    <span class="stat-label">Agents</span>
+                    <span class="stat-value"><span x-text="onlineAgents"></span><span class="sub">/</span><span x-text="totalAgents"></span></span>
+                </div>
+
+                <div class="sub-header-sep"></div>
+
+                <div class="global-scale">
+                    <span class="gs-label">Scale</span>
+                    <button class="strip-scale-btn" x-text="globalScale" @click="cycleGlobalScale()"></button>
+                    <button class="strip-ghost-btn" @click="nudgeGlobalScale(-1)" title="Zoom in">&minus;</button>
+                    <button class="strip-ghost-btn" @click="nudgeGlobalScale(1)" title="Zoom out">+</button>
+                    <button class="strip-ghost-btn revert-btn" @click="resetAllStrips()" title="Reset all strips to global scale">&#x21ba;</button>
+                </div>
+            </div>
+        </div>
 
         <main>
             <!-- Dashboard view -->
@@ -1320,24 +1431,19 @@
 
         <footer>
             <div class="footer-inner">
-                <span class="brand-f">
-                    FleetCom<span class="version" x-text="'v' + (ver.version || '—')"></span>
-                </span>
-                <span class="sep">•</span>
-                <span class="ts" x-text="ver.build_time_display || 'unknown'"></span>
-                <span class="sep">•</span>
+                <span class="brand-f">FleetCom<span class="version" x-text="' v' + (ver.version || '—')"></span></span>
+                <span class="sep">&bull;</span>
+                <span class="deployed">Deployed <span class="ts" x-text="ver.build_time_display || 'unknown'"></span></span>
+                <span class="sep">&bull;</span>
                 <a class="commit"
                    :href="ver.commit && ver.commit !== 'dev' && ver.commit !== 'unknown'
                           ? 'https://github.com/markus-barta/fleetcom/commit/' + ver.commit
                           : 'https://github.com/markus-barta/fleetcom'"
-                   target="_blank" rel="noopener"
-                   x-text="ver.commit || 'dev'"></a>
-                <span class="sep">•</span>
-                <a href="https://github.com/markus-barta/fleetcom" target="_blank" rel="noopener" title="Source on GitHub">
+                   target="_blank" rel="noopener">
                     <svg><use href="#icon-github"/></svg>
-                    <span>GitHub</span>
+                    <span class="hash" x-text="ver.commit ? ver.commit.substring(0, 7) : 'dev'"></span>
                 </a>
-                <span class="sep">•</span>
+                <span class="sep">&bull;</span>
                 <a href="/LICENSE" target="_blank" rel="noopener" title="GNU Affero General Public License v3.0">
                     <svg><use href="#icon-scale"/></svg>
                     <span>AGPL-3.0</span>
@@ -1374,12 +1480,15 @@
 
                 // Which chip is expanded in its card (key = `${type}:${entityKey}`, one at a time globally)
                 openChip: null,
-                scales: ['1h', '1d', '1w', '1mo'],
-                scaleWindow: { '1h': 3600, '1d': 86400, '1w': 604800, '1mo': 2592000 },
+                scaleList: ['1min', '15min', '1h', '1d', '14d', '1MO', '1Y'],
+                scaleWindow: { '1min': 60, '15min': 900, '1h': 3600, '1d': 86400, '14d': 1209600, '1MO': 2592000, '1Y': 31536000 },
+                globalScale: '1h',
                 stripRegistry: null,
 
                 init() {
                     this.viewMode = localStorage.getItem('fleetcom.view') || 'detail';
+                    this.globalScale = localStorage.getItem('fleetcom.globalScale') || '1h';
+                    if (!this.scaleList.includes(this.globalScale)) this.globalScale = '1h';
                     this.stripRegistry = new Set();
                     this.startClock();
                     this.loadVersion();
@@ -1500,9 +1609,9 @@
                 // Poll readyState — hides brief reconnects, surfaces real outages.
                 //
                 // Thresholds (relative to lastOkAt):
-                //   <  3 s   → stay LIVE (grace window)
-                //   <  75 s  → RECONNECTING (server pings every 30s; allow 2x miss)
-                //   >= 75 s  → OFFLINE + force a fresh EventSource if stuck in CLOSED
+                //   <  5 s   -> stay LIVE (grace window; absorbs Cloudflare reconnects)
+                //   <  75 s  -> RECONNECTING (server pings every 30s; allow 2x miss)
+                //   >= 75 s  -> OFFLINE + force a fresh EventSource if stuck in CLOSED
                 startConnWatchdog() {
                     setInterval(() => {
                         const rs = this.es ? this.es.readyState : 2;
@@ -1515,7 +1624,7 @@
                         }
 
                         const downFor = now - (this.lastOkAt || now);
-                        if (downFor < 3000) {
+                        if (downFor < 5000) {
                             this.connState = 'live';
                         } else if (downFor < 75000) {
                             this.connState = 'reconnecting';
@@ -1562,19 +1671,57 @@
                     return this.openChip === (type + ':' + entityKey);
                 },
 
+                // ---------- global scale controls ----------
+                effectiveScale(ctrl) {
+                    return ctrl.scaleOverride || this.globalScale;
+                },
+
+                cycleGlobalScale() {
+                    const idx = this.scaleList.indexOf(this.globalScale);
+                    this.globalScale = this.scaleList[(idx + 1) % this.scaleList.length];
+                    localStorage.setItem('fleetcom.globalScale', this.globalScale);
+                    this.propagateGlobalScale();
+                },
+
+                nudgeGlobalScale(dir) {
+                    const idx = this.scaleList.indexOf(this.globalScale);
+                    const next = idx + dir;
+                    if (next < 0 || next >= this.scaleList.length) return;
+                    this.globalScale = this.scaleList[next];
+                    localStorage.setItem('fleetcom.globalScale', this.globalScale);
+                    this.propagateGlobalScale();
+                },
+
+                propagateGlobalScale() {
+                    for (const c of this.stripRegistry) {
+                        if (!c.scaleOverride) {
+                            this.updateStripScale(c, this.globalScale);
+                        }
+                    }
+                },
+
+                resetAllStrips() {
+                    for (const c of this.stripRegistry) {
+                        if (c.scaleOverride) {
+                            c.scaleOverride = null;
+                            this.updateStripScale(c, this.globalScale);
+                            if (c.revertBtn) c.revertBtn.classList.add('hidden');
+                            if (c.scaleBtn) {
+                                c.scaleBtn.classList.remove('has-override');
+                            }
+                        }
+                    }
+                },
+
                 // ---------- history strips (canvas, imperative) ----------
-                // Each strip is a self-contained controller mounted by Alpine via
-                // x-init. Alpine creates the wrapper div; everything inside (tabs,
-                // canvas, fetch, draw, hover) is plain DOM with no reactivity, so
-                // SSE updates do not trigger any re-render of the strips. The
-                // 60s refresher and unmount-pruning are handled centrally above.
                 mountStrip(el, type, entityKey, opts) {
-                    if (el._stripCtrl) return; // x-init can re-fire after Alpine clones
+                    if (el._stripCtrl) return;
                     opts = opts || {};
                     const ctrl = {
                         el, type, key: entityKey,
-                        scale: '1h',
-                        tabs: {},
+                        scaleOverride: null,
+                        scaleBtn: null,
+                        revertBtn: null,
                         meta: null,
                         canvas: null,
                         data: null,
@@ -1599,23 +1746,76 @@
                         el.appendChild(ctx);
                     }
 
-                    const tabRow = document.createElement('span');
-                    tabRow.className = 'strip-tabs';
-                    for (const s of this.scales) {
-                        const btn = document.createElement('button');
-                        btn.type = 'button';
-                        btn.className = 'strip-tab' + (s === ctrl.scale ? ' active' : '');
-                        btn.textContent = s;
-                        btn.addEventListener('click', () => {
-                            if (ctrl.scale === s) return;
-                            ctrl.scale = s;
-                            for (const k in ctrl.tabs) ctrl.tabs[k].classList.toggle('active', k === s);
-                            this.fetchStrip(ctrl);
-                        });
-                        ctrl.tabs[s] = btn;
-                        tabRow.appendChild(btn);
-                    }
-                    el.appendChild(tabRow);
+                    // Scale controls
+                    const controls = document.createElement('span');
+                    controls.className = 'strip-controls';
+
+                    const scaleBtn = document.createElement('button');
+                    scaleBtn.type = 'button';
+                    scaleBtn.className = 'strip-scale-btn';
+                    scaleBtn.textContent = this.effectiveScale(ctrl);
+                    scaleBtn.addEventListener('click', () => {
+                        // Cycle through scales for this strip (creates override)
+                        const curScale = this.effectiveScale(ctrl);
+                        const idx = this.scaleList.indexOf(curScale);
+                        const nextScale = this.scaleList[(idx + 1) % this.scaleList.length];
+                        ctrl.scaleOverride = nextScale;
+                        scaleBtn.classList.add('has-override');
+                        revertBtn.classList.remove('hidden');
+                        this.updateStripScale(ctrl, nextScale);
+                    });
+                    ctrl.scaleBtn = scaleBtn;
+                    controls.appendChild(scaleBtn);
+
+                    const minusBtn = document.createElement('button');
+                    minusBtn.type = 'button';
+                    minusBtn.className = 'strip-ghost-btn';
+                    minusBtn.innerHTML = '&minus;';
+                    minusBtn.title = 'Zoom in (shorter window)';
+                    minusBtn.addEventListener('click', () => {
+                        const curScale = this.effectiveScale(ctrl);
+                        const idx = this.scaleList.indexOf(curScale);
+                        if (idx <= 0) return;
+                        const nextScale = this.scaleList[idx - 1];
+                        ctrl.scaleOverride = nextScale;
+                        scaleBtn.classList.add('has-override');
+                        revertBtn.classList.remove('hidden');
+                        this.updateStripScale(ctrl, nextScale);
+                    });
+                    controls.appendChild(minusBtn);
+
+                    const plusBtn = document.createElement('button');
+                    plusBtn.type = 'button';
+                    plusBtn.className = 'strip-ghost-btn';
+                    plusBtn.textContent = '+';
+                    plusBtn.title = 'Zoom out (longer window)';
+                    plusBtn.addEventListener('click', () => {
+                        const curScale = this.effectiveScale(ctrl);
+                        const idx = this.scaleList.indexOf(curScale);
+                        if (idx >= this.scaleList.length - 1) return;
+                        const nextScale = this.scaleList[idx + 1];
+                        ctrl.scaleOverride = nextScale;
+                        scaleBtn.classList.add('has-override');
+                        revertBtn.classList.remove('hidden');
+                        this.updateStripScale(ctrl, nextScale);
+                    });
+                    controls.appendChild(plusBtn);
+
+                    const revertBtn = document.createElement('button');
+                    revertBtn.type = 'button';
+                    revertBtn.className = 'strip-ghost-btn revert-btn hidden';
+                    revertBtn.innerHTML = '&#x21ba;';
+                    revertBtn.title = 'Revert to global scale';
+                    revertBtn.addEventListener('click', () => {
+                        ctrl.scaleOverride = null;
+                        scaleBtn.classList.remove('has-override');
+                        revertBtn.classList.add('hidden');
+                        this.updateStripScale(ctrl, this.globalScale);
+                    });
+                    ctrl.revertBtn = revertBtn;
+                    controls.appendChild(revertBtn);
+
+                    el.appendChild(controls);
 
                     const canvas = document.createElement('canvas');
                     canvas.className = 'strip-canvas';
@@ -1634,10 +1834,16 @@
                     this.fetchStrip(ctrl);
                 },
 
+                updateStripScale(ctrl, scale) {
+                    if (ctrl.scaleBtn) ctrl.scaleBtn.textContent = scale;
+                    this.fetchStrip(ctrl);
+                },
+
                 async fetchStrip(ctrl) {
+                    const scale = this.effectiveScale(ctrl);
                     const url = '/api/history?entity_type=' + encodeURIComponent(ctrl.type)
                         + '&entity_key=' + encodeURIComponent(ctrl.key)
-                        + '&scale=' + ctrl.scale;
+                        + '&scale=' + scale;
                     try {
                         const res = await fetch(url);
                         if (!res.ok) return;
@@ -1714,10 +1920,6 @@
                     ctx.fillStyle = 'rgba(232, 230, 223, 0.5)';
                     ctx.fillRect(cssW - 1, 0, 1, cssH);
 
-                    // Meta text — terse, single token. Color carries the meaning:
-                    //   accent = still collecting (partial coverage)
-                    //   ok-green = full window, 100% healthy
-                    //   ghost = full window, some degradation
                     if (ctrl.meta) {
                         ctrl.meta.classList.remove('fresh', 'complete');
                         if (!data.first_sample) {
@@ -1744,7 +1946,9 @@
                     if (sec < 5400) return Math.round(sec / 60) + 'm';
                     if (sec < 86400 * 1.5) return Math.round(sec / 3600) + 'h';
                     if (sec < 86400 * 14) return Math.round(sec / 86400) + 'd';
-                    return Math.round(sec / 86400 / 7) + 'w';
+                    if (sec < 86400 * 60) return Math.round(sec / 86400 / 7) + 'w';
+                    if (sec < 86400 * 365) return Math.round(sec / 86400 / 30) + 'mo';
+                    return Math.round(sec / 86400 / 365 * 10) / 10 + 'y';
                 },
 
                 onStripHover(e, ctrl) {
@@ -1760,11 +1964,12 @@
                     const bucketSec = data.window_seconds / n;
                     const ageSec = (n - 1 - idx) * bucketSec;
                     const ageLabel = ageSec < bucketSec ? 'now' : this.humanDur(ageSec) + ' ago';
+                    const scale = this.effectiveScale(ctrl);
                     let text;
                     if (!b || b.s === 'none') {
-                        text = ctrl.scale + ' · ' + ageLabel + ' · no data';
+                        text = scale + ' · ' + ageLabel + ' · no data';
                     } else {
-                        text = ctrl.scale + ' · ' + ageLabel + ' · ' + b.s + ' · ' + (b.p || 0) + '% ok · n=' + (b.n || 0);
+                        text = scale + ' · ' + ageLabel + ' · ' + b.s + ' · ' + (b.p || 0) + '% ok · n=' + (b.n || 0);
                     }
                     const tip = this.getStripTooltip();
                     tip.textContent = text;

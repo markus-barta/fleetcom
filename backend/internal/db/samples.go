@@ -87,10 +87,13 @@ type ScaleSpec struct {
 // Scales is the canonical list served by the /api/history endpoint.
 // 60 buckets per scale keeps rendering uniform across all strips.
 var Scales = []ScaleSpec{
+	{Name: "1min", Window: time.Minute, Buckets: 60},
+	{Name: "15min", Window: 15 * time.Minute, Buckets: 60},
 	{Name: "1h", Window: time.Hour, Buckets: 60},
 	{Name: "1d", Window: 24 * time.Hour, Buckets: 60},
-	{Name: "1w", Window: 7 * 24 * time.Hour, Buckets: 60},
-	{Name: "1mo", Window: 30 * 24 * time.Hour, Buckets: 60},
+	{Name: "14d", Window: 14 * 24 * time.Hour, Buckets: 60},
+	{Name: "1MO", Window: 30 * 24 * time.Hour, Buckets: 60},
+	{Name: "1Y", Window: 365 * 24 * time.Hour, Buckets: 60},
 }
 
 // FindScale returns the scale spec by name, or zero value + false.
@@ -113,7 +116,12 @@ func (s *Store) HistoryBuckets(entityType, entityKey string, scale ScaleSpec) ([
 	if bucketSec < 1 {
 		bucketSec = 1
 	}
+	// Snap start to a bucket-aligned boundary so that, for the 1h scale
+	// (bucketSec=60), bucket edges fall on minute boundaries — matching
+	// cron's firing times. Without this, bucket edges drift relative to
+	// heartbeat arrival and create periodic aliasing gaps.
 	startEpoch := start.Unix()
+	startEpoch -= startEpoch % bucketSec
 
 	rows, err := s.DB.Query(`
 		SELECT
@@ -127,7 +135,7 @@ func (s *Store) HistoryBuckets(entityType, entityKey string, scale ScaleSpec) ([
 		WHERE entity_type = ? AND entity_key = ? AND ts >= ?
 		GROUP BY bucket
 		ORDER BY bucket
-	`, startEpoch, bucketSec, entityType, entityKey, start.Format(time.RFC3339))
+	`, startEpoch, bucketSec, entityType, entityKey, time.Unix(startEpoch, 0).UTC().Format(time.RFC3339))
 	if err != nil {
 		return nil, fmt.Errorf("query buckets: %w", err)
 	}
