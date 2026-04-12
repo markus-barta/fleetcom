@@ -117,4 +117,18 @@ CREATE TABLE IF NOT EXISTS ignored_entities (
 	created_at TEXT NOT NULL DEFAULT (datetime('now')),
 	UNIQUE(entity_type, entity_key)
 );
+
+CREATE TABLE IF NOT EXISTS image_presets (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	name TEXT NOT NULL,
+	mime_type TEXT NOT NULL DEFAULT 'image/png',
+	data BLOB NOT NULL,
+	created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS host_configs (
+	hostname TEXT PRIMARY KEY,
+	image_preset_id INTEGER REFERENCES image_presets(id) ON DELETE SET NULL,
+	comment TEXT NOT NULL DEFAULT ''
+);
 `

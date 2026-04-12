@@ -409,9 +409,39 @@
         .card-head {
             display: flex;
             align-items: flex-start;
-            justify-content: space-between;
-            gap: 1rem;
+            gap: 0.85rem;
             margin-bottom: 0.25rem;
+        }
+        .card-avatar {
+            width: 50px;
+            height: 50px;
+            flex-shrink: 0;
+            border: 1px solid var(--line);
+            background: var(--bg-0);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        .card-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+        .card-avatar .avatar-placeholder {
+            width: 20px;
+            height: 20px;
+            color: var(--ink-faint);
+        }
+        .card-head-main {
+            flex: 1;
+            min-width: 0;
+        }
+        .card-head-top {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 0.6rem;
         }
         .card-head-left {
             display: flex;
@@ -424,6 +454,27 @@
             font-size: 15px;
             font-weight: 700;
             color: var(--ink);
+            letter-spacing: 0.01em;
+        }
+        .card-gear {
+            background: transparent;
+            border: none;
+            color: var(--ink-faint);
+            cursor: pointer;
+            padding: 2px;
+            line-height: 0;
+            transition: color 0.12s;
+        }
+        .card-gear:hover { color: var(--ink-dim); }
+        .card-gear svg { width: 12px; height: 12px; }
+        .card-comment {
+            font-size: 10px;
+            line-height: 1.4;
+            color: var(--ink-ghost);
+            margin-top: 0.35rem;
+            white-space: pre-line;
+            max-height: 3.6em;
+            overflow: hidden;
             letter-spacing: 0.01em;
         }
         .state-pill {
@@ -730,29 +781,22 @@
             width: 11px;
             height: 11px;
             flex-shrink: 0;
-            fill: var(--ink-faint);
-            stroke: var(--ink-faint);
-            stroke-width: 1;
-            stroke-linecap: round;
-            stroke-linejoin: round;
+            color: var(--ink-faint);
         }
         .chip-agent.s-ok .spark {
-            fill: var(--ok);
-            stroke: var(--ok);
+            color: var(--ok);
             filter: drop-shadow(0 0 4px rgba(61, 220, 151, 0.85));
             animation: spark-twinkle 3.4s ease-in-out infinite;
         }
         .chip-agent.s-warn .spark {
-            fill: var(--warn);
-            stroke: var(--warn);
+            color: var(--warn);
             filter: drop-shadow(0 0 4px rgba(255, 184, 77, 0.85));
         }
         .chip-agent.s-crit .spark {
-            fill: var(--crit);
-            stroke: var(--crit);
+            color: var(--crit);
             filter: drop-shadow(0 0 5px rgba(255, 77, 109, 0.9));
         }
-        .chip-agent.s-dead .spark { fill: var(--dead); stroke: var(--dead); }
+        .chip-agent.s-dead .spark { color: var(--dead); }
 
         @keyframes spark-twinkle {
             0%, 100% { opacity: 1; transform: rotate(0deg); }
@@ -1225,7 +1269,7 @@
             <symbol id="icon-docker" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                 <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.186.186 0 00-.187.186v1.887c0 .102.084.185.187.185zm-2.954-5.43h2.118a.186.186 0 00.187-.185V3.576a.186.186 0 00-.187-.186h-2.118a.186.186 0 00-.187.186v1.887c0 .102.084.185.187.185zm0 2.716h2.118a.186.186 0 00.187-.186V6.291a.186.186 0 00-.187-.186h-2.118a.186.186 0 00-.187.186v1.887c0 .102.084.186.187.186zm-2.93 0h2.12a.186.186 0 00.186-.186V6.291a.186.186 0 00-.186-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.083.186.186.186zm-2.964 0h2.119a.186.186 0 00.185-.186V6.291a.186.186 0 00-.185-.186H5.136a.186.186 0 00-.186.186v1.887c0 .102.084.186.186.186zm5.893 2.715h2.118a.186.186 0 00.186-.186V9.006a.186.186 0 00-.186-.186h-2.118a.186.186 0 00-.187.186v1.887c0 .102.084.185.187.185zm-2.93 0h2.12a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.083.185.186.185zm-2.964 0h2.119a.186.186 0 00.185-.185V9.006a.186.186 0 00-.185-.186H5.136a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185zm-2.92 0h2.119a.186.186 0 00.185-.185V9.006a.186.186 0 00-.185-.186H2.216a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185zM23.078 13.15c-.322-.18-.637-.26-.943-.252-.19.006-.374.04-.55.097-.375-.94-1.084-1.56-2.003-1.834l-.15-.04-.078.14c-.158.31-.255.66-.29 1.03-.056.592.073 1.146.368 1.618-.173.1-.37.19-.575.26-.365.126-.762.193-1.167.2H.482l-.037.215c-.12.78-.12 1.59.008 2.39.17 1.07.527 2.016 1.05 2.8.566.838 1.316 1.486 2.236 1.92.99.464 2.245.71 3.543.71.66 0 1.33-.063 1.998-.192.916-.175 1.796-.49 2.59-.92.662-.355 1.257-.79 1.773-1.29.82-.79 1.47-1.744 1.97-2.76h.17c1.057 0 1.71-.42 2.072-.78.24-.236.42-.518.54-.83l.075-.2-.07-.04z"/>
             </symbol>
-            <symbol id="icon-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <symbol id="icon-sparkles" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .963L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/>
             </symbol>
             <symbol id="icon-container" viewBox="0 0 24 24">
@@ -1234,6 +1278,10 @@
             </symbol>
             <symbol id="icon-github" viewBox="0 0 24 24" fill="currentColor" stroke="none">
                 <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+            </symbol>
+            <symbol id="icon-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                <circle cx="12" cy="12" r="3"/>
             </symbol>
             <symbol id="icon-scale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/>
@@ -1339,13 +1387,31 @@
                                      :class="['state-' + hostStatus(host), isIgnored('host', host.hostname) ? 'is-ignored' : '']"
                                      @contextmenu.prevent="showCtxMenu($event, 'host', host.hostname)">
                                     <div class="card-head">
-                                        <div class="card-head-left">
-                                            <span class="hostname" x-text="host.hostname"></span>
-                                            <span class="state-pill" x-text="stateLabel(hostStatus(host))"></span>
+                                        <div class="card-avatar">
+                                            <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].image_preset_id">
+                                                <img :src="'/api/image-presets/' + hostConfigs[host.hostname].image_preset_id + '/image'" :alt="host.hostname">
+                                            </template>
+                                            <template x-if="!hostConfigs[host.hostname] || !hostConfigs[host.hostname].image_preset_id">
+                                                <svg class="avatar-placeholder" viewBox="0 0 24 24"><use href="#icon-server"/></svg>
+                                            </template>
                                         </div>
-                                        <div class="card-head-right">
-                                            <div x-text="(host.os || 'unknown') + (host.uptime_seconds ? ' · up ' + formatUptime(host.uptime_seconds) : '')"></div>
-                                            <div class="seen" x-text="'seen ' + formatAgo(host.last_seen)"></div>
+                                        <div class="card-head-main">
+                                            <div class="card-head-top">
+                                                <div class="card-head-left">
+                                                    <span class="hostname" x-text="host.hostname"></span>
+                                                    <span class="state-pill" x-text="stateLabel(hostStatus(host))"></span>
+                                                    <button class="card-gear" @click.stop="openHostConfig(host.hostname)" title="Host settings">
+                                                        <svg viewBox="0 0 24 24"><use href="#icon-gear"/></svg>
+                                                    </button>
+                                                </div>
+                                                <div class="card-head-right">
+                                                    <div x-text="(host.os || 'unknown') + (host.uptime_seconds ? ' · up ' + formatUptime(host.uptime_seconds) : '')"></div>
+                                                    <div class="seen" x-text="'seen ' + formatAgo(host.last_seen)"></div>
+                                                </div>
+                                            </div>
+                                            <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].comment">
+                                                <div class="card-comment" x-text="hostConfigs[host.hostname].comment"></div>
+                                            </template>
                                         </div>
                                     </div>
 
@@ -1362,7 +1428,7 @@
                                                          :class="['s-' + containerStatus(c), isChipOpen('container', host.hostname + '/' + c.name) ? 'is-open' : '', isIgnored('container', host.hostname + '/' + c.name) ? 'is-ignored' : '']"
                                                          :title="c.name + ' · ' + c.state"
                                                          @click="toggleChip('container', host.hostname + '/' + c.name)"
-                                                         @contextmenu.prevent="showCtxMenu($event, 'container', host.hostname + '/' + c.name)">
+                                                         @contextmenu.prevent.stop="showCtxMenu($event, 'container', host.hostname + '/' + c.name)">
                                                         <svg class="crate" viewBox="0 0 24 24"><use href="#icon-container"/></svg>
                                                         <span class="name" x-text="c.name"></span>
                                                     </div>
@@ -1387,7 +1453,7 @@
                                                          :class="['s-' + agentStatus(a), isChipOpen('agent', host.hostname + '/' + a.name) ? 'is-open' : '', isIgnored('agent', host.hostname + '/' + a.name) ? 'is-ignored' : '']"
                                                          :title="a.name + ' · ' + a.status"
                                                          @click="toggleChip('agent', host.hostname + '/' + a.name)"
-                                                         @contextmenu.prevent="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
+                                                         @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
                                                         <svg class="spark" viewBox="0 0 24 24"><use href="#icon-sparkles"/></svg>
                                                         <span class="name" x-text="a.name"></span>
                                                     </div>
@@ -1469,7 +1535,8 @@
             <template x-if="view === 'settings'">
                 <div class="admin-panel">
                     <div class="settings-tabs">
-                        <button class="settings-tab" :class="settingsTab === 'hosts' && 'active'" @click="settingsTab = 'hosts'; loadTokens()">Hosts</button>
+                        <button class="settings-tab" :class="settingsTab === 'hosts' && 'active'" @click="settingsTab = 'hosts'; loadTokens(); loadImagePresets()">Hosts</button>
+                        <button class="settings-tab" :class="settingsTab === 'presets' && 'active'" @click="settingsTab = 'presets'; loadImagePresets()">Presets</button>
                         <button class="settings-tab" :class="settingsTab === 'sharing' && 'active'" @click="settingsTab = 'sharing'; loadShares()">Sharing</button>
                         <button class="settings-tab" :class="settingsTab === 'ignored' && 'active'" @click="settingsTab = 'ignored'; loadIgnoredList()">Ignored</button>
                         <button class="settings-tab" :class="settingsTab === 'config' && 'active'" @click="settingsTab = 'config'">Config</button>
@@ -1493,12 +1560,44 @@
 
                             <ul class="token-list">
                                 <template x-for="t in tokens" :key="t.hostname">
-                                    <li>
-                                        <div>
-                                            <span class="hostname" x-text="t.hostname"></span>
-                                            <span class="created" x-text="t.created_at"></span>
+                                    <li style="flex-wrap:wrap;">
+                                        <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
+                                            <div>
+                                                <span class="hostname" x-text="t.hostname"></span>
+                                                <span class="created" x-text="t.created_at"></span>
+                                            </div>
+                                            <div style="display:flex;gap:0.4rem;">
+                                                <button class="btn" @click="configHost === t.hostname ? configHost = '' : openHostConfig(t.hostname)" x-text="configHost === t.hostname ? 'Close' : 'Configure'"></button>
+                                                <button class="btn btn-danger" @click="removeHost(t.hostname)">Remove</button>
+                                            </div>
                                         </div>
-                                        <button class="btn btn-danger" @click="removeHost(t.hostname)">Remove</button>
+                                        <template x-if="configHost === t.hostname">
+                                            <div style="width:100%;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--line);">
+                                                <div style="display:flex;gap:1rem;margin-bottom:0.6rem;">
+                                                    <label style="font-size:10px;color:var(--ink-ghost);letter-spacing:0.12em;text-transform:uppercase;font-weight:600;">Image</label>
+                                                    <select style="background:var(--bg-0);border:1px solid var(--line-2);color:var(--ink);font-family:inherit;font-size:11px;padding:2px 6px;"
+                                                            x-model.number="configImageId"
+                                                            @change="saveHostConfig()">
+                                                        <option :value="null">None</option>
+                                                        <template x-for="p in imagePresets" :key="p.id">
+                                                            <option :value="p.id" x-text="p.name"></option>
+                                                        </template>
+                                                    </select>
+                                                    <template x-if="configImageId">
+                                                        <img :src="'/api/image-presets/' + configImageId + '/image'" style="width:32px;height:32px;object-fit:contain;border:1px solid var(--line);">
+                                                    </template>
+                                                </div>
+                                                <div>
+                                                    <label style="font-size:10px;color:var(--ink-ghost);letter-spacing:0.12em;text-transform:uppercase;font-weight:600;display:block;margin-bottom:0.3rem;">Comment</label>
+                                                    <textarea x-model="configComment"
+                                                              @input="saveHostConfig()"
+                                                              rows="3"
+                                                              maxlength="200"
+                                                              placeholder="Short description (3 lines max)"
+                                                              style="width:100%;background:var(--bg-0);border:1px solid var(--line-2);color:var(--ink);font-family:inherit;font-size:11px;padding:0.4rem 0.6rem;resize:none;"></textarea>
+                                                </div>
+                                            </div>
+                                        </template>
                                     </li>
                                 </template>
                             </ul>
@@ -1506,6 +1605,41 @@
                             <template x-if="tokens.length === 0">
                                 <div class="empty-state" style="padding: 2rem;">
                                     <p>No hosts registered yet. Add one above.</p>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- Presets tab -->
+                    <template x-if="settingsTab === 'presets'">
+                        <div>
+                            <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em; margin-bottom: 1rem;">
+                                Upload 50×50 transparent PNG images to identify hosts visually. Assign them per-host in the Hosts tab.
+                            </p>
+
+                            <div class="form-row">
+                                <label class="btn btn-primary" style="cursor:pointer;">
+                                    Upload image
+                                    <input type="file" accept="image/*" @change="uploadPreset($event)" style="display:none;">
+                                </label>
+                            </div>
+
+                            <ul class="token-list">
+                                <template x-for="p in imagePresets" :key="p.id">
+                                    <li>
+                                        <div style="display:flex;align-items:center;gap:0.75rem;">
+                                            <img :src="'/api/image-presets/' + p.id + '/image'" style="width:40px;height:40px;object-fit:contain;border:1px solid var(--line);background:var(--bg-0);">
+                                            <span class="hostname" x-text="p.name"></span>
+                                            <span class="created" x-text="p.created_at"></span>
+                                        </div>
+                                        <button class="btn btn-danger" @click="deletePreset(p.id)">Delete</button>
+                                    </li>
+                                </template>
+                            </ul>
+
+                            <template x-if="imagePresets.length === 0">
+                                <div class="empty-state" style="padding: 2rem;">
+                                    <p>No image presets yet. Upload one above.</p>
                                 </div>
                             </template>
                         </div>
@@ -1670,6 +1804,14 @@
                 ignoredList: [],
                 // Context menu
                 ctxMenu: null,
+                // Host configs (from SSE)
+                hostConfigs: {},
+                // Per-host config editing
+                configHost: '',
+                configComment: '',
+                configImageId: null,
+                // Image presets
+                imagePresets: [],
                 scaleList: ['1min', '15min', '1h', '1d', '14d', '1MO', '1Y'],
                 scaleWindow: { '1min': 60, '15min': 900, '1h': 3600, '1d': 86400, '14d': 1209600, '1MO': 2592000, '1Y': 31536000 },
                 globalScale: '1h',
@@ -1785,6 +1927,12 @@
                     this.es.addEventListener('ignored', (e) => {
                         try {
                             this.ignoredSet = JSON.parse(e.data) || {};
+                        } catch (_) {}
+                    });
+
+                    this.es.addEventListener('host-configs', (e) => {
+                        try {
+                            this.hostConfigs = JSON.parse(e.data) || {};
                         } catch (_) {}
                     });
 
@@ -1930,6 +2078,65 @@
                         key: entityKey,
                         ignored: this.isIgnored(entityType, entityKey)
                     };
+                },
+
+                // ---------- host config ----------
+                openHostConfig(hostname) {
+                    this.view = 'settings';
+                    this.settingsTab = 'hosts';
+                    this.configHost = hostname;
+                    const cfg = this.hostConfigs[hostname] || {};
+                    this.configComment = cfg.comment || '';
+                    this.configImageId = cfg.image_preset_id || null;
+                    this.loadTokens();
+                    this.loadImagePresets();
+                },
+
+                async saveHostConfig() {
+                    if (!this.configHost) return;
+                    try {
+                        await fetch('/api/host-config', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                hostname: this.configHost,
+                                image_preset_id: this.configImageId || null,
+                                comment: this.configComment
+                            })
+                        });
+                    } catch (_) {}
+                },
+
+                // ---------- image presets ----------
+                async loadImagePresets() {
+                    try {
+                        const res = await fetch('/api/image-presets');
+                        if (res.ok) this.imagePresets = await res.json() || [];
+                    } catch (_) {}
+                },
+
+                async uploadPreset(ev) {
+                    const input = ev.target;
+                    if (!input.files || !input.files[0]) return;
+                    const file = input.files[0];
+                    const name = prompt('Preset name:', file.name.replace(/\.[^.]+$/, ''));
+                    if (!name) { input.value = ''; return; }
+                    const form = new FormData();
+                    form.append('name', name);
+                    form.append('file', file);
+                    try {
+                        await fetch('/api/image-presets', { method: 'POST', body: form });
+                        this.loadImagePresets();
+                    } catch (_) {}
+                    input.value = '';
+                },
+
+                async deletePreset(id) {
+                    if (!confirm('Delete this image preset?')) return;
+                    try {
+                        await fetch('/api/image-presets/' + id, { method: 'DELETE' });
+                        this.loadImagePresets();
+                    } catch (_) {}
                 },
 
                 // ---------- chip expand state ----------
