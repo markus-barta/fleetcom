@@ -68,24 +68,48 @@ All requests: `curl -s -H "Authorization: Bearer $PPMAPIKEY" https://pm.barta.cm
 - **Database**: SQLite (WAL mode, pure Go driver)
 - **Auth**: Password + TOTP, HttpOnly session cookies (SameSite=Lax, Secure), per-host bearer tokens
 - **Deployment**: Docker on csb1, behind Cloudflare DNS (edge TLS)
-- **Agent**: Shell script (cron every 60s) POSTing JSON heartbeat via HTTPS
+- **Agent**: Go daemon in Docker container — Docker socket event stream + periodic heartbeat
 
 ## Architecture
 
 ```
 Hosts (dsc0, csb0, csb1, hsb0, ...)
-  └── fleetcom-agent (cron, HTTPS POST heartbeat)
+  └── fleetcom-agent (Docker container, mounts host /var/run/docker.sock)
+        ├── Docker event stream (real-time: die, restart, oom, health_status)
+        │     → POST /api/container-events (immediate)
+        └── Periodic heartbeat (60s, enriched: health, restart_count, uptime)
+              → POST /api/heartbeat
         │
         ▼
 FleetCom Server (csb1, Docker)
-  ├── POST /api/heartbeat (bearer token auth, agents push here)
-  ├── GET  /api/events    (SSE stream, pushes updates to browser)
-  ├── POST /login         (password + TOTP → session cookie)
-  ├── GET  /              (static HTML + Alpine.js dashboard)
-  └── SQLite (hosts, containers, agents, sessions, tokens)
+  ├── POST /api/heartbeat         (bearer token auth, agents push here)
+  ├── POST /api/container-events  (real-time container lifecycle events)
+  ├── GET  /api/events            (SSE stream, pushes updates to browser)
+  ├── POST /login                 (password + TOTP → session cookie)
+  ├── GET  /                      (static HTML + Alpine.js dashboard)
+  └── SQLite (hosts, containers, agents, sessions, tokens, container_events)
         │
         ▼
 Browser (fleet.barta.cm, Alpine.js + SSE — reactive, no polling)
+```
+
+### Agent Deployment
+
+```yaml
+# On each host — agent/docker-compose.yml
+fleetcom-agent:
+  image: ghcr.io/markus-barta/fleetcom-agent:latest
+  restart: unless-stopped
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    - /proc:/host/proc:ro
+    - /sys:/host/sys:ro
+    - /etc/os-release:/host/etc/os-release:ro
+  environment:
+    - FLEETCOM_URL=https://fleet.barta.cm
+    - FLEETCOM_TOKEN=${HOST_TOKEN}
+    - FLEETCOM_HOSTNAME=${HOSTNAME}
+    - FLEETCOM_AGENTS=${AGENTS_JSON}
 ```
 
 ## Secret Safety

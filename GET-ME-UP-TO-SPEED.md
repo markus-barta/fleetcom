@@ -57,7 +57,7 @@ hsb8       🟢       —                    —
 - **Backend**: Go (stdlib net/http + chi + SQLite via modernc.org/sqlite, pure Go, no CGO)
 - **Real-time**: Server-Sent Events (SSE) — server pushes updates to browser the instant a heartbeat arrives. No polling.
 - **Frontend**: Single HTML file, Alpine.js (17KB, reactive data binding via HTML attributes, no build step, no npm). Self-hosted Alpine.js (not CDN) for zero external runtime dependencies.
-- **Agent**: Shell script (cron every 60s) POSTing JSON heartbeat — no Go binary needed for MVP
+- **Agent**: Go daemon in Docker container — Docker socket event stream + periodic heartbeat (replaces legacy shell script)
 - **Auth**: Password + TOTP, session cookies (HttpOnly, SameSite=Lax, Secure), per-host bearer tokens for agents
 - **Deployment**: Docker on csb1, Cloudflare DNS (edge TLS)
 - **Security**: All HTTPS, Tailscale mesh for host comms, no external dependencies for auth, per-host bearer tokens

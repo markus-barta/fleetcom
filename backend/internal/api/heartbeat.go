@@ -22,9 +22,14 @@ type HeartbeatPayload struct {
 }
 
 type ContainerPayload struct {
-	Name  string `json:"name"`
-	Image string `json:"image"`
-	State string `json:"state"`
+	Name         string `json:"name"`
+	Image        string `json:"image"`
+	State        string `json:"state"`
+	Health       string `json:"health"`
+	RestartCount int    `json:"restart_count"`
+	StartedAt    string `json:"started_at"`
+	ExitCode     int    `json:"exit_code"`
+	OOMKilled    bool   `json:"oom_killed"`
 }
 
 type AgentPayload struct {
@@ -98,7 +103,16 @@ func hashToken(token string) string {
 func toDBContainers(cs []ContainerPayload) []db.Container {
 	out := make([]db.Container, len(cs))
 	for i, c := range cs {
-		out[i] = db.Container{Name: c.Name, Image: c.Image, State: c.State}
+		out[i] = db.Container{
+			Name:         c.Name,
+			Image:        c.Image,
+			State:        c.State,
+			Health:       c.Health,
+			RestartCount: c.RestartCount,
+			StartedAt:    c.StartedAt,
+			ExitCode:     c.ExitCode,
+			OOMKilled:    c.OOMKilled,
+		}
 	}
 	return out
 }

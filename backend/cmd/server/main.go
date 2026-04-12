@@ -39,10 +39,17 @@ func main() {
 
 	// Purge samples older than 400 days (covers the 1Y history scale).
 	const sampleRetention = 400 * 24 * time.Hour
+	// Keep container events for 24 hours (only needed for crash loop detection).
+	const eventRetention = 24 * time.Hour
 	if n, err := store.PurgeOldSamples(sampleRetention); err != nil {
 		log.Printf("initial sample purge failed: %v", err)
 	} else if n > 0 {
 		log.Printf("purged %d old status samples", n)
+	}
+	if n, err := store.PurgeOldContainerEvents(eventRetention); err != nil {
+		log.Printf("initial container event purge failed: %v", err)
+	} else if n > 0 {
+		log.Printf("purged %d old container events", n)
 	}
 	go func() {
 		ticker := time.NewTicker(6 * time.Hour)
@@ -52,6 +59,11 @@ func main() {
 				log.Printf("sample purge failed: %v", err)
 			} else if n > 0 {
 				log.Printf("purged %d old status samples", n)
+			}
+			if n, err := store.PurgeOldContainerEvents(eventRetention); err != nil {
+				log.Printf("container event purge failed: %v", err)
+			} else if n > 0 {
+				log.Printf("purged %d old container events", n)
 			}
 		}
 	}()
@@ -68,6 +80,7 @@ func main() {
 	r.Get("/api/image-presets/{id}/image", api.GetImagePresetImage(store))
 	r.Get("/LICENSE", api.License)
 	r.Post("/api/heartbeat", api.Heartbeat(store, hub))
+	r.Post("/api/container-events", api.ContainerEvents(store, hub))
 	r.Get("/login", api.LoginPage)
 	r.Post("/login", a.HandleLogin)
 	r.Get("/logout", a.HandleLogout)
