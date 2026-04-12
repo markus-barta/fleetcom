@@ -1718,7 +1718,7 @@
                                                 <div x-text="(host.os || 'unknown') + (host.uptime_seconds ? ' · up ' + formatUptime(host.uptime_seconds) : '')"></div>
                                                 <div class="seen" x-text="'seen ' + formatAgo(host.last_seen)"></div>
                                                 <div class="agent-version-line">
-                                                    <template x-if="isOutdatedAgent(host)"><i data-lucide="alert-triangle" class="agent-alert-icon"></i></template>
+                                                    <template x-if="isOutdatedAgent(host)"><svg class="agent-alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></template>
                                                     <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionLabel(host)"></span>
                                                 </div>
                                             </div>
@@ -1821,7 +1821,7 @@
                                                 <div x-text="(host.os || 'unknown') + (host.uptime_seconds ? ' · up ' + formatUptime(host.uptime_seconds) : '')"></div>
                                                 <div class="seen" x-text="'seen ' + formatAgo(host.last_seen)"></div>
                                                 <div class="agent-version-line">
-                                                    <template x-if="isOutdatedAgent(host)"><i data-lucide="alert-triangle" class="agent-alert-icon"></i></template>
+                                                    <template x-if="isOutdatedAgent(host)"><svg class="agent-alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></template>
                                                     <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionLabel(host)"></span>
                                                 </div>
                                             </div>
@@ -1836,7 +1836,7 @@
                                         <div class="detail-field">
                                             <span class="df-label">Agent</span>
                                             <span class="df-value">
-                                                <template x-if="isOutdatedAgent(host)"><i data-lucide="alert-triangle" class="agent-alert-icon"></i></template>
+                                                <template x-if="isOutdatedAgent(host)"><svg class="agent-alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></template>
                                                 <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionLabel(host)"></span>
                                                 <template x-if="isOutdatedAgent(host)"><span class="agent-expected"> (expected: <span x-text="expectedAgentVersion"></span>)</span></template>
                                             </span>
@@ -1949,7 +1949,7 @@
                                         <td x-text="stateLabel(hostStatus(host))"></td>
                                         <td>
                                             <span class="agent-version-badge compact" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')">
-                                                <template x-if="isOutdatedAgent(host)"><i data-lucide="alert-triangle" class="agent-alert-icon"></i></template>
+                                                <template x-if="isOutdatedAgent(host)"><svg class="agent-alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></template>
                                                 <span x-text="agentVersionLabel(host)"></span>
                                             </span>
                                         </td>
