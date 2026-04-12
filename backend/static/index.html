@@ -1190,6 +1190,10 @@
             font-size: 12px;
         }
         .token-list .hostname { color: var(--ink); font-weight: 700; font-size: 13px; }
+        .dot-ok { background: var(--ok) !important; box-shadow: 0 0 6px var(--ok); }
+        .dot-warn { background: var(--warn) !important; box-shadow: 0 0 6px var(--warn); }
+        .dot-crit { background: var(--crit) !important; box-shadow: 0 0 6px var(--crit); }
+        .dot-dead { background: var(--dead) !important; }
         .token-list .created {
             color: var(--ink-ghost);
             font-size: 10px;
@@ -1889,9 +1893,23 @@
                                 <template x-for="t in tokens" :key="t.hostname">
                                     <li style="flex-wrap:wrap;">
                                         <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
-                                            <div>
-                                                <span class="hostname" x-text="t.hostname"></span>
-                                                <span class="created" x-text="formatTs(t.created_at)"></span>
+                                            <div style="display:flex;align-items:center;gap:0.6rem;">
+                                                <span class="dot" :class="hostByName(t.hostname) ? 'dot-' + hostStatus(hostByName(t.hostname)) : ''" style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--ink-faint);"></span>
+                                                <div>
+                                                    <span class="hostname" x-text="t.hostname"></span>
+                                                    <template x-if="hostByName(t.hostname)">
+                                                        <span style="color:var(--ink-ghost);font-size:10px;margin-left:0.5rem;" x-text="'seen ' + formatAgo(hostByName(t.hostname).last_seen)"></span>
+                                                    </template>
+                                                    <template x-if="!hostByName(t.hostname)">
+                                                        <span style="color:var(--ink-faint);font-size:10px;margin-left:0.5rem;">never reported</span>
+                                                    </template>
+                                                    <div style="font-size:9px;color:var(--ink-faint);">
+                                                        <span x-text="'token created ' + formatTs(t.created_at)"></span>
+                                                        <template x-if="hostByName(t.hostname)">
+                                                            <span x-text="' · ' + (hostByName(t.hostname).os || '') + (hostByName(t.hostname).uptime_seconds ? ' · up ' + formatUptime(hostByName(t.hostname).uptime_seconds) : '')"></span>
+                                                        </template>
+                                                    </div>
+                                                </div>
                                             </div>
                                             <div style="display:flex;gap:0.4rem;">
                                                 <button class="btn" @click="configHost === t.hostname ? configHost = '' : openHostConfig(t.hostname)" x-text="configHost === t.hostname ? 'Close' : 'Configure'"></button>
@@ -3048,6 +3066,10 @@ services.fleetcom-agent = {
                 },
                 countOnlineAgents(agents) {
                     return (agents || []).filter(a => a.status === 'online').length;
+                },
+
+                hostByName(hostname) {
+                    return this.hosts.find(h => h.hostname === hostname) || null;
                 },
 
                 // ---------- status helpers ----------
