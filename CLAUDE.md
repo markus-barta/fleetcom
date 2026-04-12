@@ -64,7 +64,7 @@ All requests: `curl -s -H "Authorization: Bearer $PPMAPIKEY" https://pm.barta.cm
 
 - **Backend**: Go (stdlib net/http + chi router + SQLite via modernc.org/sqlite, pure Go, no CGO)
 - **Real-time**: Server-Sent Events (SSE) — instant push to browser on heartbeat arrival
-- **Frontend**: Single HTML file, Alpine.js (17KB, self-hosted, reactive data binding), no build step, no npm
+- **Frontend**: Single HTML file, Alpine.js + Lucide icons (self-hosted), no build step, no npm
 - **Database**: SQLite (WAL mode, pure Go driver)
 - **Auth**: Password + TOTP, HttpOnly session cookies (SameSite=Lax, Secure), per-host bearer tokens
 - **Deployment**: Docker on csb1, behind Cloudflare DNS (edge TLS)
@@ -105,6 +105,10 @@ If you need to verify a secret exists: check file existence (`ls -la`) or test t
 - Host communication over Tailscale mesh where possible
 - No secrets stored in database
 - No external dependencies for auth
+
+## Dependencies
+
+External dependencies are acceptable when they provide clear value — evaluate each on merit rather than defaulting to "no deps." Self-host JS libraries (Alpine.js, Lucide) to avoid CDN reliance. No npm/build step required; keep the single-HTML-file architecture.
 
 ## Build & Run
 
