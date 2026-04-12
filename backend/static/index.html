@@ -2262,6 +2262,13 @@
                         try {
                             const cfg = JSON.parse(e.data);
                             if (cfg.heartbeat_interval) this.heartbeatInterval = cfg.heartbeat_interval;
+                            // Detect new deployment — if the server commit changed, force reload
+                            if (cfg.commit && this._serverCommit && cfg.commit !== this._serverCommit) {
+                                console.log('New deployment detected (' + this._serverCommit + ' → ' + cfg.commit + '), reloading…');
+                                location.reload();
+                                return;
+                            }
+                            if (cfg.commit) this._serverCommit = cfg.commit;
                         } catch (_) {}
                     });
 
