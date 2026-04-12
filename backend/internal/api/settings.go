@@ -12,14 +12,16 @@ import (
 
 // configPayload is the shape broadcast via SSE and returned by GET /api/settings.
 type configPayload struct {
-	HeartbeatInterval int    `json:"heartbeat_interval"`
-	Commit            string `json:"commit"`
+	HeartbeatInterval    int    `json:"heartbeat_interval"`
+	Commit               string `json:"commit"`
+	ExpectedAgentVersion string `json:"expected_agent_version"`
 }
 
 func buildConfigPayload(store *db.Store) configPayload {
 	return configPayload{
-		HeartbeatInterval: store.HeartbeatInterval(),
-		Commit:            version.Commit,
+		HeartbeatInterval:    store.HeartbeatInterval(),
+		Commit:               version.Commit,
+		ExpectedAgentVersion: version.AgentVersion,
 	}
 }
 

@@ -16,12 +16,19 @@ import (
 	"time"
 )
 
+// Version info — injected at build time via ldflags.
+var (
+	Version   = "0.1.0"
+	BuildTime = "unknown"
+)
+
 // HeartbeatPayload is the full state snapshot sent every interval.
 type HeartbeatPayload struct {
 	Hostname      string             `json:"hostname"`
 	OS            string             `json:"os"`
 	Kernel        string             `json:"kernel"`
 	UptimeSeconds int64              `json:"uptime_seconds"`
+	AgentVersion  string             `json:"agent_version"`
 	Containers    []ContainerPayload `json:"containers"`
 	Agents        []AgentPayload     `json:"agents"`
 }
@@ -76,8 +83,9 @@ func main() {
 
 	hostname := getHostname()
 	interval := 60 * time.Second
+	agentVersionStr := formatAgentVersion()
 
-	log.Printf("FleetCom agent starting: host=%s server=%s interval=%s", hostname, serverURL, interval)
+	log.Printf("FleetCom agent %s starting: host=%s server=%s interval=%s", agentVersionStr, hostname, serverURL, interval)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -100,7 +108,7 @@ func main() {
 	}
 
 	// Periodic heartbeat
-	sendHeartbeat(serverURL, token, hostname, socketPath, agents, &interval)
+	sendHeartbeat(serverURL, token, hostname, socketPath, agents, agentVersionStr, &interval)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -109,7 +117,7 @@ func main() {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			sendHeartbeat(serverURL, token, hostname, socketPath, agents, &interval)
+			sendHeartbeat(serverURL, token, hostname, socketPath, agents, agentVersionStr, &interval)
 			ticker.Reset(interval)
 		}
 	}
@@ -122,7 +130,22 @@ func dockerSocketPath() string {
 	return ""
 }
 
-func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []AgentPayload, interval *time.Duration) {
+func formatAgentVersion() string {
+	// Format: "0.1.0 (2026-04-12, 17:45:27)" or just "0.1.0" if no build time
+	if BuildTime != "" && BuildTime != "unknown" {
+		// Parse ISO8601 and reformat
+		if t, err := time.Parse(time.RFC3339, BuildTime); err == nil {
+			return fmt.Sprintf("%s (%s, %s)", Version, t.Format("2006-01-02"), t.Format("15:04:05"))
+		}
+		// Try simpler format
+		if t, err := time.Parse("2006-01-02T15:04:05Z", BuildTime); err == nil {
+			return fmt.Sprintf("%s (%s, %s)", Version, t.Format("2006-01-02"), t.Format("15:04:05"))
+		}
+	}
+	return Version
+}
+
+func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []AgentPayload, agentVersion string, interval *time.Duration) {
 	containers := listContainers(socketPath)
 
 	payload := HeartbeatPayload{
@@ -130,6 +153,7 @@ func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []Agent
 		OS:            getOS(),
 		Kernel:        getKernel(),
 		UptimeSeconds: getUptime(),
+		AgentVersion:  agentVersion,
 		Containers:    containers,
 		Agents:        agents,
 	}

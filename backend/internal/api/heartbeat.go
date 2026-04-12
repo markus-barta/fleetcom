@@ -17,6 +17,7 @@ type HeartbeatPayload struct {
 	OS            string             `json:"os"`
 	Kernel        string             `json:"kernel"`
 	UptimeSeconds int64              `json:"uptime_seconds"`
+	AgentVersion  string             `json:"agent_version"`
 	Containers    []ContainerPayload `json:"containers"`
 	Agents        []AgentPayload     `json:"agents"`
 }
@@ -63,7 +64,7 @@ func Heartbeat(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 		// Override hostname from token — agents can't impersonate other hosts
 		payload.Hostname = hostname
 
-		if err := store.UpsertHeartbeat(payload.Hostname, payload.OS, payload.Kernel, payload.UptimeSeconds, toDBContainers(payload.Containers), toDBAgents(payload.Agents)); err != nil {
+		if err := store.UpsertHeartbeat(payload.Hostname, payload.OS, payload.Kernel, payload.UptimeSeconds, payload.AgentVersion, toDBContainers(payload.Containers), toDBAgents(payload.Agents)); err != nil {
 			log.Printf("heartbeat upsert error: %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return

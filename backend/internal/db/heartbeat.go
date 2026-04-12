@@ -11,6 +11,7 @@ type Host struct {
 	OS            string      `json:"os"`
 	Kernel        string      `json:"kernel"`
 	UptimeSeconds int64       `json:"uptime_seconds"`
+	AgentVersion  string      `json:"agent_version"`
 	LastSeen      string      `json:"last_seen"`
 	Containers    []Container `json:"containers"`
 	Agents        []Agent     `json:"agents"`
@@ -40,7 +41,7 @@ type Agent struct {
 	LastSeen  string `json:"last_seen"`
 }
 
-func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64, containers []Container, agents []Agent) error {
+func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64, agentVersion string, containers []Container, agents []Agent) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	tx, err := s.DB.Begin()
@@ -52,15 +53,16 @@ func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64
 	// Upsert host
 	var hostID int64
 	err = tx.QueryRow(`
-		INSERT INTO hosts (hostname, os, kernel, uptime_seconds, last_seen)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO hosts (hostname, os, kernel, uptime_seconds, agent_version, last_seen)
+		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(hostname) DO UPDATE SET
 			os = excluded.os,
 			kernel = excluded.kernel,
 			uptime_seconds = excluded.uptime_seconds,
+			agent_version = excluded.agent_version,
 			last_seen = excluded.last_seen
 		RETURNING id
-	`, hostname, os, kernel, uptimeSeconds, now).Scan(&hostID)
+	`, hostname, os, kernel, uptimeSeconds, agentVersion, now).Scan(&hostID)
 	if err != nil {
 		return fmt.Errorf("upsert host: %w", err)
 	}
@@ -128,7 +130,7 @@ func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64
 }
 
 func (s *Store) AllHosts() ([]Host, error) {
-	rows, err := s.DB.Query(`SELECT id, hostname, os, kernel, uptime_seconds, last_seen FROM hosts ORDER BY hostname`)
+	rows, err := s.DB.Query(`SELECT id, hostname, os, kernel, uptime_seconds, agent_version, last_seen FROM hosts ORDER BY hostname`)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +139,7 @@ func (s *Store) AllHosts() ([]Host, error) {
 	var hosts []Host
 	for rows.Next() {
 		var h Host
-		if err := rows.Scan(&h.ID, &h.Hostname, &h.OS, &h.Kernel, &h.UptimeSeconds, &h.LastSeen); err != nil {
+		if err := rows.Scan(&h.ID, &h.Hostname, &h.OS, &h.Kernel, &h.UptimeSeconds, &h.AgentVersion, &h.LastSeen); err != nil {
 			return nil, err
 		}
 		hosts = append(hosts, h)

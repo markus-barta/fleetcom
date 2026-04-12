@@ -44,6 +44,7 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE containers ADD COLUMN started_at TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE containers ADD COLUMN exit_code INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE containers ADD COLUMN oom_killed INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE hosts ADD COLUMN agent_version TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, stmt := range alterStmts {
 		db.Exec(stmt) // ignore "duplicate column" errors
@@ -58,6 +59,7 @@ CREATE TABLE IF NOT EXISTS hosts (
 	os TEXT NOT NULL DEFAULT '',
 	kernel TEXT NOT NULL DEFAULT '',
 	uptime_seconds INTEGER NOT NULL DEFAULT 0,
+	agent_version TEXT NOT NULL DEFAULT '',
 	last_seen TEXT NOT NULL DEFAULT '',
 	created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
