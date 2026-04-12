@@ -93,6 +93,9 @@ func main() {
 		r.Delete("/api/shares", api.DeleteShareLink(store))
 		r.Get("/api/history", api.History(store))
 		r.Put("/api/settings", api.UpdateSettings(store, hub))
+		r.Get("/api/ignored", api.ListIgnored(store))
+		r.Post("/api/ignore", api.AddIgnore(store, hub))
+		r.Delete("/api/ignore", api.RemoveIgnore(store, hub))
 	})
 
 	srv := &http.Server{

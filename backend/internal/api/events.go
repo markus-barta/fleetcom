@@ -37,6 +37,12 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 		cfgData, _ := json.Marshal(buildConfigPayload(store))
 		fmt.Fprintf(w, "event: config\ndata: %s\n\n", cfgData)
 
+		// Send initial ignored set
+		if ignoredSet, err := store.IgnoredSet(); err == nil {
+			igData, _ := json.Marshal(ignoredSet)
+			fmt.Fprintf(w, "event: ignored\ndata: %s\n\n", igData)
+		}
+
 		// Send initial host state
 		hosts, err := store.AllHosts()
 		if err != nil {
