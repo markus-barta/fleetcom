@@ -1108,6 +1108,111 @@
         /* Shared icon base */
         .icon { display: inline-flex; align-items: center; flex-shrink: 0; }
         .icon svg { width: 14px; height: 14px; }
+
+        /* ============================================================
+           SETTINGS TABS
+           ============================================================ */
+        .settings-tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--line-2);
+            margin-bottom: 1.5rem;
+        }
+        .settings-tab {
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--ink-ghost);
+            font-family: inherit;
+            font-size: 10px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            font-weight: 600;
+            padding: 0.65rem 1.2rem;
+            cursor: pointer;
+            transition: color 0.12s, border-color 0.12s;
+        }
+        .settings-tab:hover { color: var(--ink-dim); }
+        .settings-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+        /* ============================================================
+           IGNORED ENTITIES
+           ============================================================ */
+        .card.is-ignored {
+            opacity: 0.35;
+            filter: grayscale(0.6);
+        }
+        .card.is-ignored:hover { opacity: 0.55; }
+        .card.is-ignored .state-pill::after {
+            content: ' · IGNORED';
+            font-size: 7px;
+            letter-spacing: 0.18em;
+        }
+        .chip.is-ignored {
+            opacity: 0.3;
+            filter: grayscale(0.6);
+        }
+        .chip.is-ignored:hover { opacity: 0.5; }
+
+        .ignored-list { list-style: none; }
+        .ignored-list li {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.55rem 0.9rem;
+            background: var(--bg-1);
+            border: 1px solid var(--line);
+            margin-bottom: 0.35rem;
+            font-size: 11px;
+        }
+        .ignored-list .entity-type {
+            font-size: 8px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--ink-ghost);
+            font-weight: 700;
+            margin-right: 0.6rem;
+            min-width: 70px;
+        }
+        .ignored-list .entity-key {
+            color: var(--ink-dim);
+            font-weight: 600;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ============================================================
+           CONTEXT MENU
+           ============================================================ */
+        .ctx-menu {
+            position: fixed;
+            z-index: 9999;
+            background: var(--bg-1);
+            border: 1px solid var(--line-2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+            min-width: 160px;
+        }
+        .ctx-menu button {
+            display: block;
+            width: 100%;
+            text-align: left;
+            background: transparent;
+            border: none;
+            color: var(--ink-dim);
+            font-family: inherit;
+            font-size: 11px;
+            padding: 0.55rem 0.9rem;
+            cursor: pointer;
+            transition: background 0.08s, color 0.08s;
+        }
+        .ctx-menu button:hover { background: var(--bg-2); color: var(--ink); }
+        .ctx-menu .ctx-sep {
+            height: 1px;
+            background: var(--line);
+            margin: 2px 0;
+        }
     </style>
 </head>
 <body>
@@ -1163,7 +1268,7 @@
                 </div>
                 <nav class="nav" x-show="!shared">
                     <a :class="view === 'dashboard' && 'active'" @click="view = 'dashboard'">Dashboard</a>
-                    <a :class="view === 'hosts' && 'active'" @click="view = 'hosts'; loadTokens(); loadShares()">Hosts</a>
+                    <a :class="view === 'settings' && 'active'" @click="openSettings()">Settings</a>
                     <a href="/logout">Sign out</a>
                 </nav>
                 <nav class="nav" x-show="shared">
@@ -1230,7 +1335,9 @@
                     <template x-if="viewMode === 'detail' && hosts.length > 0">
                         <div class="grid">
                             <template x-for="host in hosts" :key="host.hostname">
-                                <div class="card" :class="'state-' + hostStatus(host)">
+                                <div class="card"
+                                     :class="['state-' + hostStatus(host), isIgnored('host', host.hostname) ? 'is-ignored' : '']"
+                                     @contextmenu.prevent="showCtxMenu($event, 'host', host.hostname)">
                                     <div class="card-head">
                                         <div class="card-head-left">
                                             <span class="hostname" x-text="host.hostname"></span>
@@ -1252,9 +1359,10 @@
                                             <div class="chips" :class="host.containers.length > 8 ? 'dense' : ''">
                                                 <template x-for="c in host.containers" :key="c.name">
                                                     <div class="chip chip-container"
-                                                         :class="['s-' + containerStatus(c), isChipOpen('container', host.hostname + '/' + c.name) ? 'is-open' : '']"
+                                                         :class="['s-' + containerStatus(c), isChipOpen('container', host.hostname + '/' + c.name) ? 'is-open' : '', isIgnored('container', host.hostname + '/' + c.name) ? 'is-ignored' : '']"
                                                          :title="c.name + ' · ' + c.state"
-                                                         @click="toggleChip('container', host.hostname + '/' + c.name)">
+                                                         @click="toggleChip('container', host.hostname + '/' + c.name)"
+                                                         @contextmenu.prevent="showCtxMenu($event, 'container', host.hostname + '/' + c.name)">
                                                         <svg class="crate" viewBox="0 0 24 24"><use href="#icon-container"/></svg>
                                                         <span class="name" x-text="c.name"></span>
                                                     </div>
@@ -1276,9 +1384,10 @@
                                             <div class="chips">
                                                 <template x-for="a in host.agents" :key="a.name">
                                                     <div class="chip chip-agent"
-                                                         :class="['s-' + agentStatus(a), isChipOpen('agent', host.hostname + '/' + a.name) ? 'is-open' : '']"
+                                                         :class="['s-' + agentStatus(a), isChipOpen('agent', host.hostname + '/' + a.name) ? 'is-open' : '', isIgnored('agent', host.hostname + '/' + a.name) ? 'is-ignored' : '']"
                                                          :title="a.name + ' · ' + a.status"
-                                                         @click="toggleChip('agent', host.hostname + '/' + a.name)">
+                                                         @click="toggleChip('agent', host.hostname + '/' + a.name)"
+                                                         @contextmenu.prevent="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
                                                         <svg class="spark" viewBox="0 0 24 24"><use href="#icon-sparkles"/></svg>
                                                         <span class="name" x-text="a.name"></span>
                                                     </div>
@@ -1356,87 +1465,145 @@
                 </div>
             </template>
 
-            <!-- Hosts management view -->
-            <template x-if="view === 'hosts'">
+            <!-- Settings view -->
+            <template x-if="view === 'settings'">
                 <div class="admin-panel">
-                    <h2>Settings</h2>
-                    <div class="form-row">
-                        <label style="display:flex;align-items:center;gap:0.6rem;font-size:11px;color:var(--ink-dim);">
-                            Heartbeat interval
-                            <input type="number" min="10" max="3600" step="1"
-                                   :value="heartbeatInterval"
-                                   @change="updateHeartbeatInterval($event.target.value)"
-                                   style="width:70px;text-align:right;">
-                            <span style="color:var(--ink-ghost);font-size:10px;">seconds (10–3600)</span>
-                        </label>
+                    <div class="settings-tabs">
+                        <button class="settings-tab" :class="settingsTab === 'hosts' && 'active'" @click="settingsTab = 'hosts'; loadTokens()">Hosts</button>
+                        <button class="settings-tab" :class="settingsTab === 'sharing' && 'active'" @click="settingsTab = 'sharing'; loadShares()">Sharing</button>
+                        <button class="settings-tab" :class="settingsTab === 'ignored' && 'active'" @click="settingsTab = 'ignored'; loadIgnoredList()">Ignored</button>
+                        <button class="settings-tab" :class="settingsTab === 'config' && 'active'" @click="settingsTab = 'config'">Config</button>
                     </div>
 
-                    <h2>Manage Hosts</h2>
+                    <!-- Hosts tab -->
+                    <template x-if="settingsTab === 'hosts'">
+                        <div>
+                            <div class="form-row">
+                                <input type="text" x-model="newHostname" placeholder="hostname (e.g. dsc0)" @keydown.enter="addHost()">
+                                <button class="btn btn-primary" @click="addHost()">Add Host</button>
+                            </div>
 
-                    <div class="form-row">
-                        <input type="text" x-model="newHostname" placeholder="hostname (e.g. dsc0)" @keydown.enter="addHost()">
-                        <button class="btn btn-primary" @click="addHost()">Add Host</button>
-                    </div>
-
-                    <template x-if="newToken">
-                        <div class="token-reveal">
-                            <div class="label">Agent token for <span x-text="newToken.hostname"></span></div>
-                            <code x-text="newToken.token"></code>
-                            <div class="warning">Copy this token now — it won't be shown again.</div>
-                        </div>
-                    </template>
-
-                    <ul class="token-list">
-                        <template x-for="t in tokens" :key="t.hostname">
-                            <li>
-                                <div>
-                                    <span class="hostname" x-text="t.hostname"></span>
-                                    <span class="created" x-text="t.created_at"></span>
+                            <template x-if="newToken">
+                                <div class="token-reveal">
+                                    <div class="label">Agent token for <span x-text="newToken.hostname"></span></div>
+                                    <code x-text="newToken.token"></code>
+                                    <div class="warning">Copy this token now — it won't be shown again.</div>
                                 </div>
-                                <button class="btn btn-danger" @click="removeHost(t.hostname)">Remove</button>
-                            </li>
-                        </template>
-                    </ul>
+                            </template>
 
-                    <template x-if="tokens.length === 0">
-                        <div class="empty-state" style="padding: 2rem;">
-                            <p>No hosts registered yet. Add one above.</p>
-                        </div>
-                    </template>
+                            <ul class="token-list">
+                                <template x-for="t in tokens" :key="t.hostname">
+                                    <li>
+                                        <div>
+                                            <span class="hostname" x-text="t.hostname"></span>
+                                            <span class="created" x-text="t.created_at"></span>
+                                        </div>
+                                        <button class="btn btn-danger" @click="removeHost(t.hostname)">Remove</button>
+                                    </li>
+                                </template>
+                            </ul>
 
-                    <h2 style="margin-top: 2rem;">Share Links</h2>
-                    <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em; margin-bottom: 1rem;">Read-only dashboard access — no login required.</p>
-
-                    <div class="form-row">
-                        <input type="text" x-model="shareLabel" placeholder="label (e.g. David)">
-                        <select x-model="shareHours">
-                            <option value="24">24 hours</option>
-                            <option value="48">2 days</option>
-                            <option value="72">3 days</option>
-                            <option value="168">7 days</option>
-                        </select>
-                        <button class="btn btn-primary" @click="createShare()">Create Link</button>
-                    </div>
-
-                    <template x-if="newShare">
-                        <div class="token-reveal">
-                            <div class="label">Share link for <span x-text="newShare.label || 'guest'"></span></div>
-                            <code x-text="window.location.origin + '/s/' + newShare.token"></code>
-                            <div class="warning">Copy this link now — the token won't be shown again.</div>
-                        </div>
-                    </template>
-
-                    <ul class="token-list">
-                        <template x-for="s in shares" :key="s.id">
-                            <li>
-                                <div>
-                                    <span class="hostname" x-text="s.label || 'guest'"></span>
-                                    <span class="created" x-text="'expires ' + s.expires_at"></span>
+                            <template x-if="tokens.length === 0">
+                                <div class="empty-state" style="padding: 2rem;">
+                                    <p>No hosts registered yet. Add one above.</p>
                                 </div>
-                                <button class="btn btn-danger" @click="deleteShare(s.id)">Revoke</button>
-                            </li>
-                        </template>
-                    </ul>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- Sharing tab -->
+                    <template x-if="settingsTab === 'sharing'">
+                        <div>
+                            <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em; margin-bottom: 1rem;">Read-only dashboard access — no login required.</p>
+
+                            <div class="form-row">
+                                <input type="text" x-model="shareLabel" placeholder="label (e.g. David)">
+                                <select x-model="shareHours">
+                                    <option value="24">24 hours</option>
+                                    <option value="48">2 days</option>
+                                    <option value="72">3 days</option>
+                                    <option value="168">7 days</option>
+                                </select>
+                                <button class="btn btn-primary" @click="createShare()">Create Link</button>
+                            </div>
+
+                            <template x-if="newShare">
+                                <div class="token-reveal">
+                                    <div class="label">Share link for <span x-text="newShare.label || 'guest'"></span></div>
+                                    <code x-text="window.location.origin + '/s/' + newShare.token"></code>
+                                    <div class="warning">Copy this link now — the token won't be shown again.</div>
+                                </div>
+                            </template>
+
+                            <ul class="token-list">
+                                <template x-for="s in shares" :key="s.id">
+                                    <li>
+                                        <div>
+                                            <span class="hostname" x-text="s.label || 'guest'"></span>
+                                            <span class="created" x-text="'expires ' + s.expires_at"></span>
+                                        </div>
+                                        <button class="btn btn-danger" @click="deleteShare(s.id)">Revoke</button>
+                                    </li>
+                                </template>
+                            </ul>
+                        </div>
+                    </template>
+
+                    <!-- Ignored tab -->
+                    <template x-if="settingsTab === 'ignored'">
+                        <div>
+                            <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em; margin-bottom: 1rem;">
+                                Ignored entities are muted on the dashboard and excluded from status counts. Right-click any host, container, or agent on the dashboard to ignore it.
+                            </p>
+
+                            <ul class="ignored-list">
+                                <template x-for="e in ignoredList" :key="e.id">
+                                    <li>
+                                        <span class="entity-type" x-text="e.entity_type"></span>
+                                        <span class="entity-key" x-text="e.entity_key"></span>
+                                        <button class="btn btn-danger" @click="unignoreEntity(e.entity_type, e.entity_key)">Unignore</button>
+                                    </li>
+                                </template>
+                            </ul>
+
+                            <template x-if="ignoredList.length === 0">
+                                <div class="empty-state" style="padding: 2rem;">
+                                    <p>No ignored entities.</p>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- Config tab -->
+                    <template x-if="settingsTab === 'config'">
+                        <div>
+                            <div class="form-row">
+                                <label style="display:flex;align-items:center;gap:0.6rem;font-size:11px;color:var(--ink-dim);">
+                                    Heartbeat interval
+                                    <input type="number" min="10" max="3600" step="1"
+                                           :value="heartbeatInterval"
+                                           @change="updateHeartbeatInterval($event.target.value)"
+                                           style="width:70px;text-align:right;">
+                                    <span style="color:var(--ink-ghost);font-size:10px;">seconds (10–3600)</span>
+                                </label>
+                            </div>
+                            <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em;">
+                                Agents read this value from the heartbeat response and adapt their reporting cadence automatically.
+                            </p>
+                        </div>
+                    </template>
+                </div>
+            </template>
+
+            <!-- Context menu -->
+            <template x-if="ctxMenu">
+                <div class="ctx-menu" :style="'left:' + ctxMenu.x + 'px;top:' + ctxMenu.y + 'px'" @click.outside="ctxMenu = null">
+                    <button x-show="!ctxMenu.ignored" @click="ignoreEntity(ctxMenu.type, ctxMenu.key); ctxMenu = null">
+                        Ignore <span x-text="ctxMenu.type"></span>
+                    </button>
+                    <button x-show="ctxMenu.ignored" @click="unignoreEntity(ctxMenu.type, ctxMenu.key); ctxMenu = null">
+                        Unignore <span x-text="ctxMenu.type"></span>
+                    </button>
                 </div>
             </template>
         </main>
@@ -1496,6 +1663,13 @@
 
                 // Which chip is expanded in its card (key = `${type}:${entityKey}`, one at a time globally)
                 openChip: null,
+                // Settings view
+                settingsTab: 'hosts',
+                // Ignored entities (set from SSE, list for settings tab)
+                ignoredSet: {},
+                ignoredList: [],
+                // Context menu
+                ctxMenu: null,
                 scaleList: ['1min', '15min', '1h', '1d', '14d', '1MO', '1Y'],
                 scaleWindow: { '1min': 60, '15min': 900, '1h': 3600, '1d': 86400, '14d': 1209600, '1MO': 2592000, '1Y': 31536000 },
                 globalScale: '1h',
@@ -1608,6 +1782,12 @@
                         } catch (_) {}
                     });
 
+                    this.es.addEventListener('ignored', (e) => {
+                        try {
+                            this.ignoredSet = JSON.parse(e.data) || {};
+                        } catch (_) {}
+                    });
+
                     this.es.addEventListener('hosts', (e) => {
                         try {
                             const data = JSON.parse(e.data);
@@ -1698,6 +1878,58 @@
                             this.heartbeatInterval = cfg.heartbeat_interval;
                         }
                     } catch (_) {}
+                },
+
+                // ---------- settings navigation ----------
+                openSettings() {
+                    this.view = 'settings';
+                    if (this.settingsTab === 'hosts') this.loadTokens();
+                    else if (this.settingsTab === 'sharing') this.loadShares();
+                    else if (this.settingsTab === 'ignored') this.loadIgnoredList();
+                },
+
+                // ---------- ignored entities ----------
+                isIgnored(entityType, entityKey) {
+                    return !!this.ignoredSet[entityType + ':' + entityKey];
+                },
+
+                async ignoreEntity(entityType, entityKey) {
+                    try {
+                        await fetch('/api/ignore', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ entity_type: entityType, entity_key: entityKey })
+                        });
+                    } catch (_) {}
+                },
+
+                async unignoreEntity(entityType, entityKey) {
+                    try {
+                        await fetch('/api/ignore?entity_type=' + encodeURIComponent(entityType) + '&entity_key=' + encodeURIComponent(entityKey), {
+                            method: 'DELETE'
+                        });
+                    } catch (_) {}
+                    // Also refresh the list if we're on the ignored tab
+                    if (this.settingsTab === 'ignored') this.loadIgnoredList();
+                },
+
+                async loadIgnoredList() {
+                    try {
+                        const res = await fetch('/api/ignored');
+                        if (res.ok) this.ignoredList = await res.json() || [];
+                    } catch (_) {}
+                },
+
+                // ---------- context menu ----------
+                showCtxMenu(event, entityType, entityKey) {
+                    const x = Math.min(event.clientX, window.innerWidth - 180);
+                    const y = Math.min(event.clientY, window.innerHeight - 50);
+                    this.ctxMenu = {
+                        x, y,
+                        type: entityType,
+                        key: entityKey,
+                        ignored: this.isIgnored(entityType, entityKey)
+                    };
                 },
 
                 // ---------- chip expand state ----------
@@ -2067,24 +2299,34 @@
                     if (res.ok) this.loadShares();
                 },
 
-                // ---------- derived stats ----------
-                get hostsUp() {
-                    return this.hosts.filter(h => this.secondsAgo(h.last_seen) < 120).length;
+                // ---------- derived stats (ignored entities excluded) ----------
+                activeHosts() {
+                    return this.hosts.filter(h => !this.isIgnored('host', h.hostname));
                 },
-                get hostsDown() { return this.hosts.length - this.hostsUp; },
+                get hostsUp() {
+                    const iv = this.heartbeatInterval;
+                    return this.activeHosts().filter(h => this.secondsAgo(h.last_seen) < iv * 2).length;
+                },
+                get hostsDown() { return this.activeHosts().length - this.hostsUp; },
                 get totalContainers() {
-                    return this.hosts.reduce((n, h) => n + ((h.containers && h.containers.length) || 0), 0);
+                    return this.activeHosts().reduce((n, h) => n + this.activeContainers(h).length, 0);
                 },
                 get runningContainers() {
-                    return this.hosts.reduce((n, h) => n + this.countRunning(h.containers), 0);
+                    return this.activeHosts().reduce((n, h) => n + this.activeContainers(h).filter(c => c.state === 'running').length, 0);
                 },
                 get totalAgents() {
-                    return this.hosts.reduce((n, h) => n + ((h.agents && h.agents.length) || 0), 0);
+                    return this.activeHosts().reduce((n, h) => n + this.activeAgentsOf(h).length, 0);
                 },
                 get onlineAgents() {
-                    return this.hosts.reduce((n, h) => n + this.countOnlineAgents(h.agents), 0);
+                    return this.activeHosts().reduce((n, h) => n + this.activeAgentsOf(h).filter(a => a.status === 'online').length, 0);
                 },
 
+                activeContainers(host) {
+                    return (host.containers || []).filter(c => !this.isIgnored('container', host.hostname + '/' + c.name));
+                },
+                activeAgentsOf(host) {
+                    return (host.agents || []).filter(a => !this.isIgnored('agent', host.hostname + '/' + a.name));
+                },
                 countRunning(containers) {
                     return (containers || []).filter(c => c.state === 'running').length;
                 },

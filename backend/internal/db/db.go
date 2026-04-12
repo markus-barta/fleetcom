@@ -109,4 +109,12 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 
 INSERT OR IGNORE INTO settings (key, value) VALUES ('heartbeat_interval', '60');
+
+CREATE TABLE IF NOT EXISTS ignored_entities (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	entity_type TEXT NOT NULL,
+	entity_key TEXT NOT NULL,
+	created_at TEXT NOT NULL DEFAULT (datetime('now')),
+	UNIQUE(entity_type, entity_key)
+);
 `
