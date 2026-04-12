@@ -436,13 +436,14 @@
             gap: 1rem;
             margin-bottom: 0.25rem;
         }
-        /* Background host image — right-aligned, padded, fades out */
+        /* Background host image — right-aligned, padded, fades out.
+           Size controlled by --card-img-size (set via JS from settings). */
         .card-bg-img {
             position: absolute;
             top: 0.75rem;
             right: 0.75rem;
-            width: 170px;
-            height: 170px;
+            width: var(--card-img-size, 170px);
+            height: var(--card-img-size, 170px);
             pointer-events: none;
             z-index: 0;
             opacity: 0.7;
@@ -589,7 +590,7 @@
         .card.state-crit .card-head-right .seen { color: var(--crit); font-weight: 600; }
 
         .card-section {
-            margin-top: 1rem;
+            margin-top: 3rem;
         }
         .card-section-label {
             display: flex;
@@ -696,7 +697,7 @@
             border-left: 2px solid var(--line-2);
         }
         .strip-block.host-strip {
-            margin-top: 1rem;
+            margin-top: 3rem;
             border-left-color: var(--accent);
             border-left-width: 2px;
         }
@@ -741,43 +742,59 @@
         .strip-context.s-crit { color: var(--crit); }
         .strip-context.s-dead { color: var(--ink-ghost); opacity: 0.7; }
 
-        /* Strip scale controls */
-        .strip-controls {
+        /* Strip label — "STATUS 1H" as one interactive unit */
+        .strip-label {
             display: inline-flex;
             align-items: center;
-            gap: 2px;
+            gap: 0;
             flex-shrink: 0;
-        }
-        .strip-scale-btn {
-            background: rgba(106, 176, 255, 0.1);
-            border: 1px solid var(--accent);
-            color: var(--accent);
-            font-family: inherit;
-            font-size: 8px;
-            letter-spacing: 0.08em;
-            padding: 0 5px;
-            height: 15px;
-            line-height: 13px;
             cursor: pointer;
-            text-transform: uppercase;
-            font-weight: 700;
-            min-width: 30px;
-            text-align: center;
+            padding: 1px 0;
+            transition: color 0.12s;
+            position: relative;
         }
-        .strip-scale-btn:hover { background: rgba(106, 176, 255, 0.2); }
-        .strip-scale-btn.has-override {
-            background: rgba(255, 184, 77, 0.12);
-            border-color: var(--warn);
+        .strip-label:hover { color: var(--ink-dim); }
+        .strip-label .sl-text {
+            font-size: 7px;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--ink-ghost);
+            font-weight: 700;
+            transition: color 0.12s;
+        }
+        .strip-label:hover .sl-text { color: var(--ink-dim); }
+        .strip-label .sl-scale {
+            font-size: 8px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--accent);
+            font-weight: 700;
+            margin-left: 4px;
+            transition: color 0.12s;
+        }
+        .strip-label.has-override .sl-scale {
             color: var(--warn);
         }
-        .strip-scale-btn.has-override:hover { background: rgba(255, 184, 77, 0.2); }
-
-        .strip-ghost-btn {
+        /* Next-scale hint — appears on hover */
+        .strip-label .sl-next {
+            font-size: 7px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--ink-faint);
+            font-weight: 600;
+            margin-left: 5px;
+            opacity: 0;
+            transition: opacity 0.15s;
+            white-space: nowrap;
+        }
+        .strip-label:hover .sl-next { opacity: 1; }
+        /* Revert button */
+        .strip-revert {
             background: transparent;
             border: 1px solid var(--line);
-            color: var(--ink-ghost);
+            color: var(--ink-faint);
             font-family: inherit;
-            font-size: 9px;
+            font-size: 10px;
             padding: 0;
             width: 15px;
             height: 15px;
@@ -786,21 +803,13 @@
             cursor: pointer;
             font-weight: 700;
             transition: all 0.1s;
+            flex-shrink: 0;
         }
-        .strip-ghost-btn:hover {
-            color: var(--ink-dim);
-            border-color: var(--line-2);
-            background: var(--bg-2);
-        }
-        .strip-ghost-btn.revert-btn {
-            color: var(--ink-faint);
-            font-size: 10px;
-        }
-        .strip-ghost-btn.revert-btn:hover {
+        .strip-revert:hover {
             color: var(--warn);
             border-color: rgba(255, 184, 77, 0.35);
         }
-        .strip-ghost-btn.revert-btn.hidden { display: none; }
+        .strip-revert.hidden { display: none; }
 
         .strip-canvas {
             display: block;
@@ -887,8 +896,8 @@
             padding: 1.4rem 1.8rem 1.5rem;
         }
         .grid-detail .card-bg-img {
-            width: 225px;
-            height: 225px;
+            width: calc(var(--card-img-size, 170px) * 1.35);
+            height: calc(var(--card-img-size, 170px) * 1.35);
             top: 1rem;
             right: 1rem;
         }
@@ -1488,11 +1497,12 @@
                 <div class="sub-header-sep"></div>
 
                 <div class="global-scale">
-                    <span class="gs-label">Scale</span>
-                    <button class="strip-scale-btn" x-text="globalScale" @click="cycleGlobalScale()"></button>
-                    <button class="strip-ghost-btn" @click="nudgeGlobalScale(-1)" title="Zoom in">&minus;</button>
-                    <button class="strip-ghost-btn" @click="nudgeGlobalScale(1)" title="Zoom out">+</button>
-                    <button class="strip-ghost-btn revert-btn" @click="resetAllStrips()" title="Reset all strips to global scale">&#x21ba;</button>
+                    <span class="strip-label" @click="cycleGlobalScale()" title="Click to change global scale">
+                        <span class="sl-text">Status</span>
+                        <span class="sl-scale" x-text="globalScale"></span>
+                        <span class="sl-next" x-text="'→ ' + nextGlobalScale()"></span>
+                    </span>
+                    <button class="strip-revert" @click="resetAllStrips()" title="Reset all strips to global scale">&#x21ba;</button>
                 </div>
 
                 <div class="sub-header-sep"></div>
@@ -1976,9 +1986,19 @@
                                     <span style="color:var(--ink-ghost);font-size:10px;">seconds (10–3600)</span>
                                 </label>
                             </div>
-                            <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em;">
+                            <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em; margin-bottom: 1.5rem;">
                                 Agents read this value from the heartbeat response and adapt their reporting cadence automatically.
                             </p>
+                            <div class="form-row">
+                                <label style="display:flex;align-items:center;gap:0.6rem;font-size:11px;color:var(--ink-dim);">
+                                    Card icon size
+                                    <input type="range" min="80" max="300" step="10"
+                                           :value="cardImgSize"
+                                           @input="cardImgSize = parseInt($event.target.value); document.documentElement.style.setProperty('--card-img-size', cardImgSize + 'px'); localStorage.setItem('fleetcom.imgSize', cardImgSize)"
+                                           style="width:120px;">
+                                    <span style="color:var(--ink-ghost);font-size:10px;" x-text="cardImgSize + 'px'"></span>
+                                </label>
+                            </div>
                         </div>
                     </template>
                 </div>
@@ -2053,6 +2073,8 @@
                 tickSec: 0,
                 // Timezone: true = UTC, false = local browser time
                 useUTC: true,
+                // Card image size (px)
+                cardImgSize: 170,
 
                 // Which chip is expanded in its card (key = `${type}:${entityKey}`, one at a time globally)
                 openChip: null,
@@ -2083,6 +2105,8 @@
                     this.globalScale = localStorage.getItem('fleetcom.globalScale') || '1h';
                     if (!this.scaleList.includes(this.globalScale)) this.globalScale = '1h';
                     this.useUTC = localStorage.getItem('fleetcom.tz') !== 'local';
+                    this.cardImgSize = parseInt(localStorage.getItem('fleetcom.imgSize')) || 170;
+                    document.documentElement.style.setProperty('--card-img-size', this.cardImgSize + 'px');
                     this.stripRegistry = new Set();
                     this.startClock();
                     this.loadVersion();
@@ -2486,18 +2510,18 @@
                     return ctrl.scaleOverride || this.globalScale;
                 },
 
+                nextScaleOf(scale) {
+                    const idx = this.scaleList.indexOf(scale);
+                    return this.scaleList[(idx + 1) % this.scaleList.length];
+                },
+
+                nextGlobalScale() {
+                    return this.nextScaleOf(this.globalScale);
+                },
+
                 cycleGlobalScale() {
                     const idx = this.scaleList.indexOf(this.globalScale);
                     this.globalScale = this.scaleList[(idx + 1) % this.scaleList.length];
-                    localStorage.setItem('fleetcom.globalScale', this.globalScale);
-                    this.propagateGlobalScale();
-                },
-
-                nudgeGlobalScale(dir) {
-                    const idx = this.scaleList.indexOf(this.globalScale);
-                    const next = idx + dir;
-                    if (next < 0 || next >= this.scaleList.length) return;
-                    this.globalScale = this.scaleList[next];
                     localStorage.setItem('fleetcom.globalScale', this.globalScale);
                     this.propagateGlobalScale();
                 },
@@ -2516,9 +2540,7 @@
                             c.scaleOverride = null;
                             this.updateStripScale(c, this.globalScale);
                             if (c.revertBtn) c.revertBtn.classList.add('hidden');
-                            if (c.scaleBtn) {
-                                c.scaleBtn.classList.remove('has-override');
-                            }
+                            if (c.labelEl) c.labelEl.classList.remove('has-override');
                         }
                     }
                 },
@@ -2530,20 +2552,17 @@
                     const ctrl = {
                         el, type, key: entityKey,
                         scaleOverride: null,
-                        scaleBtn: null,
+                        labelEl: null,
+                        scaleEl: null,
+                        nextEl: null,
                         revertBtn: null,
                         meta: null,
                         canvas: null,
                         data: null,
                     };
 
-                    // Lead element: "UPTIME" prefix for host, status-dot+name for entities.
-                    if (opts.kind === 'host') {
-                        const prefix = document.createElement('span');
-                        prefix.className = 'strip-prefix';
-                        prefix.textContent = 'UPTIME';
-                        el.appendChild(prefix);
-                    } else {
+                    // Lead element: context label for entities (dot + name)
+                    if (opts.kind !== 'host') {
                         const ctx = document.createElement('span');
                         ctx.className = 'strip-context s-' + (opts.status || 'dead');
                         const dot = document.createElement('span');
@@ -2556,76 +2575,50 @@
                         el.appendChild(ctx);
                     }
 
-                    // Scale controls
-                    const controls = document.createElement('span');
-                    controls.className = 'strip-controls';
+                    // "STATUS 1H" label — clickable to cycle scale
+                    const label = document.createElement('span');
+                    label.className = 'strip-label';
+                    label.title = 'Click to change time scale';
+                    const slText = document.createElement('span');
+                    slText.className = 'sl-text';
+                    slText.textContent = opts.kind === 'host' ? 'STATUS' : 'HISTORY';
+                    label.appendChild(slText);
+                    const slScale = document.createElement('span');
+                    slScale.className = 'sl-scale';
+                    slScale.textContent = this.effectiveScale(ctrl);
+                    ctrl.scaleEl = slScale;
+                    label.appendChild(slScale);
+                    const slNext = document.createElement('span');
+                    slNext.className = 'sl-next';
+                    slNext.textContent = '→ ' + this.nextScaleOf(this.effectiveScale(ctrl));
+                    ctrl.nextEl = slNext;
+                    label.appendChild(slNext);
+                    ctrl.labelEl = label;
 
-                    const scaleBtn = document.createElement('button');
-                    scaleBtn.type = 'button';
-                    scaleBtn.className = 'strip-scale-btn';
-                    scaleBtn.textContent = this.effectiveScale(ctrl);
-                    scaleBtn.addEventListener('click', () => {
-                        // Cycle through scales for this strip (creates override)
+                    label.addEventListener('click', () => {
                         const curScale = this.effectiveScale(ctrl);
-                        const idx = this.scaleList.indexOf(curScale);
-                        const nextScale = this.scaleList[(idx + 1) % this.scaleList.length];
+                        const nextScale = this.nextScaleOf(curScale);
                         ctrl.scaleOverride = nextScale;
-                        scaleBtn.classList.add('has-override');
+                        label.classList.add('has-override');
                         revertBtn.classList.remove('hidden');
                         this.updateStripScale(ctrl, nextScale);
                     });
-                    ctrl.scaleBtn = scaleBtn;
-                    controls.appendChild(scaleBtn);
+                    el.appendChild(label);
 
-                    const minusBtn = document.createElement('button');
-                    minusBtn.type = 'button';
-                    minusBtn.className = 'strip-ghost-btn';
-                    minusBtn.innerHTML = '&minus;';
-                    minusBtn.title = 'Zoom in (shorter window)';
-                    minusBtn.addEventListener('click', () => {
-                        const curScale = this.effectiveScale(ctrl);
-                        const idx = this.scaleList.indexOf(curScale);
-                        if (idx <= 0) return;
-                        const nextScale = this.scaleList[idx - 1];
-                        ctrl.scaleOverride = nextScale;
-                        scaleBtn.classList.add('has-override');
-                        revertBtn.classList.remove('hidden');
-                        this.updateStripScale(ctrl, nextScale);
-                    });
-                    controls.appendChild(minusBtn);
-
-                    const plusBtn = document.createElement('button');
-                    plusBtn.type = 'button';
-                    plusBtn.className = 'strip-ghost-btn';
-                    plusBtn.textContent = '+';
-                    plusBtn.title = 'Zoom out (longer window)';
-                    plusBtn.addEventListener('click', () => {
-                        const curScale = this.effectiveScale(ctrl);
-                        const idx = this.scaleList.indexOf(curScale);
-                        if (idx >= this.scaleList.length - 1) return;
-                        const nextScale = this.scaleList[idx + 1];
-                        ctrl.scaleOverride = nextScale;
-                        scaleBtn.classList.add('has-override');
-                        revertBtn.classList.remove('hidden');
-                        this.updateStripScale(ctrl, nextScale);
-                    });
-                    controls.appendChild(plusBtn);
-
+                    // Revert button
                     const revertBtn = document.createElement('button');
                     revertBtn.type = 'button';
-                    revertBtn.className = 'strip-ghost-btn revert-btn hidden';
+                    revertBtn.className = 'strip-revert hidden';
                     revertBtn.innerHTML = '&#x21ba;';
                     revertBtn.title = 'Revert to global scale';
                     revertBtn.addEventListener('click', () => {
                         ctrl.scaleOverride = null;
-                        scaleBtn.classList.remove('has-override');
+                        label.classList.remove('has-override');
                         revertBtn.classList.add('hidden');
                         this.updateStripScale(ctrl, this.globalScale);
                     });
                     ctrl.revertBtn = revertBtn;
-                    controls.appendChild(revertBtn);
-
-                    el.appendChild(controls);
+                    el.appendChild(revertBtn);
 
                     const canvas = document.createElement('canvas');
                     canvas.className = 'strip-canvas';
@@ -2645,7 +2638,8 @@
                 },
 
                 updateStripScale(ctrl, scale) {
-                    if (ctrl.scaleBtn) ctrl.scaleBtn.textContent = scale;
+                    if (ctrl.scaleEl) ctrl.scaleEl.textContent = scale;
+                    if (ctrl.nextEl) ctrl.nextEl.textContent = '→ ' + this.nextScaleOf(scale);
                     this.fetchStrip(ctrl);
                 },
 
@@ -2708,11 +2702,33 @@
                         ctx.fillRect(0, 0, coverStartIdx * cellW, cssH);
                     }
 
+                    // Interpolate isolated "none" gaps: if a bucket has no data but
+                    // neighbors on both sides have data, inherit the worst neighbor
+                    // status. This prevents single missed heartbeats from showing as
+                    // red outage segments. Only consecutive none-runs (real downtime)
+                    // remain red.
+                    const resolved = new Array(n);
+                    for (let i = 0; i < n; i++) {
+                        resolved[i] = (buckets[i] && buckets[i].s) ? buckets[i].s : 'none';
+                    }
+                    for (let i = coverStartIdx; i < n; i++) {
+                        if (resolved[i] !== 'none') continue;
+                        // Find the previous and next non-none statuses
+                        let prev = null, next = null;
+                        if (i > coverStartIdx) prev = resolved[i - 1] !== 'none' ? resolved[i - 1] : null;
+                        if (i < n - 1) next = (buckets[i + 1] && buckets[i + 1].s) ? buckets[i + 1].s : null;
+                        // Only interpolate isolated single gaps
+                        if (prev && prev !== 'none' && next && next !== 'none') {
+                            // Inherit the worse of the two neighbors
+                            const rank = { ok: 0, dead: 1, warn: 2, crit: 3 };
+                            resolved[i] = (rank[prev] || 0) >= (rank[next] || 0) ? prev : next;
+                        }
+                    }
+
                     const colors = { ok: '#3ddc97', warn: '#ffb84d', crit: '#ff4d6d', dead: '#5a6068' };
                     for (let i = 0; i < n; i++) {
                         if (i < coverStartIdx) continue;
-                        const b = buckets[i];
-                        const status = b ? b.s : 'none';
+                        const status = resolved[i];
                         const x = Math.floor(i * cellW);
                         const w = Math.max(1, Math.floor((i + 1) * cellW) - x - (cellW > 2 ? 1 : 0));
                         if (status === 'none') {
@@ -2736,10 +2752,10 @@
                             ctrl.meta.textContent = '—';
                         } else if (coverageSec >= windowSec - 1) {
                             let ok = 0, total = 0;
-                            for (const b of buckets) {
-                                if (!b || b.s === 'none') continue;
+                            for (let i = coverStartIdx; i < n; i++) {
+                                if (resolved[i] === 'none') continue;
                                 total++;
-                                if (b.s === 'ok') ok++;
+                                if (resolved[i] === 'ok') ok++;
                             }
                             const pct = total > 0 ? Math.round(100 * ok / total) : 0;
                             ctrl.meta.textContent = pct + '% ok';
