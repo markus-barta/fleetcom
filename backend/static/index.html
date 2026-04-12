@@ -835,6 +835,72 @@
         }
 
         /* ============================================================
+           DETAIL VIEW — expanded cards, single column
+           ============================================================ */
+        .grid-detail {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.2rem;
+            max-width: 900px;
+        }
+        .grid-detail .card {
+            padding: 1.2rem 1.5rem 1.3rem;
+        }
+        .grid-detail .card-avatar {
+            width: 64px;
+            height: 64px;
+        }
+        .grid-detail .hostname {
+            font-size: 18px;
+        }
+        .grid-detail .card-comment {
+            font-size: 11px;
+            max-height: none;
+        }
+        .grid-detail .card-head-right {
+            font-size: 11px;
+        }
+        .card-detail-meta {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 0.5rem;
+            margin-top: 0.65rem;
+            padding: 0.6rem 0.8rem;
+            background: var(--bg-0);
+            border: 1px solid var(--line);
+            font-size: 10px;
+        }
+        .detail-field {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .detail-field .df-label {
+            font-size: 7px;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--ink-ghost);
+            font-weight: 700;
+        }
+        .detail-field .df-value {
+            color: var(--ink-dim);
+            font-variant-numeric: tabular-nums;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .grid-detail .strip-canvas {
+            height: 18px;
+        }
+        .grid-detail .chips {
+            gap: 5px;
+        }
+        .grid-detail .chip {
+            padding: 4px 9px;
+            font-size: 12px;
+        }
+
+        /* ============================================================
            COMPACT VIEW — telemetry table
            ============================================================ */
         .fleet-table {
@@ -1284,38 +1350,12 @@
     </style>
 </head>
 <body>
-    <!-- SVG icon definitions (hidden) -->
+    <!-- Custom SVG icons not in Lucide (Docker logo, shipping container) -->
     <svg xmlns="http://www.w3.org/2000/svg" style="display:none;">
         <defs>
-            <symbol id="icon-server" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect width="20" height="8" x="2" y="2" rx="0.5" ry="0.5"/><rect width="20" height="8" x="2" y="14" rx="0.5" ry="0.5"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>
-            </symbol>
-            <symbol id="icon-docker" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                <path d="M13.983 11.078h2.119a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.119a.186.186 0 00-.187.186v1.887c0 .102.084.185.187.185zm-2.954-5.43h2.118a.186.186 0 00.187-.185V3.576a.186.186 0 00-.187-.186h-2.118a.186.186 0 00-.187.186v1.887c0 .102.084.185.187.185zm0 2.716h2.118a.186.186 0 00.187-.186V6.291a.186.186 0 00-.187-.186h-2.118a.186.186 0 00-.187.186v1.887c0 .102.084.186.187.186zm-2.93 0h2.12a.186.186 0 00.186-.186V6.291a.186.186 0 00-.186-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.083.186.186.186zm-2.964 0h2.119a.186.186 0 00.185-.186V6.291a.186.186 0 00-.185-.186H5.136a.186.186 0 00-.186.186v1.887c0 .102.084.186.186.186zm5.893 2.715h2.118a.186.186 0 00.186-.186V9.006a.186.186 0 00-.186-.186h-2.118a.186.186 0 00-.187.186v1.887c0 .102.084.185.187.185zm-2.93 0h2.12a.186.186 0 00.186-.185V9.006a.186.186 0 00-.186-.186h-2.12a.186.186 0 00-.186.186v1.887c0 .102.083.185.186.185zm-2.964 0h2.119a.186.186 0 00.185-.185V9.006a.186.186 0 00-.185-.186H5.136a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185zm-2.92 0h2.119a.186.186 0 00.185-.185V9.006a.186.186 0 00-.185-.186H2.216a.186.186 0 00-.186.186v1.887c0 .102.084.185.186.185zM23.078 13.15c-.322-.18-.637-.26-.943-.252-.19.006-.374.04-.55.097-.375-.94-1.084-1.56-2.003-1.834l-.15-.04-.078.14c-.158.31-.255.66-.29 1.03-.056.592.073 1.146.368 1.618-.173.1-.37.19-.575.26-.365.126-.762.193-1.167.2H.482l-.037.215c-.12.78-.12 1.59.008 2.39.17 1.07.527 2.016 1.05 2.8.566.838 1.316 1.486 2.236 1.92.99.464 2.245.71 3.543.71.66 0 1.33-.063 1.998-.192.916-.175 1.796-.49 2.59-.92.662-.355 1.257-.79 1.773-1.29.82-.79 1.47-1.744 1.97-2.76h.17c1.057 0 1.71-.42 2.072-.78.24-.236.42-.518.54-.83l.075-.2-.07-.04z"/>
-            </symbol>
-            <symbol id="icon-sparkles" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .963L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/>
-            </symbol>
             <symbol id="icon-container" viewBox="0 0 24 24">
                 <rect x="2" y="7" width="20" height="10" rx="0.6" ry="0.6" fill="currentColor"/>
                 <path d="M6 9.5v5M10 9.5v5M14 9.5v5M18 9.5v5" stroke="rgba(0,0,0,0.45)" stroke-width="1.4" stroke-linecap="round" fill="none"/>
-            </symbol>
-            <symbol id="icon-github" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
-            </symbol>
-            <symbol id="icon-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>
-            </symbol>
-            <symbol id="icon-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
-                <circle cx="12" cy="12" r="3"/>
-            </symbol>
-            <symbol id="icon-scale" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/>
-                <path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/>
-                <path d="M7 21h10"/>
-                <path d="M12 3v18"/>
-                <path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/>
             </symbol>
         </defs>
     </svg>
@@ -1342,11 +1382,11 @@
 
             <div class="header-right">
                 <a href="/logout" class="signout" x-show="!shared">
-                    <svg viewBox="0 0 24 24"><use href="#icon-logout"/></svg>
+                    <i data-lucide="log-out"></i>
                     <span>Sign out</span>
                 </a>
                 <div class="clock">
-                    <span x-text="clockDate"></span><span class="sep">·</span><span x-text="clockTime"></span><span class="tz">UTC</span>
+                    <span x-text="clockDate"></span><span class="sep">·</span><span x-text="clockTime"></span><span class="tz" @click="toggleTimezone()" style="cursor:pointer;" :title="'Click to switch to ' + (useUTC ? 'local' : 'UTC') + ' time'" x-text="tzLabel"></span>
                 </div>
             </div>
         </header>
@@ -1354,26 +1394,19 @@
         <div class="sub-header" x-show="view === 'dashboard'">
             <div class="sub-header-center">
                 <div class="fleet-stat" :class="hostsDown > 0 ? (hostsUp === 0 ? 'state-crit' : 'state-warn') : ''">
-                    <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect width="20" height="8" x="2" y="2" rx="0.5" ry="0.5"/><rect width="20" height="8" x="2" y="14" rx="0.5" ry="0.5"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>
-                    </svg>
+                    <i data-lucide="server" class="stat-icon"></i>
                     <span class="stat-label">Hosts</span>
                     <span class="stat-value"><span x-text="hostsUp"></span><span class="sub">/</span><span x-text="hosts.length"></span></span>
                 </div>
 
                 <div class="fleet-stat" :class="totalContainers > 0 && runningContainers < totalContainers ? 'state-warn' : ''">
-                    <svg class="stat-icon" viewBox="0 0 24 24">
-                        <rect x="2" y="7" width="20" height="10" rx="0.6" ry="0.6" fill="currentColor"/>
-                        <path d="M6 9.5v5M10 9.5v5M14 9.5v5M18 9.5v5" stroke="rgba(0,0,0,0.45)" stroke-width="1.4" stroke-linecap="round" fill="none"/>
-                    </svg>
+                    <i data-lucide="container" class="stat-icon"></i>
                     <span class="stat-label">Containers</span>
                     <span class="stat-value"><span x-text="runningContainers"></span><span class="sub">/</span><span x-text="totalContainers"></span></span>
                 </div>
 
                 <div class="fleet-stat" :class="totalAgents > 0 && onlineAgents < totalAgents ? 'state-warn' : ''">
-                    <svg class="stat-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .963L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/>
-                    </svg>
+                    <i data-lucide="sparkles" class="stat-icon"></i>
                     <span class="stat-label">Agents</span>
                     <span class="stat-value"><span x-text="onlineAgents"></span><span class="sub">/</span><span x-text="totalAgents"></span></span>
                 </div>
@@ -1391,6 +1424,7 @@
                 <div class="sub-header-sep"></div>
 
                 <div class="view-toggle">
+                    <button :class="viewMode === 'overview' && 'active'" @click="setViewMode('overview')">Overview</button>
                     <button :class="viewMode === 'detail' && 'active'" @click="setViewMode('detail')">Detail</button>
                     <button :class="viewMode === 'compact' && 'active'" @click="setViewMode('compact')">Compact</button>
                 </div>
@@ -1402,7 +1436,7 @@
             <template x-if="view === 'dashboard'">
                 <div>
                     <div class="view-label" x-show="hosts.length > 0">
-                        <span x-text="'Fleet · ' + (viewMode === 'detail' ? 'Detail' : 'Compact')"></span>
+                        <span x-text="'Fleet · ' + ({overview:'Overview',detail:'Detail',compact:'Compact'}[viewMode] || viewMode)"></span>
                     </div>
 
                     <template x-if="hosts.length === 0">
@@ -1412,8 +1446,8 @@
                         </div>
                     </template>
 
-                    <!-- DETAIL MODE -->
-                    <template x-if="viewMode === 'detail' && hosts.length > 0">
+                    <!-- OVERVIEW MODE -->
+                    <template x-if="viewMode === 'overview' && hosts.length > 0">
                         <div class="grid">
                             <template x-for="host in hosts" :key="host.hostname">
                                 <div class="card"
@@ -1425,7 +1459,7 @@
                                                 <img :src="'/api/image-presets/' + hostConfigs[host.hostname].image_preset_id + '/image'" :alt="host.hostname">
                                             </template>
                                             <template x-if="!hostConfigs[host.hostname] || !hostConfigs[host.hostname].image_preset_id">
-                                                <svg class="avatar-placeholder" viewBox="0 0 24 24"><use href="#icon-server"/></svg>
+                                                <i data-lucide="server" class="avatar-placeholder"></i>
                                             </template>
                                         </div>
                                         <div class="card-head-main">
@@ -1434,7 +1468,7 @@
                                                     <span class="hostname" x-text="host.hostname"></span>
                                                     <span class="state-pill" x-text="stateLabel(hostStatus(host))"></span>
                                                     <button class="card-gear" @click.stop="openHostConfig(host.hostname)" title="Host settings">
-                                                        <svg viewBox="0 0 24 24"><use href="#icon-gear"/></svg>
+                                                        <i data-lucide="settings"></i>
                                                     </button>
                                                 </div>
                                                 <div class="card-head-right">
@@ -1487,7 +1521,7 @@
                                                          :title="a.name + ' · ' + a.status"
                                                          @click="toggleChip('agent', host.hostname + '/' + a.name)"
                                                          @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
-                                                        <svg class="spark" viewBox="0 0 24 24"><use href="#icon-sparkles"/></svg>
+                                                        <i data-lucide="sparkles" class="spark"></i>
                                                         <span class="name" x-text="a.name"></span>
                                                     </div>
                                                 </template>
@@ -1502,6 +1536,121 @@
 
                                     <template x-if="(!host.containers || host.containers.length === 0) && (!host.agents || host.agents.length === 0)">
                                         <div class="card-empty">No containers or agents reported</div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- DETAIL MODE — expanded single-column cards with extra sysop info -->
+                    <template x-if="viewMode === 'detail' && hosts.length > 0">
+                        <div class="grid-detail">
+                            <template x-for="host in hosts" :key="host.hostname">
+                                <div class="card"
+                                     :class="['state-' + hostStatus(host), isIgnored('host', host.hostname) ? 'is-ignored' : '']"
+                                     @contextmenu.prevent="showCtxMenu($event, 'host', host.hostname)">
+                                    <div class="card-head">
+                                        <div class="card-avatar">
+                                            <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].image_preset_id">
+                                                <img :src="'/api/image-presets/' + hostConfigs[host.hostname].image_preset_id + '/image'" :alt="host.hostname">
+                                            </template>
+                                            <template x-if="!hostConfigs[host.hostname] || !hostConfigs[host.hostname].image_preset_id">
+                                                <i data-lucide="server" class="avatar-placeholder"></i>
+                                            </template>
+                                        </div>
+                                        <div class="card-head-main">
+                                            <div class="card-head-top">
+                                                <div class="card-head-left">
+                                                    <span class="hostname" x-text="host.hostname"></span>
+                                                    <span class="state-pill" x-text="stateLabel(hostStatus(host))"></span>
+                                                    <button class="card-gear" @click.stop="openHostConfig(host.hostname)" title="Host settings">
+                                                        <i data-lucide="settings"></i>
+                                                    </button>
+                                                </div>
+                                                <div class="card-head-right">
+                                                    <div x-text="(host.os || 'unknown') + (host.uptime_seconds ? ' · up ' + formatUptime(host.uptime_seconds) : '')"></div>
+                                                    <div class="seen" x-text="'seen ' + formatAgo(host.last_seen)"></div>
+                                                </div>
+                                            </div>
+                                            <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].comment">
+                                                <div class="card-comment" x-text="hostConfigs[host.hostname].comment"></div>
+                                            </template>
+                                        </div>
+                                    </div>
+
+                                    <div class="card-detail-meta">
+                                        <div class="detail-field">
+                                            <span class="df-label">Kernel</span>
+                                            <span class="df-value" x-text="host.kernel || '—'"></span>
+                                        </div>
+                                        <div class="detail-field">
+                                            <span class="df-label">Uptime</span>
+                                            <span class="df-value" x-text="formatUptime(host.uptime_seconds) || '—'"></span>
+                                        </div>
+                                        <div class="detail-field">
+                                            <span class="df-label">Last seen</span>
+                                            <span class="df-value" x-text="formatAgo(host.last_seen)"></span>
+                                        </div>
+                                        <div class="detail-field">
+                                            <span class="df-label">Containers</span>
+                                            <span class="df-value" x-text="countRunning(host.containers) + '/' + (host.containers ? host.containers.length : 0) + ' running'"></span>
+                                        </div>
+                                        <div class="detail-field">
+                                            <span class="df-label">Agents</span>
+                                            <span class="df-value" x-text="countOnlineAgents(host.agents) + '/' + (host.agents ? host.agents.length : 0) + ' online'"></span>
+                                        </div>
+                                    </div>
+
+                                    <div class="strip-block host-strip" x-init="mountStrip($el, 'host', host.hostname, { kind: 'host' })"></div>
+
+                                    <template x-if="host.containers && host.containers.length > 0">
+                                        <div class="card-section">
+                                            <div class="card-section-label">
+                                                <span>Containers</span><span class="count" x-text="'· ' + countRunning(host.containers) + '/' + host.containers.length"></span>
+                                            </div>
+                                            <div class="chips" :class="host.containers.length > 8 ? 'dense' : ''">
+                                                <template x-for="c in host.containers" :key="c.name">
+                                                    <div class="chip chip-container"
+                                                         :class="['s-' + containerStatus(c), isChipOpen('container', host.hostname + '/' + c.name) ? 'is-open' : '', isIgnored('container', host.hostname + '/' + c.name) ? 'is-ignored' : '']"
+                                                         :title="c.name + ' · ' + c.state + ' · ' + (c.image || '')"
+                                                         @click="toggleChip('container', host.hostname + '/' + c.name)"
+                                                         @contextmenu.prevent.stop="showCtxMenu($event, 'container', host.hostname + '/' + c.name)">
+                                                        <svg class="crate" viewBox="0 0 24 24"><use href="#icon-container"/></svg>
+                                                        <span class="name" x-text="c.name"></span>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                            <template x-for="c in host.containers" :key="'hist-' + c.name">
+                                                <template x-if="isChipOpen('container', host.hostname + '/' + c.name)">
+                                                    <div class="strip-block" x-init="mountStrip($el, 'container', host.hostname + '/' + c.name, { kind: 'entity', label: c.name, status: containerStatus(c) })"></div>
+                                                </template>
+                                            </template>
+                                        </div>
+                                    </template>
+
+                                    <template x-if="host.agents && host.agents.length > 0">
+                                        <div class="card-section">
+                                            <div class="card-section-label">
+                                                <span>Agents</span><span class="count" x-text="'· ' + countOnlineAgents(host.agents) + '/' + host.agents.length"></span>
+                                            </div>
+                                            <div class="chips">
+                                                <template x-for="a in host.agents" :key="a.name">
+                                                    <div class="chip chip-agent"
+                                                         :class="['s-' + agentStatus(a), isChipOpen('agent', host.hostname + '/' + a.name) ? 'is-open' : '', isIgnored('agent', host.hostname + '/' + a.name) ? 'is-ignored' : '']"
+                                                         :title="a.name + ' · ' + a.status + ' · ' + (a.agent_type || '')"
+                                                         @click="toggleChip('agent', host.hostname + '/' + a.name)"
+                                                         @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
+                                                        <i data-lucide="sparkles" class="spark"></i>
+                                                        <span class="name" x-text="a.name"></span>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                            <template x-for="a in host.agents" :key="'hist-' + a.name">
+                                                <template x-if="isChipOpen('agent', host.hostname + '/' + a.name)">
+                                                    <div class="strip-block" x-init="mountStrip($el, 'agent', host.hostname + '/' + a.name, { kind: 'entity', label: a.name, status: agentStatus(a) })"></div>
+                                                </template>
+                                            </template>
+                                        </div>
                                     </template>
                                 </div>
                             </template>
@@ -1597,7 +1746,7 @@
                                         <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
                                             <div>
                                                 <span class="hostname" x-text="t.hostname"></span>
-                                                <span class="created" x-text="t.created_at"></span>
+                                                <span class="created" x-text="formatTs(t.created_at)"></span>
                                             </div>
                                             <div style="display:flex;gap:0.4rem;">
                                                 <button class="btn" @click="configHost === t.hostname ? configHost = '' : openHostConfig(t.hostname)" x-text="configHost === t.hostname ? 'Close' : 'Configure'"></button>
@@ -1663,7 +1812,7 @@
                                         <div style="display:flex;align-items:center;gap:0.75rem;">
                                             <img :src="'/api/image-presets/' + p.id + '/image'" style="width:40px;height:40px;object-fit:contain;border:1px solid var(--line);background:var(--bg-0);">
                                             <span class="hostname" x-text="p.name"></span>
-                                            <span class="created" x-text="p.created_at"></span>
+                                            <span class="created" x-text="formatTs(p.created_at)"></span>
                                         </div>
                                         <button class="btn btn-danger" @click="deletePreset(p.id)">Delete</button>
                                     </li>
@@ -1707,7 +1856,7 @@
                                     <li>
                                         <div>
                                             <span class="hostname" x-text="s.label || 'guest'"></span>
-                                            <span class="created" x-text="'expires ' + s.expires_at"></span>
+                                            <span class="created" x-text="'expires ' + formatTs(s.expires_at)"></span>
                                         </div>
                                         <button class="btn btn-danger" @click="deleteShare(s.id)">Revoke</button>
                                     </li>
@@ -1779,25 +1928,26 @@
             <div class="footer-inner">
                 <span class="brand-f">FleetCom<span class="version" x-text="' v' + (ver.version || '—')"></span></span>
                 <span class="sep">&bull;</span>
-                <span class="deployed">Deployed <span class="ts" x-text="ver.build_time_display || 'unknown'"></span></span>
+                <span class="deployed">Deployed <span class="ts" x-text="ver.build_time_display || 'unknown'"></span> <span class="tz" @click="toggleTimezone()" style="cursor:pointer;font-size:8px;" x-text="tzLabel"></span></span>
                 <span class="sep">&bull;</span>
                 <a class="commit"
                    :href="ver.commit && ver.commit !== 'dev' && ver.commit !== 'unknown'
                           ? 'https://github.com/markus-barta/fleetcom/commit/' + ver.commit
                           : 'https://github.com/markus-barta/fleetcom'"
                    target="_blank" rel="noopener">
-                    <svg><use href="#icon-github"/></svg>
+                    <i data-lucide="github"></i>
                     <span class="hash" x-text="ver.commit ? ver.commit.substring(0, 7) : 'dev'"></span>
                 </a>
                 <span class="sep">&bull;</span>
                 <a href="/LICENSE" target="_blank" rel="noopener" title="GNU Affero General Public License v3.0">
-                    <svg><use href="#icon-scale"/></svg>
+                    <i data-lucide="scale"></i>
                     <span>AGPL-3.0</span>
                 </a>
             </div>
         </footer>
     </div>
 
+    <script src="/static/lucide.min.js"></script>
     <script src="/static/alpine.min.js" defer></script>
     <script>
         function fleetcom() {
@@ -1807,7 +1957,7 @@
                 shares: [],
                 shared: false,
                 view: 'dashboard',
-                viewMode: 'detail',
+                viewMode: 'overview',
                 newHostname: '',
                 newToken: null,
                 newShare: null,
@@ -1827,6 +1977,8 @@
                 clockDate: '',
                 clockTime: '',
                 tickSec: 0,
+                // Timezone: true = UTC, false = local browser time
+                useUTC: true,
 
                 // Which chip is expanded in its card (key = `${type}:${entityKey}`, one at a time globally)
                 openChip: null,
@@ -1851,9 +2003,12 @@
                 stripRegistry: null,
 
                 init() {
-                    this.viewMode = localStorage.getItem('fleetcom.view') || 'detail';
+                    this.viewMode = localStorage.getItem('fleetcom.view') || 'overview';
+                    // Migrate legacy values
+                    if (this.viewMode === 'detail') this.viewMode = 'overview';
                     this.globalScale = localStorage.getItem('fleetcom.globalScale') || '1h';
                     if (!this.scaleList.includes(this.globalScale)) this.globalScale = '1h';
+                    this.useUTC = localStorage.getItem('fleetcom.tz') !== 'local';
                     this.stripRegistry = new Set();
                     this.startClock();
                     this.loadVersion();
@@ -1870,6 +2025,11 @@
                             for (const c of this.stripRegistry) this.drawStrip(c);
                         }, 150);
                     });
+                    // Initialize Lucide icons and observe DOM changes for Alpine templates
+                    this.$nextTick(() => lucide.createIcons());
+                    new MutationObserver(() => lucide.createIcons()).observe(
+                        document.querySelector('.app'), { childList: true, subtree: true }
+                    );
                 },
 
                 startStripRefresher() {
@@ -1892,19 +2052,40 @@
                     localStorage.setItem('fleetcom.view', m);
                 },
 
-                // ---------- clock ----------
+                // ---------- clock + timezone ----------
                 startClock() {
                     const tick = () => {
                         const d = new Date();
                         const pad = n => String(n).padStart(2, '0');
-                        this.clockDate = d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
-                        this.clockTime = pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
-                        // Lightweight tick counter — only "seen Xs ago" and hostStatus
-                        // bindings re-evaluate. No hosts array clone needed.
+                        if (this.useUTC) {
+                            this.clockDate = d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
+                            this.clockTime = pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
+                        } else {
+                            this.clockDate = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+                            this.clockTime = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+                        }
                         this.tickSec++;
                     };
                     tick();
                     setInterval(tick, 1000);
+                },
+
+                get tzLabel() {
+                    if (this.useUTC) return 'UTC';
+                    const off = -(new Date().getTimezoneOffset());
+                    const sign = off >= 0 ? '+' : '-';
+                    const h = Math.floor(Math.abs(off) / 60);
+                    const m = Math.abs(off) % 60;
+                    return 'GMT' + sign + h + (m ? ':' + String(m).padStart(2, '0') : '');
+                },
+
+                toggleTimezone() {
+                    this.useUTC = !this.useUTC;
+                    localStorage.setItem('fleetcom.tz', this.useUTC ? 'utc' : 'local');
+                    // Re-format build time for footer
+                    if (this.ver.build_time) {
+                        this.ver.build_time_display = this.formatBuildTime(this.ver.build_time);
+                    }
                 },
 
                 // ---------- version ----------
@@ -1923,8 +2104,26 @@
                     const d = new Date(iso);
                     if (isNaN(d.getTime())) return iso;
                     const pad = n => String(n).padStart(2, '0');
+                    if (this.useUTC) {
+                        return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) +
+                               ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
+                    }
                     return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
                            ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+                },
+
+                // Format ISO timestamp for display (tokens, shares, presets)
+                formatTs(iso) {
+                    if (!iso) return '—';
+                    const d = new Date(iso);
+                    if (isNaN(d.getTime())) return iso;
+                    const pad = n => String(n).padStart(2, '0');
+                    if (this.useUTC) {
+                        return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) +
+                               ' ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+                    }
+                    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) +
+                           ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
                 },
 
                 // ---------- SSE connection ----------
