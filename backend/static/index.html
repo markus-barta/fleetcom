@@ -1303,6 +1303,39 @@
             border-bottom: 1px solid var(--line-2);
             margin-bottom: 1.5rem;
         }
+        .settings-tabs .tab-spacer { flex: 1; }
+        /* Docs styling */
+        .docs h3 {
+            font-size: 11px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--ink-dim);
+            font-weight: 700;
+            margin: 1.5rem 0 0.5rem;
+            padding-bottom: 0.3rem;
+            border-bottom: 1px solid var(--line);
+        }
+        .docs h3:first-child { margin-top: 0; }
+        .docs p {
+            font-size: 11px;
+            color: var(--ink-ghost);
+            line-height: 1.6;
+            margin-bottom: 0.5rem;
+        }
+        .docs pre {
+            background: var(--bg-0);
+            border: 1px solid var(--line);
+            padding: 0.6rem 0.8rem;
+            font-size: 11px;
+            color: var(--ink-dim);
+            overflow-x: auto;
+            margin-bottom: 0.75rem;
+            line-height: 1.5;
+        }
+        .docs code {
+            font-size: 11px;
+            color: var(--accent);
+        }
         .settings-tab {
             background: transparent;
             border: none;
@@ -1806,6 +1839,8 @@
                         <button class="settings-tab" :class="settingsTab === 'sharing' && 'active'" @click="settingsTab = 'sharing'; loadShares()">Sharing</button>
                         <button class="settings-tab" :class="settingsTab === 'ignored' && 'active'" @click="settingsTab = 'ignored'; loadIgnoredList()">Ignored</button>
                         <button class="settings-tab" :class="settingsTab === 'config' && 'active'" @click="settingsTab = 'config'">Config</button>
+                        <span class="tab-spacer"></span>
+                        <button class="settings-tab" :class="settingsTab === 'docs' && 'active'" @click="settingsTab = 'docs'">Docs</button>
                     </div>
 
                     <!-- Hosts tab -->
@@ -1842,10 +1877,11 @@
                                                 <div style="display:flex;gap:1rem;margin-bottom:0.6rem;align-items:center;">
                                                     <label style="font-size:10px;color:var(--ink-ghost);letter-spacing:0.12em;text-transform:uppercase;font-weight:600;">Icon</label>
                                                     <select style="background:var(--bg-0);border:1px solid var(--line-2);color:var(--ink);font-family:inherit;font-size:11px;padding:2px 6px;"
-                                                            x-model.number="configImageId">
-                                                        <option :value="null">None</option>
+                                                            x-model="configImageId"
+                                                            @change="configImageId = $event.target.value ? parseInt($event.target.value) : null">
+                                                        <option value="">None</option>
                                                         <template x-for="p in imagePresets" :key="p.id">
-                                                            <option :value="p.id" x-text="p.name"></option>
+                                                            <option :value="p.id" :selected="configImageId === p.id" x-text="p.name"></option>
                                                         </template>
                                                     </select>
                                                     <template x-if="configImageId">
@@ -1999,6 +2035,64 @@
                                     <span style="color:var(--ink-ghost);font-size:10px;" x-text="cardImgSize + 'px'"></span>
                                 </label>
                             </div>
+                        </div>
+                    </template>
+
+                    <!-- Docs tab -->
+                    <template x-if="settingsTab === 'docs'">
+                        <div class="docs">
+                            <h3>Adding a Host</h3>
+                            <p>Go to <strong>Hosts</strong> tab, enter a hostname, and click <strong>Add Host</strong>. Copy the bearer token — it is shown only once.</p>
+
+                            <h3>Non-NixOS Setup</h3>
+                            <p>Download the agent script and run it as a systemd service or directly:</p>
+<pre>curl -sO https://fleet.barta.cm/static/fleetcom-agent.sh
+chmod +x fleetcom-agent.sh
+
+# Run as a foreground daemon:
+FLEETCOM_URL=https://fleet.barta.cm \
+FLEETCOM_TOKEN=your-token-here \
+./fleetcom-agent.sh</pre>
+                            <p>For systemd, create <code>/etc/systemd/system/fleetcom-agent.service</code>:</p>
+<pre>[Unit]
+Description=FleetCom Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=FLEETCOM_URL=https://fleet.barta.cm
+Environment=FLEETCOM_TOKEN=your-token-here
+ExecStart=/usr/local/bin/fleetcom-agent.sh
+Restart=on-failure
+RestartSec=10s
+
+[Install]
+WantedBy=multi-user.target</pre>
+<pre>sudo systemctl enable --now fleetcom-agent</pre>
+
+                            <h3>NixOS Setup</h3>
+                            <p>Add the FleetCom flake input and enable the agent module. Store the token as an agenix or sops-nix secret.</p>
+<pre># flake.nix — inputs
+fleetcom.url = "github:markus-barta/fleetcom";
+
+# configuration.nix — imports
+imports = [ fleetcom.nixosModules.default ];
+
+# configuration.nix — service
+services.fleetcom-agent = {
+  enable = true;
+  url = "https://fleet.barta.cm";
+  tokenFile = config.age.secrets.fleetcom-token.path;
+  agents = [
+    { name = "Merlin"; type = "cto"; }
+  ];
+};</pre>
+                            <p>Then <code>nixos-rebuild switch</code>. The agent starts as a systemd service, reads the interval from the server, and adapts automatically.</p>
+
+                            <h3>AI Agents (optional)</h3>
+                            <p>To report AI agents alongside system data, set <code>FLEETCOM_AGENTS</code> (non-NixOS) or the <code>agents</code> option (NixOS):</p>
+<pre>FLEETCOM_AGENTS='[{"name":"Ocean","agent_type":"assistant","status":"online"}]'</pre>
                         </div>
                     </template>
                 </div>
