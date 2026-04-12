@@ -456,7 +456,7 @@
             object-fit: contain;
             object-position: center;
         }
-        .card > *:not(.card-bg-img) { position: relative; z-index: 1; }
+        .card > *:not(.card-bg-img):not(.card-gear) { position: relative; z-index: 1; }
 
         /* Drop shadows for elements over the background image */
         .hostname {
@@ -2702,27 +2702,34 @@
                         ctx.fillRect(0, 0, coverStartIdx * cellW, cssH);
                     }
 
-                    // Interpolate isolated "none" gaps: if a bucket has no data but
-                    // neighbors on both sides have data, inherit the worst neighbor
-                    // status. This prevents single missed heartbeats from showing as
-                    // red outage segments. Only consecutive none-runs (real downtime)
-                    // remain red.
+                    // Interpolate none-gaps shorter than the heartbeat interval.
+                    // With 15s buckets and 60s heartbeats, up to 3 consecutive
+                    // empty buckets between two data points is expected — not
+                    // downtime. Only runs longer than the heartbeat interval are
+                    // real outages and stay red.
                     const resolved = new Array(n);
                     for (let i = 0; i < n; i++) {
                         resolved[i] = (buckets[i] && buckets[i].s) ? buckets[i].s : 'none';
                     }
-                    for (let i = coverStartIdx; i < n; i++) {
-                        if (resolved[i] !== 'none') continue;
-                        // Find the previous and next non-none statuses
-                        let prev = null, next = null;
-                        if (i > coverStartIdx) prev = resolved[i - 1] !== 'none' ? resolved[i - 1] : null;
-                        if (i < n - 1) next = (buckets[i + 1] && buckets[i + 1].s) ? buckets[i + 1].s : null;
-                        // Only interpolate isolated single gaps
-                        if (prev && prev !== 'none' && next && next !== 'none') {
-                            // Inherit the worse of the two neighbors
-                            const rank = { ok: 0, dead: 1, warn: 2, crit: 3 };
-                            resolved[i] = (rank[prev] || 0) >= (rank[next] || 0) ? prev : next;
+                    const bucketSec = windowSec / n;
+                    const maxGapBuckets = Math.ceil(this.heartbeatInterval / bucketSec);
+                    const rank = { ok: 0, dead: 1, warn: 2, crit: 3 };
+                    let i = coverStartIdx;
+                    while (i < n) {
+                        if (resolved[i] !== 'none') { i++; continue; }
+                        // Found start of a none-run — measure its length
+                        let runEnd = i;
+                        while (runEnd < n && resolved[runEnd] === 'none') runEnd++;
+                        const runLen = runEnd - i;
+                        // Find the data-bearing neighbors
+                        const prev = (i > coverStartIdx) ? resolved[i - 1] : null;
+                        const next = (runEnd < n) ? resolved[runEnd] : null;
+                        // Fill if the gap is within expected heartbeat spacing
+                        if (prev && prev !== 'none' && next && next !== 'none' && runLen <= maxGapBuckets) {
+                            const fill = (rank[prev] || 0) >= (rank[next] || 0) ? prev : next;
+                            for (let j = i; j < runEnd; j++) resolved[j] = fill;
                         }
+                        i = runEnd;
                     }
 
                     const colors = { ok: '#3ddc97', warn: '#ffb84d', crit: '#ff4d6d', dead: '#5a6068' };
