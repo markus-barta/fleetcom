@@ -37,8 +37,8 @@ func main() {
 	hub := sse.NewHub()
 	a := auth.New(store)
 
-	// Purge samples older than 35 days; run on startup and every 6 hours.
-	const sampleRetention = 35 * 24 * time.Hour
+	// Purge samples older than 400 days (covers the 1Y history scale).
+	const sampleRetention = 400 * 24 * time.Hour
 	if n, err := store.PurgeOldSamples(sampleRetention); err != nil {
 		log.Printf("initial sample purge failed: %v", err)
 	} else if n > 0 {
