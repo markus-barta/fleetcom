@@ -436,37 +436,41 @@
             gap: 1rem;
             margin-bottom: 0.25rem;
         }
-        /* Background host image — pinned top-left, fades to transparent bottom-right */
+        /* Background host image — right-aligned, padded, fades out */
         .card-bg-img {
             position: absolute;
-            top: 0;
-            left: 0;
-            width: 120px;
-            height: 120px;
+            top: 0.75rem;
+            right: 0.75rem;
+            width: 240px;
+            height: 240px;
             pointer-events: none;
             z-index: 0;
-            -webkit-mask-image: linear-gradient(135deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.1) 100%);
-            mask-image: linear-gradient(135deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.1) 100%);
+            opacity: 0.7;
+            -webkit-mask-image: radial-gradient(ellipse 90% 90% at 80% 30%, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0.05) 100%);
+            mask-image: radial-gradient(ellipse 90% 90% at 80% 30%, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.35) 50%, rgba(0,0,0,0.05) 100%);
         }
         .card-bg-img img {
             width: 100%;
             height: 100%;
             object-fit: contain;
-            object-position: top left;
+            object-position: center;
         }
         .card > *:not(.card-bg-img) { position: relative; z-index: 1; }
+
+        /* Drop shadows for elements over the background image */
+        .hostname {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--ink);
+            letter-spacing: 0.01em;
+            filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.8));
+        }
         .card-head-left {
             display: flex;
             align-items: center;
             gap: 0.6rem;
             min-width: 0;
             flex-wrap: wrap;
-        }
-        .hostname {
-            font-size: 15px;
-            font-weight: 700;
-            color: var(--ink);
-            letter-spacing: 0.01em;
         }
         .card-head-right {
             display: flex;
@@ -478,8 +482,28 @@
             line-height: 1.5;
             font-variant-numeric: tabular-nums;
             white-space: nowrap;
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
         }
-        /* Gear icon — top right of card, "Configure" label appears on hover */
+        .card-comment {
+            font-size: 10px;
+            line-height: 1.4;
+            color: var(--ink-ghost);
+            margin-top: 0.35rem;
+            white-space: pre-line;
+            max-height: 3.6em;
+            overflow: hidden;
+            letter-spacing: 0.01em;
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+        }
+        /* Semi-transparent card elements — let host image shine through */
+        .card .strip-block {
+            background: rgba(10, 13, 16, 0.88);
+        }
+        .card .chip {
+            background: rgba(8, 10, 16, 0.85);
+        }
+
+        /* Gear icon — top right of card, "Configure" label on hover */
         .card-gear {
             position: absolute;
             top: 0.6rem;
@@ -495,6 +519,7 @@
             display: flex;
             align-items: center;
             gap: 0.4rem;
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
         }
         .card-gear:hover { color: var(--ink-dim); }
         .card-gear svg, .card-gear .lucide { width: 13px; height: 13px; }
@@ -508,16 +533,6 @@
             pointer-events: none;
         }
         .card-gear:hover .card-gear-label { opacity: 1; }
-        .card-comment {
-            font-size: 10px;
-            line-height: 1.4;
-            color: var(--ink-ghost);
-            margin-top: 0.35rem;
-            white-space: pre-line;
-            max-height: 3.6em;
-            overflow: hidden;
-            letter-spacing: 0.01em;
-        }
         .state-pill {
             display: inline-block;
             font-size: 8px;
@@ -527,6 +542,7 @@
             padding: 2px 6px;
             border: 1px solid currentColor;
             line-height: 1.2;
+            filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
         }
         .card.state-ok .state-pill {
             color: var(--ok);
@@ -573,6 +589,7 @@
             text-transform: uppercase;
             color: var(--ink-ghost);
             font-weight: 600;
+            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.35));
         }
         .card-section-label .count { color: var(--ink-dim); }
         .card-section-label::after {
@@ -852,16 +869,19 @@
             grid-template-columns: 1fr;
             gap: 1.2rem;
             max-width: 900px;
+            margin: 0 auto;
         }
         .grid-detail .card {
-            padding: 1.2rem 1.5rem 1.3rem;
+            padding: 1.4rem 1.8rem 1.5rem;
         }
         .grid-detail .card-bg-img {
-            width: 160px;
-            height: 160px;
+            width: 320px;
+            height: 320px;
+            top: 1rem;
+            right: 1rem;
         }
         .grid-detail .hostname {
-            font-size: 18px;
+            font-size: 20px;
         }
         .grid-detail .card-comment {
             font-size: 11px;
@@ -876,7 +896,7 @@
             gap: 0.5rem;
             margin-top: 0.65rem;
             padding: 0.6rem 0.8rem;
-            background: var(--bg-0);
+            background: rgba(10, 13, 16, 0.85);
             border: 1px solid var(--line);
             font-size: 10px;
         }
@@ -1434,8 +1454,8 @@
                 <div class="sub-header-sep"></div>
 
                 <div class="view-toggle">
-                    <button :class="viewMode === 'overview' && 'active'" @click="setViewMode('overview')">Overview</button>
                     <button :class="viewMode === 'detail' && 'active'" @click="setViewMode('detail')">Detail</button>
+                    <button :class="viewMode === 'normal' && 'active'" @click="setViewMode('normal')">Normal</button>
                     <button :class="viewMode === 'compact' && 'active'" @click="setViewMode('compact')">Compact</button>
                 </div>
             </div>
@@ -1446,7 +1466,7 @@
             <template x-if="view === 'dashboard'">
                 <div>
                     <div class="view-label" x-show="hosts.length > 0">
-                        <span x-text="'Fleet · ' + ({overview:'Overview',detail:'Detail',compact:'Compact'}[viewMode] || viewMode)"></span>
+                        <span x-text="'Fleet · ' + ({detail:'Detail',normal:'Normal',compact:'Compact'}[viewMode] || viewMode)"></span>
                     </div>
 
                     <template x-if="hosts.length === 0">
@@ -1456,8 +1476,8 @@
                         </div>
                     </template>
 
-                    <!-- OVERVIEW MODE -->
-                    <template x-if="viewMode === 'overview' && hosts.length > 0">
+                    <!-- NORMAL MODE -->
+                    <template x-if="viewMode === 'normal' && hosts.length > 0">
                         <div class="grid">
                             <template x-for="host in hosts" :key="host.hostname">
                                 <div class="card"
@@ -1965,7 +1985,7 @@
                 shares: [],
                 shared: false,
                 view: 'dashboard',
-                viewMode: 'overview',
+                viewMode: 'normal',
                 newHostname: '',
                 newToken: null,
                 newShare: null,
@@ -2011,9 +2031,9 @@
                 stripRegistry: null,
 
                 init() {
-                    this.viewMode = localStorage.getItem('fleetcom.view') || 'overview';
+                    this.viewMode = localStorage.getItem('fleetcom.view') || 'normal';
                     // Migrate legacy values
-                    if (this.viewMode === 'detail') this.viewMode = 'overview';
+                    if (this.viewMode === 'overview') this.viewMode = 'normal';
                     this.globalScale = localStorage.getItem('fleetcom.globalScale') || '1h';
                     if (!this.scaleList.includes(this.globalScale)) this.globalScale = '1h';
                     this.useUTC = localStorage.getItem('fleetcom.tz') !== 'local';
