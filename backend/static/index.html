@@ -2025,11 +2025,22 @@
                             for (const c of this.stripRegistry) this.drawStrip(c);
                         }, 150);
                     });
-                    // Initialize Lucide icons and observe DOM changes for Alpine templates
+                    // Initialize Lucide icons. Debounced observer handles Alpine
+                    // template changes without infinite loops (Lucide replacements
+                    // themselves trigger mutations).
                     this.$nextTick(() => lucide.createIcons());
-                    new MutationObserver(() => lucide.createIcons()).observe(
-                        document.querySelector('.app'), { childList: true, subtree: true }
-                    );
+                    let iconTimer;
+                    new MutationObserver((mutations) => {
+                        // Only re-run if an <i data-lucide> was added (not replaced SVGs)
+                        const needsIcons = mutations.some(m =>
+                            [...m.addedNodes].some(n => n.nodeType === 1 &&
+                                (n.matches?.('i[data-lucide]') || n.querySelector?.('i[data-lucide]'))
+                            )
+                        );
+                        if (!needsIcons) return;
+                        clearTimeout(iconTimer);
+                        iconTimer = setTimeout(() => lucide.createIcons(), 50);
+                    }).observe(document.querySelector('.app'), { childList: true, subtree: true });
                 },
 
                 startStripRefresher() {
