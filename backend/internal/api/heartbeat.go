@@ -70,10 +70,15 @@ func Heartbeat(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			log.Printf("heartbeat broadcast error: %v", err)
 		} else {
 			data, _ := json.Marshal(hosts)
-			hub.Broadcast(data)
+			hub.Broadcast("hosts", data)
 		}
 
-		w.WriteHeader(http.StatusNoContent)
+		// Return interval so agents can adapt their reporting cadence
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]any{
+			"ok":       true,
+			"interval": store.HeartbeatInterval(),
+		})
 	}
 }
 

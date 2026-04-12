@@ -1359,6 +1359,18 @@
             <!-- Hosts management view -->
             <template x-if="view === 'hosts'">
                 <div class="admin-panel">
+                    <h2>Settings</h2>
+                    <div class="form-row">
+                        <label style="display:flex;align-items:center;gap:0.6rem;font-size:11px;color:var(--ink-dim);">
+                            Heartbeat interval
+                            <input type="number" min="10" max="3600" step="1"
+                                   :value="heartbeatInterval"
+                                   @change="updateHeartbeatInterval($event.target.value)"
+                                   style="width:70px;text-align:right;">
+                            <span style="color:var(--ink-ghost);font-size:10px;">seconds (10–3600)</span>
+                        </label>
+                    </div>
+
                     <h2>Manage Hosts</h2>
 
                     <div class="form-row">
@@ -1474,9 +1486,13 @@
                 connState: 'reconnecting', // 'live' | 'reconnecting' | 'offline'
                 lastOkAt: 0,
 
-                // Clock
+                // Server config (pushed via SSE)
+                heartbeatInterval: 60,
+
+                // Clock + tick counter for reactive "seen Xs ago" updates
                 clockDate: '',
                 clockTime: '',
+                tickSec: 0,
 
                 // Which chip is expanded in its card (key = `${type}:${entityKey}`, one at a time globally)
                 openChip: null,
@@ -1534,10 +1550,9 @@
                         const pad = n => String(n).padStart(2, '0');
                         this.clockDate = d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate());
                         this.clockTime = pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
-                        // Re-poke hosts array so x-text for relative times recomputes
-                        if (this.hosts.length > 0 && d.getUTCSeconds() % 5 === 0) {
-                            this.hosts = [...this.hosts];
-                        }
+                        // Lightweight tick counter — only "seen Xs ago" and hostStatus
+                        // bindings re-evaluate. No hosts array clone needed.
+                        this.tickSec++;
                     };
                     tick();
                     setInterval(tick, 1000);
@@ -1585,6 +1600,13 @@
                         console.warn('EventSource construction failed', e);
                         return;
                     }
+
+                    this.es.addEventListener('config', (e) => {
+                        try {
+                            const cfg = JSON.parse(e.data);
+                            if (cfg.heartbeat_interval) this.heartbeatInterval = cfg.heartbeat_interval;
+                        } catch (_) {}
+                    });
 
                     this.es.addEventListener('hosts', (e) => {
                         try {
@@ -1659,6 +1681,23 @@
                         this.newHostname = '';
                         this.loadTokens();
                     }
+                },
+
+                // ---------- settings ----------
+                async updateHeartbeatInterval(val) {
+                    const n = parseInt(val);
+                    if (isNaN(n) || n < 10 || n > 3600) return;
+                    try {
+                        const res = await fetch('/api/settings', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ heartbeat_interval: n })
+                        });
+                        if (res.ok) {
+                            const cfg = await res.json();
+                            this.heartbeatInterval = cfg.heartbeat_interval;
+                        }
+                    } catch (_) {}
                 },
 
                 // ---------- chip expand state ----------
@@ -2056,9 +2095,10 @@
                 // ---------- status helpers ----------
                 hostStatus(host) {
                     const ago = this.secondsAgo(host.last_seen);
-                    if (ago < 120) return 'ok';
-                    if (ago < 300) return 'warn';
-                    if (ago < 600) return 'crit';
+                    const iv = this.heartbeatInterval;
+                    if (ago < iv * 2) return 'ok';
+                    if (ago < iv * 5) return 'warn';
+                    if (ago < iv * 10) return 'crit';
                     return 'dead';
                 },
                 containerStatus(c) {
@@ -2082,6 +2122,9 @@
 
                 // ---------- time helpers ----------
                 secondsAgo(isoStr) {
+                    // Read tickSec so Alpine tracks it as a dependency —
+                    // this makes "seen Xs ago" and hostStatus update every second.
+                    void this.tickSec;
                     if (!isoStr) return 9999;
                     return (Date.now() - new Date(isoStr).getTime()) / 1000;
                 },
