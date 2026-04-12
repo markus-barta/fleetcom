@@ -64,6 +64,7 @@ func main() {
 	// Public routes
 	r.Get("/healthz", api.Healthz)
 	r.Get("/api/version", api.Version)
+	r.Get("/api/settings", api.GetSettings(store))
 	r.Get("/LICENSE", api.License)
 	r.Post("/api/heartbeat", api.Heartbeat(store, hub))
 	r.Get("/login", api.LoginPage)
@@ -91,6 +92,7 @@ func main() {
 		r.Post("/api/shares", api.CreateShareLink(store))
 		r.Delete("/api/shares", api.DeleteShareLink(store))
 		r.Get("/api/history", api.History(store))
+		r.Put("/api/settings", api.UpdateSettings(store, hub))
 	})
 
 	srv := &http.Server{

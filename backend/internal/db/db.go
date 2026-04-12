@@ -102,4 +102,11 @@ CREATE TABLE IF NOT EXISTS status_samples (
 );
 CREATE INDEX IF NOT EXISTS idx_samples_entity_ts ON status_samples(entity_type, entity_key, ts);
 CREATE INDEX IF NOT EXISTS idx_samples_ts ON status_samples(ts);
+
+CREATE TABLE IF NOT EXISTS settings (
+	key TEXT PRIMARY KEY,
+	value TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO settings (key, value) VALUES ('heartbeat_interval', '60');
 `

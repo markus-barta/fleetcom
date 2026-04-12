@@ -33,15 +33,19 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("X-Accel-Buffering", "no")
 
-		// Send initial state
+		// Send initial config
+		cfgData, _ := json.Marshal(buildConfigPayload(store))
+		fmt.Fprintf(w, "event: config\ndata: %s\n\n", cfgData)
+
+		// Send initial host state
 		hosts, err := store.AllHosts()
 		if err != nil {
 			log.Printf("SSE initial state error: %v", err)
 		} else {
 			data, _ := json.Marshal(hosts)
 			fmt.Fprintf(w, "event: hosts\ndata: %s\n\n", data)
-			flusher.Flush()
 		}
+		flusher.Flush()
 
 		// Subscribe to updates
 		ch := hub.Subscribe()
@@ -55,12 +59,12 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			select {
 			case <-r.Context().Done():
 				return
-			case data, ok := <-ch:
+			case evt, ok := <-ch:
 				if !ok {
 					return
 				}
 				extendDeadline()
-				fmt.Fprintf(w, "event: hosts\ndata: %s\n\n", data)
+				fmt.Fprintf(w, "event: %s\ndata: %s\n\n", evt.Name, evt.Data)
 				flusher.Flush()
 			case <-ticker.C:
 				extendDeadline()
