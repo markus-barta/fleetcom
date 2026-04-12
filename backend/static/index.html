@@ -441,8 +441,8 @@
             position: absolute;
             top: 0.75rem;
             right: 0.75rem;
-            width: 240px;
-            height: 240px;
+            width: 170px;
+            height: 170px;
             pointer-events: none;
             z-index: 0;
             opacity: 0.7;
@@ -484,16 +484,28 @@
             white-space: nowrap;
             filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
         }
+        /* Reserve 3 lines of comment space so all cards align */
+        .card-comment-slot {
+            min-height: calc(10px * 1.4 * 3);
+            margin-top: 0.35rem;
+        }
         .card-comment {
             font-size: 10px;
             line-height: 1.4;
             color: var(--ink-ghost);
-            margin-top: 0.35rem;
             white-space: pre-line;
             max-height: 3.6em;
             overflow: hidden;
             letter-spacing: 0.01em;
             filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+        }
+        /* Hostname icon */
+        .hostname-icon {
+            width: 15px;
+            height: 15px;
+            color: var(--ink-ghost);
+            flex-shrink: 0;
+            filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
         }
         /* Semi-transparent card elements — let host image shine through */
         .card .strip-block {
@@ -577,7 +589,7 @@
         .card.state-crit .card-head-right .seen { color: var(--crit); font-weight: 600; }
 
         .card-section {
-            margin-top: 0.8rem;
+            margin-top: 1rem;
         }
         .card-section-label {
             display: flex;
@@ -684,7 +696,7 @@
             border-left: 2px solid var(--line-2);
         }
         .strip-block.host-strip {
-            margin-top: 0.65rem;
+            margin-top: 1rem;
             border-left-color: var(--accent);
             border-left-width: 2px;
         }
@@ -875,8 +887,8 @@
             padding: 1.4rem 1.8rem 1.5rem;
         }
         .grid-detail .card-bg-img {
-            width: 320px;
-            height: 320px;
+            width: 225px;
+            height: 225px;
             top: 1rem;
             right: 1rem;
         }
@@ -1073,7 +1085,7 @@
         /* ============================================================
            ADMIN PANEL
            ============================================================ */
-        .admin-panel { max-width: 700px; }
+        .admin-panel { max-width: 700px; margin: 0 auto; }
         .admin-panel h2 {
             font-size: 10px;
             color: var(--ink-dim);
@@ -1377,6 +1389,38 @@
             background: var(--line);
             margin: 2px 0;
         }
+        /* ============================================================
+           TOAST NOTIFICATIONS
+           ============================================================ */
+        .toast-container {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            z-index: 10000;
+            display: flex;
+            flex-direction: column-reverse;
+            gap: 0.4rem;
+            pointer-events: none;
+        }
+        .toast {
+            pointer-events: auto;
+            padding: 0.5rem 1rem;
+            font-size: 11px;
+            font-family: inherit;
+            letter-spacing: 0.03em;
+            color: var(--ink);
+            background: var(--bg-2);
+            border: 1px solid var(--line-2);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            animation: toast-in 0.25s ease-out;
+            max-width: 360px;
+        }
+        .toast.toast-ok { border-left: 3px solid var(--ok); }
+        .toast.toast-err { border-left: 3px solid var(--crit); color: var(--crit); }
+        .toast.toast-info { border-left: 3px solid var(--accent); }
+        .toast.toast-out { animation: toast-out 0.2s ease-in forwards; }
+        @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(4px); } }
     </style>
 </head>
 <body>
@@ -1423,22 +1467,22 @@
 
         <div class="sub-header" x-show="view === 'dashboard'">
             <div class="sub-header-center">
-                <div class="fleet-stat" :class="hostsDown > 0 ? (hostsUp === 0 ? 'state-crit' : 'state-warn') : ''">
+                <div class="fleet-stat" :class="hostsDown > 0 ? (hostsUp === 0 ? 'state-crit' : 'state-warn') : ''" :title="ignoredHostCount > 0 ? hostsUp + '/' + activeHosts().length + ' active (' + ignoredHostCount + ' ignored)' : ''">
                     <i data-lucide="server" class="stat-icon"></i>
                     <span class="stat-label">Hosts</span>
-                    <span class="stat-value"><span x-text="hostsUp"></span><span class="sub">/</span><span x-text="hosts.length"></span></span>
+                    <span class="stat-value"><span x-text="hostsUp"></span><span class="sub">/</span><span x-text="activeHosts().length"></span><template x-if="ignoredHostCount > 0"><sup style="font-size:8px;color:var(--ink-ghost);margin-left:1px;">*</sup></template></span>
                 </div>
 
-                <div class="fleet-stat" :class="totalContainers > 0 && runningContainers < totalContainers ? 'state-warn' : ''">
+                <div class="fleet-stat" :class="totalContainers > 0 && runningContainers < totalContainers ? 'state-warn' : ''" :title="ignoredContainerCount > 0 ? runningContainers + '/' + totalContainers + ' active (' + ignoredContainerCount + ' ignored)' : ''">
                     <i data-lucide="container" class="stat-icon"></i>
                     <span class="stat-label">Containers</span>
-                    <span class="stat-value"><span x-text="runningContainers"></span><span class="sub">/</span><span x-text="totalContainers"></span></span>
+                    <span class="stat-value"><span x-text="runningContainers"></span><span class="sub">/</span><span x-text="totalContainers"></span><template x-if="ignoredContainerCount > 0"><sup style="font-size:8px;color:var(--ink-ghost);margin-left:1px;">*</sup></template></span>
                 </div>
 
-                <div class="fleet-stat" :class="totalAgents > 0 && onlineAgents < totalAgents ? 'state-warn' : ''">
+                <div class="fleet-stat" :class="totalAgents > 0 && onlineAgents < totalAgents ? 'state-warn' : ''" :title="ignoredAgentCount > 0 ? onlineAgents + '/' + totalAgents + ' active (' + ignoredAgentCount + ' ignored)' : ''">
                     <i data-lucide="sparkles" class="stat-icon"></i>
                     <span class="stat-label">Agents</span>
-                    <span class="stat-value"><span x-text="onlineAgents"></span><span class="sub">/</span><span x-text="totalAgents"></span></span>
+                    <span class="stat-value"><span x-text="onlineAgents"></span><span class="sub">/</span><span x-text="totalAgents"></span><template x-if="ignoredAgentCount > 0"><sup style="font-size:8px;color:var(--ink-ghost);margin-left:1px;">*</sup></template></span>
                 </div>
 
                 <div class="sub-header-sep"></div>
@@ -1496,6 +1540,7 @@
 
                                     <div class="card-head">
                                         <div class="card-head-left">
+                                            <i data-lucide="server" class="hostname-icon"></i>
                                             <span class="hostname" x-text="host.hostname"></span>
                                             <span class="state-pill" x-text="stateLabel(hostStatus(host))"></span>
                                         </div>
@@ -1507,9 +1552,9 @@
                                         </div>
                                     </div>
 
-                                    <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].comment">
-                                        <div class="card-comment" x-text="hostConfigs[host.hostname].comment"></div>
-                                    </template>
+                                    <div class="card-comment-slot">
+                                        <div class="card-comment" x-show="hostConfigs[host.hostname] && hostConfigs[host.hostname].comment" x-text="(hostConfigs[host.hostname] || {}).comment || ''"></div>
+                                    </div>
 
                                     <div class="strip-block host-strip" x-init="mountStrip($el, 'host', host.hostname, { kind: 'host' })"></div>
 
@@ -1591,6 +1636,7 @@
 
                                     <div class="card-head">
                                         <div class="card-head-left">
+                                            <i data-lucide="server" class="hostname-icon"></i>
                                             <span class="hostname" x-text="host.hostname"></span>
                                             <span class="state-pill" x-text="stateLabel(hostStatus(host))"></span>
                                         </div>
@@ -1602,9 +1648,9 @@
                                         </div>
                                     </div>
 
-                                    <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].comment">
-                                        <div class="card-comment" x-text="hostConfigs[host.hostname].comment"></div>
-                                    </template>
+                                    <div class="card-comment-slot">
+                                        <div class="card-comment" x-show="hostConfigs[host.hostname] && hostConfigs[host.hostname].comment" x-text="(hostConfigs[host.hostname] || {}).comment || ''"></div>
+                                    </div>
 
                                     <div class="card-detail-meta">
                                         <div class="detail-field">
@@ -1746,7 +1792,7 @@
                 <div class="admin-panel">
                     <div class="settings-tabs">
                         <button class="settings-tab" :class="settingsTab === 'hosts' && 'active'" @click="settingsTab = 'hosts'; loadTokens(); loadImagePresets()">Hosts</button>
-                        <button class="settings-tab" :class="settingsTab === 'presets' && 'active'" @click="settingsTab = 'presets'; loadImagePresets()">Presets</button>
+                        <button class="settings-tab" :class="settingsTab === 'icons' && 'active'" @click="settingsTab = 'icons'; loadImagePresets()">Icons</button>
                         <button class="settings-tab" :class="settingsTab === 'sharing' && 'active'" @click="settingsTab = 'sharing'; loadShares()">Sharing</button>
                         <button class="settings-tab" :class="settingsTab === 'ignored' && 'active'" @click="settingsTab = 'ignored'; loadIgnoredList()">Ignored</button>
                         <button class="settings-tab" :class="settingsTab === 'config' && 'active'" @click="settingsTab = 'config'">Config</button>
@@ -1783,11 +1829,10 @@
                                         </div>
                                         <template x-if="configHost === t.hostname">
                                             <div style="width:100%;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--line);">
-                                                <div style="display:flex;gap:1rem;margin-bottom:0.6rem;">
-                                                    <label style="font-size:10px;color:var(--ink-ghost);letter-spacing:0.12em;text-transform:uppercase;font-weight:600;">Image</label>
+                                                <div style="display:flex;gap:1rem;margin-bottom:0.6rem;align-items:center;">
+                                                    <label style="font-size:10px;color:var(--ink-ghost);letter-spacing:0.12em;text-transform:uppercase;font-weight:600;">Icon</label>
                                                     <select style="background:var(--bg-0);border:1px solid var(--line-2);color:var(--ink);font-family:inherit;font-size:11px;padding:2px 6px;"
-                                                            x-model.number="configImageId"
-                                                            @change="saveHostConfig()">
+                                                            x-model.number="configImageId">
                                                         <option :value="null">None</option>
                                                         <template x-for="p in imagePresets" :key="p.id">
                                                             <option :value="p.id" x-text="p.name"></option>
@@ -1797,15 +1842,15 @@
                                                         <img :src="'/api/image-presets/' + configImageId + '/image'" style="width:32px;height:32px;object-fit:contain;border:1px solid var(--line);">
                                                     </template>
                                                 </div>
-                                                <div>
+                                                <div style="margin-bottom:0.6rem;">
                                                     <label style="font-size:10px;color:var(--ink-ghost);letter-spacing:0.12em;text-transform:uppercase;font-weight:600;display:block;margin-bottom:0.3rem;">Comment</label>
                                                     <textarea x-model="configComment"
-                                                              @input="saveHostConfig()"
                                                               rows="3"
                                                               maxlength="200"
                                                               placeholder="Short description (3 lines max)"
                                                               style="width:100%;background:var(--bg-0);border:1px solid var(--line-2);color:var(--ink);font-family:inherit;font-size:11px;padding:0.4rem 0.6rem;resize:none;"></textarea>
                                                 </div>
+                                                <button class="btn btn-primary" @click="saveHostConfig()">Save</button>
                                             </div>
                                         </template>
                                     </li>
@@ -1820,16 +1865,16 @@
                         </div>
                     </template>
 
-                    <!-- Presets tab -->
-                    <template x-if="settingsTab === 'presets'">
+                    <!-- Icons tab -->
+                    <template x-if="settingsTab === 'icons'">
                         <div>
                             <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em; margin-bottom: 1rem;">
-                                Upload 50×50 transparent PNG images to identify hosts visually. Assign them per-host in the Hosts tab.
+                                Upload transparent PNG graphics to identify hosts visually on the dashboard. Assign them per-host in the Hosts tab.
                             </p>
 
                             <div class="form-row">
                                 <label class="btn btn-primary" style="cursor:pointer;">
-                                    Upload image
+                                    Upload graphic
                                     <input type="file" accept="image/*" @change="uploadPreset($event)" style="display:none;">
                                 </label>
                             </div>
@@ -1849,7 +1894,7 @@
 
                             <template x-if="imagePresets.length === 0">
                                 <div class="empty-state" style="padding: 2rem;">
-                                    <p>No image presets yet. Upload one above.</p>
+                                    <p>No host icons yet. Upload one above.</p>
                                 </div>
                             </template>
                         </div>
@@ -1861,12 +1906,12 @@
                             <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em; margin-bottom: 1rem;">Read-only dashboard access — no login required.</p>
 
                             <div class="form-row">
-                                <input type="text" x-model="shareLabel" placeholder="label (e.g. David)">
+                                <input type="text" x-model="shareLabel" placeholder="label (e.g. ops-team, client-acme)">
                                 <select x-model="shareHours">
                                     <option value="24">24 hours</option>
-                                    <option value="48">2 days</option>
-                                    <option value="72">3 days</option>
-                                    <option value="168">7 days</option>
+                                    <option value="720">30 days</option>
+                                    <option value="8760">1 year</option>
+                                    <option value="0">Unlimited</option>
                                 </select>
                                 <button class="btn btn-primary" @click="createShare()">Create Link</button>
                             </div>
@@ -1975,6 +2020,7 @@
         </footer>
     </div>
 
+    <div class="toast-container" id="toasts"></div>
     <script src="/static/lucide.min.js"></script>
     <script src="/static/alpine.min.js" defer></script>
     <script>
@@ -2270,16 +2316,21 @@
                 async addHost() {
                     const hostname = this.newHostname.trim();
                     if (!hostname) return;
-                    const res = await fetch('/api/hosts', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ hostname })
-                    });
-                    if (res.ok) {
-                        this.newToken = await res.json();
-                        this.newHostname = '';
-                        this.loadTokens();
-                    }
+                    try {
+                        const res = await fetch('/api/hosts', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ hostname })
+                        });
+                        if (res.ok) {
+                            this.newToken = await res.json();
+                            this.newHostname = '';
+                            this.loadTokens();
+                            this.toast('Host ' + hostname + ' added');
+                        } else {
+                            this.toast('Failed to add host', 'err');
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
                 },
 
                 // ---------- settings ----------
@@ -2295,8 +2346,11 @@
                         if (res.ok) {
                             const cfg = await res.json();
                             this.heartbeatInterval = cfg.heartbeat_interval;
+                            this.toast('Heartbeat interval set to ' + n + 's');
+                        } else {
+                            this.toast('Failed to update interval', 'err');
                         }
-                    } catch (_) {}
+                    } catch (_) { this.toast('Network error', 'err'); }
                 },
 
                 // ---------- settings navigation ----------
@@ -2314,21 +2368,24 @@
 
                 async ignoreEntity(entityType, entityKey) {
                     try {
-                        await fetch('/api/ignore', {
+                        const res = await fetch('/api/ignore', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ entity_type: entityType, entity_key: entityKey })
                         });
-                    } catch (_) {}
+                        if (res.ok) this.toast(entityType + ' ignored');
+                        else this.toast('Failed to ignore', 'err');
+                    } catch (_) { this.toast('Network error', 'err'); }
                 },
 
                 async unignoreEntity(entityType, entityKey) {
                     try {
-                        await fetch('/api/ignore?entity_type=' + encodeURIComponent(entityType) + '&entity_key=' + encodeURIComponent(entityKey), {
+                        const res = await fetch('/api/ignore?entity_type=' + encodeURIComponent(entityType) + '&entity_key=' + encodeURIComponent(entityKey), {
                             method: 'DELETE'
                         });
-                    } catch (_) {}
-                    // Also refresh the list if we're on the ignored tab
+                        if (res.ok) this.toast(entityType + ' unignored');
+                        else this.toast('Failed to unignore', 'err');
+                    } catch (_) { this.toast('Network error', 'err'); }
                     if (this.settingsTab === 'ignored') this.loadIgnoredList();
                 },
 
@@ -2366,7 +2423,7 @@
                 async saveHostConfig() {
                     if (!this.configHost) return;
                     try {
-                        await fetch('/api/host-config', {
+                        const res = await fetch('/api/host-config', {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
@@ -2375,7 +2432,9 @@
                                 comment: this.configComment
                             })
                         });
-                    } catch (_) {}
+                        if (res.ok) this.toast('Host config saved');
+                        else this.toast('Failed to save config', 'err');
+                    } catch (_) { this.toast('Network error', 'err'); }
                 },
 
                 // ---------- image presets ----------
@@ -2390,24 +2449,26 @@
                     const input = ev.target;
                     if (!input.files || !input.files[0]) return;
                     const file = input.files[0];
-                    const name = prompt('Preset name:', file.name.replace(/\.[^.]+$/, ''));
+                    const name = prompt('Icon name:', file.name.replace(/\.[^.]+$/, ''));
                     if (!name) { input.value = ''; return; }
                     const form = new FormData();
                     form.append('name', name);
                     form.append('file', file);
                     try {
-                        await fetch('/api/image-presets', { method: 'POST', body: form });
-                        this.loadImagePresets();
-                    } catch (_) {}
+                        const res = await fetch('/api/image-presets', { method: 'POST', body: form });
+                        if (res.ok) { this.loadImagePresets(); this.toast('Icon "' + name + '" uploaded'); }
+                        else this.toast('Upload failed', 'err');
+                    } catch (_) { this.toast('Network error', 'err'); }
                     input.value = '';
                 },
 
                 async deletePreset(id) {
-                    if (!confirm('Delete this image preset?')) return;
+                    if (!confirm('Delete this icon?')) return;
                     try {
-                        await fetch('/api/image-presets/' + id, { method: 'DELETE' });
-                        this.loadImagePresets();
-                    } catch (_) {}
+                        const res = await fetch('/api/image-presets/' + id, { method: 'DELETE' });
+                        if (res.ok) { this.loadImagePresets(); this.toast('Icon deleted'); }
+                        else this.toast('Delete failed', 'err');
+                    } catch (_) { this.toast('Network error', 'err'); }
                 },
 
                 // ---------- chip expand state ----------
@@ -2746,11 +2807,16 @@
 
                 async removeHost(hostname) {
                     if (!confirm('Remove ' + hostname + '? Its agent will stop authenticating.')) return;
-                    const res = await fetch('/api/hosts?hostname=' + encodeURIComponent(hostname), { method: 'DELETE' });
-                    if (res.ok) {
-                        this.loadTokens();
-                        if (this.newToken && this.newToken.hostname === hostname) this.newToken = null;
-                    }
+                    try {
+                        const res = await fetch('/api/hosts?hostname=' + encodeURIComponent(hostname), { method: 'DELETE' });
+                        if (res.ok) {
+                            this.loadTokens();
+                            if (this.newToken && this.newToken.hostname === hostname) this.newToken = null;
+                            this.toast('Host ' + hostname + ' removed');
+                        } else {
+                            this.toast('Failed to remove host', 'err');
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
                 },
 
                 async loadShares() {
@@ -2759,22 +2825,30 @@
                 },
 
                 async createShare() {
-                    const res = await fetch('/api/shares', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ label: this.shareLabel.trim(), hours: parseInt(this.shareHours) })
-                    });
-                    if (res.ok) {
-                        this.newShare = await res.json();
-                        this.shareLabel = '';
-                        this.loadShares();
-                    }
+                    try {
+                        const res = await fetch('/api/shares', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ label: this.shareLabel.trim(), hours: parseInt(this.shareHours) })
+                        });
+                        if (res.ok) {
+                            this.newShare = await res.json();
+                            this.shareLabel = '';
+                            this.loadShares();
+                            this.toast('Share link created');
+                        } else {
+                            this.toast('Failed to create share link', 'err');
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
                 },
 
                 async deleteShare(id) {
                     if (!confirm('Revoke this share link?')) return;
-                    const res = await fetch('/api/shares?id=' + id, { method: 'DELETE' });
-                    if (res.ok) this.loadShares();
+                    try {
+                        const res = await fetch('/api/shares?id=' + id, { method: 'DELETE' });
+                        if (res.ok) { this.loadShares(); this.toast('Share link revoked'); }
+                        else this.toast('Failed to revoke', 'err');
+                    } catch (_) { this.toast('Network error', 'err'); }
                 },
 
                 // ---------- derived stats (ignored entities excluded) ----------
@@ -2805,6 +2879,16 @@
                 activeAgentsOf(host) {
                     return (host.agents || []).filter(a => !this.isIgnored('agent', host.hostname + '/' + a.name));
                 },
+                get ignoredHostCount() {
+                    return this.hosts.filter(h => this.isIgnored('host', h.hostname)).length;
+                },
+                get ignoredContainerCount() {
+                    return this.hosts.reduce((n, h) => n + (h.containers || []).filter(c => this.isIgnored('container', h.hostname + '/' + c.name)).length, 0);
+                },
+                get ignoredAgentCount() {
+                    return this.hosts.reduce((n, h) => n + (h.agents || []).filter(a => this.isIgnored('agent', h.hostname + '/' + a.name)).length, 0);
+                },
+
                 countRunning(containers) {
                     return (containers || []).filter(c => c.state === 'running').length;
                 },
@@ -2838,6 +2922,19 @@
                          : s === 'warn' ? 'Stale'
                          : s === 'crit' ? 'Offline'
                                         : 'Dead';
+                },
+
+                // ---------- toast notifications ----------
+                toast(msg, type = 'ok') {
+                    const container = document.getElementById('toasts');
+                    const el = document.createElement('div');
+                    el.className = 'toast toast-' + type;
+                    el.textContent = msg;
+                    container.appendChild(el);
+                    setTimeout(() => {
+                        el.classList.add('toast-out');
+                        setTimeout(() => el.remove(), 200);
+                    }, type === 'err' ? 5000 : 3000);
                 },
 
                 // ---------- time helpers ----------
