@@ -432,40 +432,29 @@
         .card-head {
             display: flex;
             align-items: flex-start;
-            gap: 0.85rem;
+            justify-content: space-between;
+            gap: 1rem;
             margin-bottom: 0.25rem;
         }
-        .card-avatar {
-            width: 50px;
-            height: 50px;
-            flex-shrink: 0;
-            border: 1px solid var(--line);
-            background: var(--bg-0);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
+        /* Background host image — pinned top-left, fades to transparent bottom-right */
+        .card-bg-img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 120px;
+            height: 120px;
+            pointer-events: none;
+            z-index: 0;
+            -webkit-mask-image: linear-gradient(135deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.1) 100%);
+            mask-image: linear-gradient(135deg, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.1) 100%);
         }
-        .card-avatar img {
+        .card-bg-img img {
             width: 100%;
             height: 100%;
             object-fit: contain;
+            object-position: top left;
         }
-        .card-avatar .avatar-placeholder {
-            width: 20px;
-            height: 20px;
-            color: var(--ink-faint);
-        }
-        .card-head-main {
-            flex: 1;
-            min-width: 0;
-        }
-        .card-head-top {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
-            gap: 0.6rem;
-        }
+        .card > *:not(.card-bg-img) { position: relative; z-index: 1; }
         .card-head-left {
             display: flex;
             align-items: center;
@@ -479,17 +468,46 @@
             color: var(--ink);
             letter-spacing: 0.01em;
         }
+        .card-head-right {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            text-align: right;
+            font-size: 10px;
+            color: var(--ink-dim);
+            line-height: 1.5;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+        /* Gear icon — top right of card, "Configure" label appears on hover */
         .card-gear {
+            position: absolute;
+            top: 0.6rem;
+            right: 0.7rem;
+            z-index: 2;
             background: transparent;
             border: none;
             color: var(--ink-faint);
             cursor: pointer;
-            padding: 2px;
+            padding: 3px;
             line-height: 0;
             transition: color 0.12s;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
         }
         .card-gear:hover { color: var(--ink-dim); }
-        .card-gear svg { width: 12px; height: 12px; }
+        .card-gear svg, .card-gear .lucide { width: 13px; height: 13px; }
+        .card-gear-label {
+            font-size: 8px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            font-weight: 600;
+            opacity: 0;
+            transition: opacity 0.15s;
+            pointer-events: none;
+        }
+        .card-gear:hover .card-gear-label { opacity: 1; }
         .card-comment {
             font-size: 10px;
             line-height: 1.4;
@@ -536,14 +554,6 @@
             50%      { opacity: 0.35; transform: scale(0.8); }
         }
 
-        .card-head-right {
-            text-align: right;
-            font-size: 10px;
-            color: var(--ink-dim);
-            line-height: 1.5;
-            font-variant-numeric: tabular-nums;
-            white-space: nowrap;
-        }
         .card-head-right .seen {
             color: var(--ink-ghost);
         }
@@ -846,9 +856,9 @@
         .grid-detail .card {
             padding: 1.2rem 1.5rem 1.3rem;
         }
-        .grid-detail .card-avatar {
-            width: 64px;
-            height: 64px;
+        .grid-detail .card-bg-img {
+            width: 160px;
+            height: 160px;
         }
         .grid-detail .hostname {
             font-size: 18px;
@@ -1381,13 +1391,13 @@
             </div>
 
             <div class="header-right">
+                <div class="clock">
+                    <span x-text="clockDate"></span><span class="sep">·</span><span x-text="clockTime"></span><span class="tz" @click="toggleTimezone()" style="cursor:pointer;" :title="'Click to switch to ' + (useUTC ? 'local' : 'UTC') + ' time'" x-text="tzLabel"></span>
+                </div>
                 <a href="/logout" class="signout" x-show="!shared">
                     <i data-lucide="log-out"></i>
                     <span>Sign out</span>
                 </a>
-                <div class="clock">
-                    <span x-text="clockDate"></span><span class="sep">·</span><span x-text="clockTime"></span><span class="tz" @click="toggleTimezone()" style="cursor:pointer;" :title="'Click to switch to ' + (useUTC ? 'local' : 'UTC') + ' time'" x-text="tzLabel"></span>
-                </div>
             </div>
         </header>
 
@@ -1453,34 +1463,33 @@
                                 <div class="card"
                                      :class="['state-' + hostStatus(host), isIgnored('host', host.hostname) ? 'is-ignored' : '']"
                                      @contextmenu.prevent="showCtxMenu($event, 'host', host.hostname)">
-                                    <div class="card-head">
-                                        <div class="card-avatar">
-                                            <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].image_preset_id">
-                                                <img :src="'/api/image-presets/' + hostConfigs[host.hostname].image_preset_id + '/image'" :alt="host.hostname">
-                                            </template>
-                                            <template x-if="!hostConfigs[host.hostname] || !hostConfigs[host.hostname].image_preset_id">
-                                                <i data-lucide="server" class="avatar-placeholder"></i>
-                                            </template>
+                                    <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].image_preset_id">
+                                        <div class="card-bg-img">
+                                            <img :src="'/api/image-presets/' + hostConfigs[host.hostname].image_preset_id + '/image'" :alt="host.hostname">
                                         </div>
-                                        <div class="card-head-main">
-                                            <div class="card-head-top">
-                                                <div class="card-head-left">
-                                                    <span class="hostname" x-text="host.hostname"></span>
-                                                    <span class="state-pill" x-text="stateLabel(hostStatus(host))"></span>
-                                                    <button class="card-gear" @click.stop="openHostConfig(host.hostname)" title="Host settings">
-                                                        <i data-lucide="settings"></i>
-                                                    </button>
-                                                </div>
-                                                <div class="card-head-right">
-                                                    <div x-text="(host.os || 'unknown') + (host.uptime_seconds ? ' · up ' + formatUptime(host.uptime_seconds) : '')"></div>
-                                                    <div class="seen" x-text="'seen ' + formatAgo(host.last_seen)"></div>
-                                                </div>
+                                    </template>
+
+                                    <button class="card-gear" @click.stop="openHostConfig(host.hostname)" title="Host settings">
+                                        <span class="card-gear-label">Configure</span>
+                                        <i data-lucide="settings"></i>
+                                    </button>
+
+                                    <div class="card-head">
+                                        <div class="card-head-left">
+                                            <span class="hostname" x-text="host.hostname"></span>
+                                            <span class="state-pill" x-text="stateLabel(hostStatus(host))"></span>
+                                        </div>
+                                        <div class="card-head-right">
+                                            <div>
+                                                <div x-text="(host.os || 'unknown') + (host.uptime_seconds ? ' · up ' + formatUptime(host.uptime_seconds) : '')"></div>
+                                                <div class="seen" x-text="'seen ' + formatAgo(host.last_seen)"></div>
                                             </div>
-                                            <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].comment">
-                                                <div class="card-comment" x-text="hostConfigs[host.hostname].comment"></div>
-                                            </template>
                                         </div>
                                     </div>
+
+                                    <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].comment">
+                                        <div class="card-comment" x-text="hostConfigs[host.hostname].comment"></div>
+                                    </template>
 
                                     <div class="strip-block host-strip" x-init="mountStrip($el, 'host', host.hostname, { kind: 'host' })"></div>
 
@@ -1549,34 +1558,33 @@
                                 <div class="card"
                                      :class="['state-' + hostStatus(host), isIgnored('host', host.hostname) ? 'is-ignored' : '']"
                                      @contextmenu.prevent="showCtxMenu($event, 'host', host.hostname)">
-                                    <div class="card-head">
-                                        <div class="card-avatar">
-                                            <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].image_preset_id">
-                                                <img :src="'/api/image-presets/' + hostConfigs[host.hostname].image_preset_id + '/image'" :alt="host.hostname">
-                                            </template>
-                                            <template x-if="!hostConfigs[host.hostname] || !hostConfigs[host.hostname].image_preset_id">
-                                                <i data-lucide="server" class="avatar-placeholder"></i>
-                                            </template>
+                                    <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].image_preset_id">
+                                        <div class="card-bg-img">
+                                            <img :src="'/api/image-presets/' + hostConfigs[host.hostname].image_preset_id + '/image'" :alt="host.hostname">
                                         </div>
-                                        <div class="card-head-main">
-                                            <div class="card-head-top">
-                                                <div class="card-head-left">
-                                                    <span class="hostname" x-text="host.hostname"></span>
-                                                    <span class="state-pill" x-text="stateLabel(hostStatus(host))"></span>
-                                                    <button class="card-gear" @click.stop="openHostConfig(host.hostname)" title="Host settings">
-                                                        <i data-lucide="settings"></i>
-                                                    </button>
-                                                </div>
-                                                <div class="card-head-right">
-                                                    <div x-text="(host.os || 'unknown') + (host.uptime_seconds ? ' · up ' + formatUptime(host.uptime_seconds) : '')"></div>
-                                                    <div class="seen" x-text="'seen ' + formatAgo(host.last_seen)"></div>
-                                                </div>
+                                    </template>
+
+                                    <button class="card-gear" @click.stop="openHostConfig(host.hostname)" title="Host settings">
+                                        <span class="card-gear-label">Configure</span>
+                                        <i data-lucide="settings"></i>
+                                    </button>
+
+                                    <div class="card-head">
+                                        <div class="card-head-left">
+                                            <span class="hostname" x-text="host.hostname"></span>
+                                            <span class="state-pill" x-text="stateLabel(hostStatus(host))"></span>
+                                        </div>
+                                        <div class="card-head-right">
+                                            <div>
+                                                <div x-text="(host.os || 'unknown') + (host.uptime_seconds ? ' · up ' + formatUptime(host.uptime_seconds) : '')"></div>
+                                                <div class="seen" x-text="'seen ' + formatAgo(host.last_seen)"></div>
                                             </div>
-                                            <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].comment">
-                                                <div class="card-comment" x-text="hostConfigs[host.hostname].comment"></div>
-                                            </template>
                                         </div>
                                     </div>
+
+                                    <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].comment">
+                                        <div class="card-comment" x-text="hostConfigs[host.hostname].comment"></div>
+                                    </template>
 
                                     <div class="card-detail-meta">
                                         <div class="detail-field">
