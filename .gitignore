@@ -1,7 +1,7 @@
 # Build output
 /dist/
 /fleetcom-server
-/fleetcom-agent
+/fleetcom-bosun
 
 # Dependencies
 /vendor/

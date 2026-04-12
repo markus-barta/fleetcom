@@ -6,7 +6,7 @@
 }:
 
 let
-  cfg = config.services.fleetcom-agent;
+  cfg = config.services.fleetcom-bosun;
 
   agentsJson = builtins.toJSON (
     map (a: {
@@ -16,7 +16,7 @@ let
     }) cfg.agents
   );
 
-  agentScript = pkgs.writeShellScript "fleetcom-agent" ''
+  agentScript = pkgs.writeShellScript "fleetcom-bosun" ''
     set -euo pipefail
 
     TOKEN=$(cat "$FLEETCOM_TOKEN_FILE")
@@ -69,8 +69,8 @@ let
 
 in
 {
-  options.services.fleetcom-agent = {
-    enable = lib.mkEnableOption "FleetCom heartbeat agent";
+  options.services.fleetcom-bosun = {
+    enable = lib.mkEnableOption "FleetCom heartbeat bosun";
 
     url = lib.mkOption {
       type = lib.types.str;
@@ -115,12 +115,12 @@ in
     assertions = [
       {
         assertion = cfg.tokenFile != "";
-        message = "services.fleetcom-agent.tokenFile must be set.";
+        message = "services.fleetcom-bosun.tokenFile must be set.";
       }
     ];
 
-    systemd.services.fleetcom-agent = {
-      description = "FleetCom heartbeat agent";
+    systemd.services.fleetcom-bosun = {
+      description = "FleetCom heartbeat bosun";
       wantedBy = [ "multi-user.target" ];
       after = [ "network-online.target" ];
       wants = [ "network-online.target" ];
