@@ -43,6 +43,12 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			fmt.Fprintf(w, "event: ignored\ndata: %s\n\n", igData)
 		}
 
+		// Send initial host configs
+		if hostCfgs, err := store.AllHostConfigs(); err == nil {
+			hcData, _ := json.Marshal(hostCfgs)
+			fmt.Fprintf(w, "event: host-configs\ndata: %s\n\n", hcData)
+		}
+
 		// Send initial host state
 		hosts, err := store.AllHosts()
 		if err != nil {

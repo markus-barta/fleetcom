@@ -65,6 +65,7 @@ func main() {
 	r.Get("/healthz", api.Healthz)
 	r.Get("/api/version", api.Version)
 	r.Get("/api/settings", api.GetSettings(store))
+	r.Get("/api/image-presets/{id}/image", api.GetImagePresetImage(store))
 	r.Get("/LICENSE", api.License)
 	r.Post("/api/heartbeat", api.Heartbeat(store, hub))
 	r.Get("/login", api.LoginPage)
@@ -96,6 +97,11 @@ func main() {
 		r.Get("/api/ignored", api.ListIgnored(store))
 		r.Post("/api/ignore", api.AddIgnore(store, hub))
 		r.Delete("/api/ignore", api.RemoveIgnore(store, hub))
+		r.Get("/api/host-configs", api.GetHostConfigs(store))
+		r.Put("/api/host-config", api.UpdateHostConfig(store, hub))
+		r.Get("/api/image-presets", api.ListImagePresets(store))
+		r.Post("/api/image-presets", api.UploadImagePreset(store))
+		r.Delete("/api/image-presets/{id}", api.DeleteImagePreset(store))
 	})
 
 	srv := &http.Server{
