@@ -320,6 +320,28 @@
             color: var(--ink);
             font-variant-numeric: tabular-nums;
         }
+        .fleet-stat {
+            position: relative;
+        }
+        .fleet-stat .stat-tip {
+            position: absolute;
+            bottom: calc(100% + 6px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-0);
+            color: var(--ink);
+            border: 1px solid var(--line-2);
+            padding: 4px 8px;
+            font-size: 10px;
+            white-space: nowrap;
+            z-index: 30;
+            pointer-events: none;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            transition: opacity 0.12s;
+            font-variant-numeric: tabular-nums;
+        }
+        .fleet-stat:hover .stat-tip { opacity: 1; }
         .fleet-stat .stat-value .sub {
             color: var(--ink-ghost);
             font-weight: 300;
@@ -1510,19 +1532,22 @@
 
         <div class="sub-header" x-show="view === 'dashboard'">
             <div class="sub-header-center">
-                <div class="fleet-stat" :class="hostsDown > 0 ? (hostsUp === 0 ? 'state-crit' : 'state-warn') : ''" :title="ignoredHostCount > 0 ? hostsUp + '/' + activeHosts().length + ' active (' + ignoredHostCount + ' ignored)' : ''">
+                <div class="fleet-stat" :class="hostsDown > 0 ? (hostsUp === 0 ? 'state-crit' : 'state-warn') : ''">
+                    <template x-if="ignoredHostCount > 0"><span class="stat-tip" x-text="hostsUp + '/' + activeHosts().length + ' active · ' + ignoredHostCount + ' ignored'"></span></template>
                     <i data-lucide="server" class="stat-icon"></i>
                     <span class="stat-label">Hosts</span>
                     <span class="stat-value"><span x-text="hostsUp"></span><span class="sub">/</span><span x-text="activeHosts().length"></span><template x-if="ignoredHostCount > 0"><sup style="font-size:8px;color:var(--ink-ghost);margin-left:1px;">*</sup></template></span>
                 </div>
 
-                <div class="fleet-stat" :class="totalContainers > 0 && runningContainers < totalContainers ? 'state-warn' : ''" :title="ignoredContainerCount > 0 ? runningContainers + '/' + totalContainers + ' active (' + ignoredContainerCount + ' ignored)' : ''">
+                <div class="fleet-stat" :class="totalContainers > 0 && runningContainers < totalContainers ? 'state-warn' : ''">
+                    <template x-if="ignoredContainerCount > 0"><span class="stat-tip" x-text="runningContainers + '/' + totalContainers + ' active · ' + ignoredContainerCount + ' ignored'"></span></template>
                     <i data-lucide="container" class="stat-icon"></i>
                     <span class="stat-label">Containers</span>
                     <span class="stat-value"><span x-text="runningContainers"></span><span class="sub">/</span><span x-text="totalContainers"></span><template x-if="ignoredContainerCount > 0"><sup style="font-size:8px;color:var(--ink-ghost);margin-left:1px;">*</sup></template></span>
                 </div>
 
-                <div class="fleet-stat" :class="totalAgents > 0 && onlineAgents < totalAgents ? 'state-warn' : ''" :title="ignoredAgentCount > 0 ? onlineAgents + '/' + totalAgents + ' active (' + ignoredAgentCount + ' ignored)' : ''">
+                <div class="fleet-stat" :class="totalAgents > 0 && onlineAgents < totalAgents ? 'state-warn' : ''">
+                    <template x-if="ignoredAgentCount > 0"><span class="stat-tip" x-text="onlineAgents + '/' + totalAgents + ' active · ' + ignoredAgentCount + ' ignored'"></span></template>
                     <i data-lucide="sparkles" class="stat-icon"></i>
                     <span class="stat-label">Agents</span>
                     <span class="stat-value"><span x-text="onlineAgents"></span><span class="sub">/</span><span x-text="totalAgents"></span><template x-if="ignoredAgentCount > 0"><sup style="font-size:8px;color:var(--ink-ghost);margin-left:1px;">*</sup></template></span>
@@ -2906,9 +2931,9 @@ services.fleetcom-agent = {
                     const scale = this.effectiveScale(ctrl);
                     let text;
                     if (!b || b.s === 'none') {
-                        text = scale + ' · ' + ageLabel + ' · no data';
+                        text = ageLabel + ' · no data';
                     } else {
-                        text = scale + ' · ' + ageLabel + ' · ' + b.s + ' · ' + (b.p || 0) + '% ok · n=' + (b.n || 0);
+                        text = ageLabel + ' · ' + b.s + ' · ' + (b.p || 0) + '% ok';
                     }
                     const tip = this.getStripTooltip();
                     tip.textContent = text;
