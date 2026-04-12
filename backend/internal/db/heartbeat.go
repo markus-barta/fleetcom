@@ -17,12 +17,18 @@ type Host struct {
 }
 
 type Container struct {
-	ID       int64  `json:"id"`
-	HostID   int64  `json:"host_id"`
-	Name     string `json:"name"`
-	Image    string `json:"image"`
-	State    string `json:"state"`
-	LastSeen string `json:"last_seen"`
+	ID           int64  `json:"id"`
+	HostID       int64  `json:"host_id"`
+	Name         string `json:"name"`
+	Image        string `json:"image"`
+	State        string `json:"state"`
+	Health       string `json:"health"`
+	RestartCount int    `json:"restart_count"`
+	StartedAt    string `json:"started_at"`
+	ExitCode     int    `json:"exit_code"`
+	OOMKilled    bool   `json:"oom_killed"`
+	CrashLoop    bool   `json:"crash_loop"`
+	LastSeen     string `json:"last_seen"`
 }
 
 type Agent struct {
@@ -59,15 +65,48 @@ func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64
 		return fmt.Errorf("upsert host: %w", err)
 	}
 
+	// Detect crash loops: read previous restart counts before replacing
+	prevCounts := map[string]int{}
+	{
+		rows, err := tx.Query(`SELECT name, restart_count FROM containers WHERE host_id = ?`, hostID)
+		if err == nil {
+			for rows.Next() {
+				var n string
+				var rc int
+				rows.Scan(&n, &rc)
+				prevCounts[n] = rc
+			}
+			rows.Close()
+		}
+	}
+
 	// Replace containers: delete old, insert new
 	if _, err := tx.Exec(`DELETE FROM containers WHERE host_id = ?`, hostID); err != nil {
 		return fmt.Errorf("delete containers: %w", err)
 	}
-	for _, c := range containers {
-		if _, err := tx.Exec(`INSERT INTO containers (host_id, name, image, state, last_seen) VALUES (?, ?, ?, ?, ?)`,
-			hostID, c.Name, c.Image, c.State, now); err != nil {
+	for i, c := range containers {
+		oom := 0
+		if c.OOMKilled {
+			oom = 1
+		}
+		if _, err := tx.Exec(`INSERT INTO containers (host_id, name, image, state, health, restart_count, started_at, exit_code, oom_killed, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			hostID, c.Name, c.Image, c.State, c.Health, c.RestartCount, c.StartedAt, c.ExitCode, oom, now); err != nil {
 			return fmt.Errorf("insert container: %w", err)
 		}
+		// Record restart events if restart count increased
+		if prev, ok := prevCounts[c.Name]; ok && c.RestartCount > prev {
+			delta := c.RestartCount - prev
+			for range delta {
+				tx.Exec(`INSERT INTO container_events (host_id, container_name, event_type, exit_code, oom_killed, ts) VALUES (?, ?, 'restart', ?, ?, ?)`,
+					hostID, c.Name, c.ExitCode, oom, now)
+			}
+		}
+		// Detect crash loop: ≥3 restarts in last 5 minutes
+		var recentRestarts int
+		cutoff := time.Now().UTC().Add(-5 * time.Minute).Format(time.RFC3339)
+		tx.QueryRow(`SELECT COUNT(*) FROM container_events WHERE host_id = ? AND container_name = ? AND event_type = 'restart' AND ts >= ?`,
+			hostID, c.Name, cutoff).Scan(&recentRestarts)
+		containers[i].CrashLoop = recentRestarts >= 3
 	}
 
 	// Replace agents: delete old, insert new
@@ -119,18 +158,26 @@ func (s *Store) AllHosts() ([]Host, error) {
 }
 
 func (s *Store) containersForHost(hostID int64) ([]Container, error) {
-	rows, err := s.DB.Query(`SELECT id, host_id, name, image, state, last_seen FROM containers WHERE host_id = ? ORDER BY name`, hostID)
+	rows, err := s.DB.Query(`SELECT id, host_id, name, image, state, health, restart_count, started_at, exit_code, oom_killed, last_seen FROM containers WHERE host_id = ? ORDER BY name`, hostID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
+	cutoff := time.Now().UTC().Add(-5 * time.Minute).Format(time.RFC3339)
 	var cs []Container
 	for rows.Next() {
 		var c Container
-		if err := rows.Scan(&c.ID, &c.HostID, &c.Name, &c.Image, &c.State, &c.LastSeen); err != nil {
+		var oom int
+		if err := rows.Scan(&c.ID, &c.HostID, &c.Name, &c.Image, &c.State, &c.Health, &c.RestartCount, &c.StartedAt, &c.ExitCode, &oom, &c.LastSeen); err != nil {
 			return nil, err
 		}
+		c.OOMKilled = oom != 0
+		// Check crash loop from events table
+		var recentRestarts int
+		s.DB.QueryRow(`SELECT COUNT(*) FROM container_events WHERE host_id = ? AND container_name = ? AND event_type = 'restart' AND ts >= ?`,
+			hostID, c.Name, cutoff).Scan(&recentRestarts)
+		c.CrashLoop = recentRestarts >= 3
 		cs = append(cs, c)
 	}
 	return cs, nil

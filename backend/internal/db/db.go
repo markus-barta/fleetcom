@@ -54,9 +54,25 @@ CREATE TABLE IF NOT EXISTS containers (
 	name TEXT NOT NULL,
 	image TEXT NOT NULL DEFAULT '',
 	state TEXT NOT NULL DEFAULT 'unknown',
+	health TEXT NOT NULL DEFAULT '',
+	restart_count INTEGER NOT NULL DEFAULT 0,
+	started_at TEXT NOT NULL DEFAULT '',
+	exit_code INTEGER NOT NULL DEFAULT 0,
+	oom_killed INTEGER NOT NULL DEFAULT 0,
 	last_seen TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_containers_host ON containers(host_id);
+
+CREATE TABLE IF NOT EXISTS container_events (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	host_id INTEGER NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,
+	container_name TEXT NOT NULL,
+	event_type TEXT NOT NULL,
+	exit_code INTEGER NOT NULL DEFAULT 0,
+	oom_killed INTEGER NOT NULL DEFAULT 0,
+	ts TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_container_events_host_name ON container_events(host_id, container_name, ts);
 
 CREATE TABLE IF NOT EXISTS agents (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,

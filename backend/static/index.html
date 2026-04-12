@@ -708,6 +708,39 @@
         }
         .chip-container.s-dead .crate { color: var(--dead); }
 
+        /* Health badge inside chip */
+        .health-badge, .uptime-badge {
+            font-size: 9px;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            white-space: nowrap;
+            margin-left: 2px;
+        }
+        .health-badge.s-ok { background: rgba(61, 220, 151, 0.18); color: var(--ok); }
+        .health-badge.s-warn { background: rgba(255, 184, 77, 0.18); color: var(--warn); }
+        .health-badge.s-crit { background: rgba(255, 77, 109, 0.22); color: var(--crit); }
+        .uptime-badge {
+            background: rgba(255, 255, 255, 0.06);
+            color: var(--ink-faint);
+        }
+
+        /* Crash loop pulsing animation */
+        .chip-container.crash-loop {
+            animation: crash-pulse 1s ease-in-out infinite;
+        }
+        @keyframes crash-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 77, 109, 0); }
+            50% { box-shadow: 0 0 8px 2px rgba(255, 77, 109, 0.5); }
+        }
+
+        /* OOM kill indicator */
+        .chip-container.oom-killed {
+            border-color: var(--crit);
+            box-shadow: 0 0 6px rgba(255, 77, 109, 0.4);
+        }
+
         .chip.is-open {
             border-color: var(--accent);
             box-shadow: 0 0 0 1px var(--accent), 0 0 10px rgba(106, 176, 255, 0.25);
@@ -1657,12 +1690,15 @@
                                             <div class="chips" :class="host.containers.length > 8 ? 'dense' : ''">
                                                 <template x-for="c in host.containers" :key="c.name">
                                                     <div class="chip chip-container"
-                                                         :class="['s-' + containerStatus(c), isChipOpen('container', host.hostname + '/' + c.name) ? 'is-open' : '', isIgnored('container', host.hostname + '/' + c.name) ? 'is-ignored' : '']"
-                                                         :title="c.name + ' · ' + c.state"
+                                                         :class="['s-' + containerStatus(c), isChipOpen('container', host.hostname + '/' + c.name) ? 'is-open' : '', isIgnored('container', host.hostname + '/' + c.name) ? 'is-ignored' : '', c.crash_loop ? 'crash-loop' : '', c.oom_killed ? 'oom-killed' : '']"
+                                                         :title="c.name + ' · ' + c.state + (c.health ? ' · ' + c.health : '') + (containerUptime(c) ? ' · up ' + containerUptime(c) : '') + (c.restart_count ? ' · ' + c.restart_count + '× restarted' : '') + (c.crash_loop ? ' · CRASH LOOP' : '') + (c.oom_killed ? ' · OOM KILLED' : '') + (c.exit_code && c.state !== 'running' ? ' · ' + exitCodeLabel(c.exit_code) : '')"
                                                          @click="toggleChip('container', host.hostname + '/' + c.name)"
                                                          @contextmenu.prevent.stop="showCtxMenu($event, 'container', host.hostname + '/' + c.name)">
                                                         <svg class="crate" viewBox="0 0 24 24"><use href="#icon-container"/></svg>
                                                         <span class="name" x-text="c.name"></span>
+                                                        <template x-if="containerHealthLabel(c)">
+                                                            <span class="health-badge" :class="'s-' + containerStatus(c)" x-text="containerHealthLabel(c)"></span>
+                                                        </template>
                                                     </div>
                                                 </template>
                                             </div>
@@ -1776,12 +1812,18 @@
                                             <div class="chips" :class="host.containers.length > 8 ? 'dense' : ''">
                                                 <template x-for="c in host.containers" :key="c.name">
                                                     <div class="chip chip-container"
-                                                         :class="['s-' + containerStatus(c), isChipOpen('container', host.hostname + '/' + c.name) ? 'is-open' : '', isIgnored('container', host.hostname + '/' + c.name) ? 'is-ignored' : '']"
-                                                         :title="c.name + ' · ' + c.state + ' · ' + (c.image || '')"
+                                                         :class="['s-' + containerStatus(c), isChipOpen('container', host.hostname + '/' + c.name) ? 'is-open' : '', isIgnored('container', host.hostname + '/' + c.name) ? 'is-ignored' : '', c.crash_loop ? 'crash-loop' : '', c.oom_killed ? 'oom-killed' : '']"
+                                                         :title="c.name + ' · ' + c.state + (c.health ? ' · ' + c.health : '') + ' · ' + (c.image || '') + (containerUptime(c) ? ' · up ' + containerUptime(c) : '') + (c.restart_count ? ' · ' + c.restart_count + '× restarted' : '') + (c.crash_loop ? ' · CRASH LOOP' : '') + (c.oom_killed ? ' · OOM KILLED' : '') + (c.exit_code && c.state !== 'running' ? ' · ' + exitCodeLabel(c.exit_code) : '')"
                                                          @click="toggleChip('container', host.hostname + '/' + c.name)"
                                                          @contextmenu.prevent.stop="showCtxMenu($event, 'container', host.hostname + '/' + c.name)">
                                                         <svg class="crate" viewBox="0 0 24 24"><use href="#icon-container"/></svg>
                                                         <span class="name" x-text="c.name"></span>
+                                                        <template x-if="containerHealthLabel(c)">
+                                                            <span class="health-badge" :class="'s-' + containerStatus(c)" x-text="containerHealthLabel(c)"></span>
+                                                        </template>
+                                                        <template x-if="containerUptime(c) && !containerHealthLabel(c)">
+                                                            <span class="uptime-badge" x-text="containerUptime(c)"></span>
+                                                        </template>
                                                     </div>
                                                 </template>
                                             </div>
@@ -3100,10 +3142,40 @@ services.fleetcom-agent = {
                     return 'dead';
                 },
                 containerStatus(c) {
+                    if (c.crash_loop || c.oom_killed) return 'crit';
+                    if (c.health === 'unhealthy') return 'crit';
+                    if (c.health === 'starting') return 'warn';
                     if (c.state === 'running') return 'ok';
-                    if (c.state === 'paused') return 'warn';
+                    if (c.state === 'restarting' || c.state === 'paused') return 'warn';
                     if (c.state === 'exited' || c.state === 'dead') return 'crit';
                     return 'dead';
+                },
+                containerHealthLabel(c) {
+                    if (c.crash_loop) return 'CrashLoop';
+                    if (c.oom_killed) return 'OOM Kill';
+                    if (c.health === 'unhealthy') return 'Unhealthy';
+                    if (c.health === 'starting') return 'Starting';
+                    if (c.health === 'healthy') return 'Healthy';
+                    if (c.state === 'restarting') return 'Restarting';
+                    return '';
+                },
+                containerUptime(c) {
+                    if (!c.started_at) return '';
+                    const started = new Date(c.started_at).getTime();
+                    if (isNaN(started)) return '';
+                    const secs = Math.floor((Date.now() - started) / 1000);
+                    if (secs < 0) return '';
+                    if (secs < 60) return secs + 's';
+                    if (secs < 3600) return Math.floor(secs / 60) + 'm';
+                    if (secs < 86400) return Math.floor(secs / 3600) + 'h ' + Math.floor((secs % 3600) / 60) + 'm';
+                    return Math.floor(secs / 86400) + 'd ' + Math.floor((secs % 86400) / 3600) + 'h';
+                },
+                exitCodeLabel(code) {
+                    if (code === 0) return '';
+                    if (code === 137) return 'SIGKILL/OOM';
+                    if (code === 143) return 'SIGTERM';
+                    if (code === 1) return 'Error';
+                    return 'Exit ' + code;
                 },
                 agentStatus(a) {
                     if (a.status === 'online') return 'ok';

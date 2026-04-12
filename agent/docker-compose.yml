@@ -1,0 +1,15 @@
+services:
+  fleetcom-agent:
+    image: ghcr.io/markus-barta/fleetcom-agent:latest
+    container_name: fleetcom-agent
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc/os-release:/host/etc/os-release:ro
+    environment:
+      - FLEETCOM_URL=${FLEETCOM_URL:-https://fleet.barta.cm}
+      - FLEETCOM_TOKEN=${FLEETCOM_TOKEN}
+      - FLEETCOM_HOSTNAME=${FLEETCOM_HOSTNAME}
+      - FLEETCOM_AGENTS=${FLEETCOM_AGENTS:-[]}
