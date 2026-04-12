@@ -2732,7 +2732,9 @@
                         i = runEnd;
                     }
 
-                    const colors = { ok: '#3ddc97', warn: '#ffb84d', crit: '#ff4d6d', dead: '#5a6068' };
+                    // Real data vs interpolated — interpolated buckets use dimmed colors
+                    const colors     = { ok: '#3ddc97', warn: '#ffb84d', crit: '#ff4d6d', dead: '#5a6068' };
+                    const colorsDim  = { ok: '#2a9e6c', warn: '#b8832e', crit: '#b8364d', dead: '#44484f' };
                     for (let i = 0; i < n; i++) {
                         if (i < coverStartIdx) continue;
                         const status = resolved[i];
@@ -2743,7 +2745,9 @@
                             ctx.fillRect(x, 1, w, cssH - 2);
                             continue;
                         }
-                        const color = colors[status];
+                        const hasData = buckets[i] && buckets[i].s && buckets[i].s !== 'none';
+                        const palette = hasData ? colors : colorsDim;
+                        const color = palette[status];
                         if (!color) continue;
                         ctx.fillStyle = color;
                         ctx.fillRect(x, 1, w, cssH - 2);
