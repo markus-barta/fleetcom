@@ -68,13 +68,13 @@ All requests: `curl -s -H "Authorization: Bearer $PPMAPIKEY" https://pm.barta.cm
 - **Database**: SQLite (WAL mode, pure Go driver)
 - **Auth**: Password + TOTP, HttpOnly session cookies (SameSite=Lax, Secure), per-host bearer tokens
 - **Deployment**: Docker on csb1, behind Cloudflare DNS (edge TLS)
-- **Agent**: Go daemon in Docker container — Docker socket event stream + periodic heartbeat
+- **Bosun**: Go daemon in Docker container — Docker socket event stream + periodic heartbeat
 
 ## Architecture
 
 ```
 Hosts (dsc0, csb0, csb1, hsb0, ...)
-  └── fleetcom-agent (Docker container, mounts host /var/run/docker.sock)
+  └── fleetcom-bosun (Docker container, mounts host /var/run/docker.sock)
         ├── Docker event stream (real-time: die, restart, oom, health_status)
         │     → POST /api/container-events (immediate)
         └── Periodic heartbeat (60s, enriched: health, restart_count, uptime)
@@ -93,12 +93,12 @@ FleetCom Server (csb1, Docker)
 Browser (fleet.barta.cm, Alpine.js + SSE — reactive, no polling)
 ```
 
-### Agent Deployment
+### Bosun Deployment
 
 ```yaml
 # On each host — agent/docker-compose.yml
-fleetcom-agent:
-  image: ghcr.io/markus-barta/fleetcom-agent:latest
+fleetcom-bosun:
+  image: ghcr.io/markus-barta/fleetcom-bosun:latest
   restart: unless-stopped
   volumes:
     - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -124,7 +124,7 @@ If you need to verify a secret exists: check file existence (`ls -la`) or test t
 ## Security
 
 - All communication over HTTPS (Cloudflare edge TLS)
-- Agent → server: per-host bearer token
+- Bosun → server: per-host bearer token
 - Browser → server: password + TOTP, HttpOnly session cookies
 - Host communication over Tailscale mesh where possible
 - No secrets stored in database

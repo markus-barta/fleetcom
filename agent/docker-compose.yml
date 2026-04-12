@@ -1,7 +1,7 @@
 services:
-  fleetcom-agent:
-    image: ghcr.io/markus-barta/fleetcom-agent:latest
-    container_name: fleetcom-agent
+  fleetcom-bosun:
+    image: ghcr.io/markus-barta/fleetcom-bosun:latest
+    container_name: fleetcom-bosun
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro

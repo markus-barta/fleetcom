@@ -4,7 +4,7 @@
   outputs =
     { self, ... }:
     {
-      nixosModules.fleetcom-agent = import ./nix/module.nix;
-      nixosModules.default = self.nixosModules.fleetcom-agent;
+      nixosModules.fleetcom-bosun = import ./nix/module.nix;
+      nixosModules.default = self.nixosModules.fleetcom-bosun;
     };
 }

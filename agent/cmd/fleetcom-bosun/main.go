@@ -85,7 +85,7 @@ func main() {
 	interval := 60 * time.Second
 	agentVersionStr := formatAgentVersion()
 
-	log.Printf("FleetCom agent %s starting: host=%s server=%s interval=%s", agentVersionStr, hostname, serverURL, interval)
+	log.Printf("FleetCom Bosun %s starting: host=%s server=%s interval=%s", agentVersionStr, hostname, serverURL, interval)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

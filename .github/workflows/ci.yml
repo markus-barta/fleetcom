@@ -104,7 +104,7 @@ jobs:
 
       - name: Build
         working-directory: agent
-        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../dist/fleetcom-agent ./cmd/fleetcom-agent
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../dist/fleetcom-bosun ./cmd/fleetcom-bosun
 
   publish:
     name: Publish to GHCR
@@ -173,9 +173,9 @@ jobs:
             VERSION=${{ env.AGENT_VERSION }}
             BUILD_TIME=${{ steps.meta.outputs.build_time }}
           tags: |
-            ghcr.io/markus-barta/fleetcom-agent:latest
-            ghcr.io/markus-barta/fleetcom-agent:v${{ env.AGENT_VERSION }}
-            ghcr.io/markus-barta/fleetcom-agent:sha-${{ steps.meta.outputs.short_sha }}
+            ghcr.io/markus-barta/fleetcom-bosun:latest
+            ghcr.io/markus-barta/fleetcom-bosun:v${{ env.AGENT_VERSION }}
+            ghcr.io/markus-barta/fleetcom-bosun:sha-${{ steps.meta.outputs.short_sha }}
 
   deploy:
     name: Deploy to csb1
