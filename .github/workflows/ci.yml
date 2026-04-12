@@ -13,6 +13,7 @@ permissions:
 
 env:
   VERSION: 0.4.1
+  AGENT_VERSION: 0.1.0
 
 jobs:
   lint:
@@ -161,15 +162,19 @@ jobs:
         id: meta
         run: |
           echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
 
       - name: Build and push agent image
         uses: docker/build-push-action@v7
         with:
           context: ./agent
           push: true
+          build-args: |
+            VERSION=${{ env.AGENT_VERSION }}
+            BUILD_TIME=${{ steps.meta.outputs.build_time }}
           tags: |
             ghcr.io/markus-barta/fleetcom-agent:latest
-            ghcr.io/markus-barta/fleetcom-agent:v${{ env.VERSION }}
+            ghcr.io/markus-barta/fleetcom-agent:v${{ env.AGENT_VERSION }}
             ghcr.io/markus-barta/fleetcom-agent:sha-${{ steps.meta.outputs.short_sha }}
 
   deploy:

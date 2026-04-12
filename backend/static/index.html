@@ -726,6 +726,51 @@
             color: var(--ink-faint);
         }
 
+        /* Agent version badges */
+        .agent-version-line {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            margin-top: 1px;
+        }
+        .agent-version-badge {
+            font-size: 9px;
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-weight: 600;
+            letter-spacing: 0.03em;
+            white-space: nowrap;
+        }
+        .agent-version-badge.current {
+            background: rgba(61, 220, 151, 0.12);
+            color: var(--ok);
+        }
+        .agent-version-badge.outdated {
+            background: rgba(255, 184, 77, 0.18);
+            color: var(--warn);
+        }
+        .agent-version-badge.legacy {
+            background: rgba(255, 184, 77, 0.22);
+            color: var(--warn);
+            font-style: italic;
+        }
+        .agent-version-badge.compact {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+        .agent-alert-icon {
+            width: 11px;
+            height: 11px;
+            color: var(--warn);
+            flex-shrink: 0;
+        }
+        .agent-expected {
+            font-size: 9px;
+            color: var(--ink-faint);
+            margin-left: 4px;
+        }
+
         /* Crash loop pulsing animation */
         .chip-container.crash-loop {
             animation: crash-pulse 1s ease-in-out infinite;
@@ -1672,6 +1717,10 @@
                                             <div>
                                                 <div x-text="(host.os || 'unknown') + (host.uptime_seconds ? ' · up ' + formatUptime(host.uptime_seconds) : '')"></div>
                                                 <div class="seen" x-text="'seen ' + formatAgo(host.last_seen)"></div>
+                                                <div class="agent-version-line">
+                                                    <template x-if="isOutdatedAgent(host)"><i data-lucide="alert-triangle" class="agent-alert-icon"></i></template>
+                                                    <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionLabel(host)"></span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -1771,6 +1820,10 @@
                                             <div>
                                                 <div x-text="(host.os || 'unknown') + (host.uptime_seconds ? ' · up ' + formatUptime(host.uptime_seconds) : '')"></div>
                                                 <div class="seen" x-text="'seen ' + formatAgo(host.last_seen)"></div>
+                                                <div class="agent-version-line">
+                                                    <template x-if="isOutdatedAgent(host)"><i data-lucide="alert-triangle" class="agent-alert-icon"></i></template>
+                                                    <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionLabel(host)"></span>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -1780,6 +1833,14 @@
                                     </div>
 
                                     <div class="card-detail-meta">
+                                        <div class="detail-field">
+                                            <span class="df-label">Agent</span>
+                                            <span class="df-value">
+                                                <template x-if="isOutdatedAgent(host)"><i data-lucide="alert-triangle" class="agent-alert-icon"></i></template>
+                                                <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionLabel(host)"></span>
+                                                <template x-if="isOutdatedAgent(host)"><span class="agent-expected"> (expected: <span x-text="expectedAgentVersion"></span>)</span></template>
+                                            </span>
+                                        </div>
                                         <div class="detail-field">
                                             <span class="df-label">Kernel</span>
                                             <span class="df-value" x-text="host.kernel || '—'"></span>
@@ -1872,6 +1933,7 @@
                                     <th class="col-state"></th>
                                     <th>Host</th>
                                     <th>State</th>
+                                    <th>Agent</th>
                                     <th>OS</th>
                                     <th>Uptime</th>
                                     <th>Seen</th>
@@ -1885,6 +1947,12 @@
                                         <td class="col-state"><span class="dot"></span></td>
                                         <td class="col-host" x-text="host.hostname"></td>
                                         <td x-text="stateLabel(hostStatus(host))"></td>
+                                        <td>
+                                            <span class="agent-version-badge compact" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')">
+                                                <template x-if="isOutdatedAgent(host)"><i data-lucide="alert-triangle" class="agent-alert-icon"></i></template>
+                                                <span x-text="agentVersionLabel(host)"></span>
+                                            </span>
+                                        </td>
                                         <td x-text="host.os || '—'"></td>
                                         <td x-text="formatUptime(host.uptime_seconds) || '—'"></td>
                                         <td x-text="formatAgo(host.last_seen)"></td>
@@ -2264,6 +2332,7 @@ services.fleetcom-agent = {
 
                 // Server config (pushed via SSE)
                 heartbeatInterval: 60,
+                expectedAgentVersion: '',
 
                 // Clock + tick counter for reactive "seen Xs ago" updates
                 clockDate: '',
@@ -2460,6 +2529,7 @@ services.fleetcom-agent = {
                         try {
                             const cfg = JSON.parse(e.data);
                             if (cfg.heartbeat_interval) this.heartbeatInterval = cfg.heartbeat_interval;
+                            if (cfg.expected_agent_version) this.expectedAgentVersion = cfg.expected_agent_version;
                             // Detect new deployment — if the server commit changed, force reload
                             if (cfg.commit && this._serverCommit && cfg.commit !== this._serverCommit) {
                                 console.log('New deployment detected (' + this._serverCommit + ' → ' + cfg.commit + '), reloading…');
@@ -3176,6 +3246,20 @@ services.fleetcom-agent = {
                     if (code === 143) return 'SIGTERM';
                     if (code === 1) return 'Error';
                     return 'Exit ' + code;
+                },
+                isLegacyAgent(host) {
+                    return !host.agent_version;
+                },
+                isOutdatedAgent(host) {
+                    if (!host.agent_version || !this.expectedAgentVersion) return false;
+                    // Extract semver from "0.1.0 (date, time)" format
+                    const current = host.agent_version.split(' ')[0];
+                    const expected = this.expectedAgentVersion.split(' ')[0];
+                    return current !== expected;
+                },
+                agentVersionLabel(host) {
+                    if (!host.agent_version) return 'LEGACY';
+                    return host.agent_version;
                 },
                 agentStatus(a) {
                     if (a.status === 'online') return 'ok';
