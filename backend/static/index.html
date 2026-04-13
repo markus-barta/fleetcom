@@ -724,6 +724,51 @@
             gap: 3px;
             margin-top: 1px;
         }
+        /* Compact variant (normal view card header) — right-aligned,
+           icon prefix, short semver by default, build-time expands on hover. */
+        .agent-version-line-compact {
+            justify-content: flex-end;
+            gap: 4px;
+            font-size: 9px;
+            color: var(--ink-ghost);
+            cursor: default;
+        }
+        .agent-version-icon {
+            width: 10px;
+            height: 10px;
+            color: var(--ink-faint);
+            flex-shrink: 0;
+        }
+        .agent-version-line-compact .agent-version-badge {
+            padding: 0;
+            background: transparent !important;
+            letter-spacing: 0.02em;
+        }
+        .agent-version-line-compact .agent-version-badge.current { color: var(--ok); }
+        .agent-version-line-compact .agent-version-badge.outdated { color: var(--warn); }
+        .agent-version-line-compact .agent-version-badge.legacy {
+            color: var(--warn);
+            font-style: italic;
+        }
+        /* Build-time "rest" (date/time) collapsed by default, expands on hover. */
+        .agent-version-rest {
+            display: inline-block;
+            overflow: hidden;
+            white-space: nowrap;
+            max-width: 0;
+            opacity: 0;
+            color: var(--ink-faint);
+            font-variant-numeric: tabular-nums;
+            transition: max-width 0.28s ease, opacity 0.2s ease, margin-left 0.28s ease;
+            margin-left: 0;
+        }
+        .agent-version-line-compact:hover .agent-version-rest {
+            max-width: 260px;
+            opacity: 1;
+            margin-left: 2px;
+        }
+
+        /* Detail view card header keeps the full badge styling */
         .agent-version-badge {
             font-size: 9px;
             padding: 1px 5px;
@@ -1708,9 +1753,11 @@
                                             <div>
                                                 <div x-text="(host.os || 'unknown') + (host.uptime_seconds ? ' · up ' + formatUptime(host.uptime_seconds) : '')"></div>
                                                 <div class="seen" x-text="'seen ' + formatAgo(host.last_seen)"></div>
-                                                <div class="agent-version-line">
+                                                <div class="agent-version-line agent-version-line-compact" :title="agentVersionLabel(host)">
                                                     <template x-if="isOutdatedAgent(host)"><svg class="agent-alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></template>
-                                                    <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionLabel(host)"></span>
+                                                    <svg class="agent-version-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1" fill="currentColor"/></svg>
+                                                    <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionShort(host)"></span>
+                                                    <span class="agent-version-rest" x-show="agentVersionRest(host)" x-text="agentVersionRest(host)"></span>
                                                 </div>
                                             </div>
                                         </div>
@@ -3282,6 +3329,15 @@ WantedBy=multi-user.target</pre>
                 agentVersionLabel(host) {
                     if (!host.agent_version) return 'LEGACY';
                     return host.agent_version;
+                },
+                agentVersionShort(host) {
+                    if (!host.agent_version) return 'LEGACY';
+                    return host.agent_version.split(' ')[0];
+                },
+                agentVersionRest(host) {
+                    if (!host.agent_version) return '';
+                    const rest = host.agent_version.slice(host.agent_version.indexOf(' ') + 1);
+                    return rest === host.agent_version ? '' : rest;
                 },
                 agentStatus(a) {
                     if (a.status === 'online') return 'ok';
