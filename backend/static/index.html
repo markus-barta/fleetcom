@@ -1364,6 +1364,163 @@
         }
 
         /* ============================================================
+           IMAGE PICKER — custom dropdown with thumbnails
+           ============================================================ */
+        .imgpick {
+            position: relative;
+            display: inline-block;
+            min-width: 240px;
+        }
+        .imgpick-trigger {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            width: 100%;
+            padding: 0.3rem 0.55rem 0.3rem 0.35rem;
+            background: var(--bg-0);
+            border: 1px solid var(--line-2);
+            color: var(--ink);
+            font-family: inherit;
+            font-size: 11px;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            text-align: left;
+            transition: border-color 0.12s, background 0.12s;
+        }
+        .imgpick-trigger:hover {
+            border-color: var(--accent);
+            background: var(--bg-1);
+        }
+        .imgpick.is-open .imgpick-trigger {
+            border-color: var(--accent);
+            background: var(--bg-1);
+            box-shadow: 0 0 0 1px rgba(106, 176, 255, 0.18);
+        }
+        .imgpick-thumb {
+            flex: 0 0 28px;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-0);
+            border: 1px solid var(--line);
+            position: relative;
+        }
+        .imgpick-thumb img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+        .imgpick-thumb.is-empty {
+            color: var(--ink-faint);
+            font-size: 9px;
+            letter-spacing: 0.12em;
+            font-weight: 700;
+        }
+        .imgpick-name {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--ink);
+            font-weight: 500;
+        }
+        .imgpick-name.is-empty {
+            color: var(--ink-ghost);
+            font-style: italic;
+        }
+        .imgpick-chev {
+            flex: 0 0 auto;
+            width: 10px;
+            height: 10px;
+            border-right: 1px solid var(--ink-dim);
+            border-bottom: 1px solid var(--ink-dim);
+            transform: rotate(45deg) translate(-1px, -1px);
+            transition: transform 0.15s;
+            margin-right: 0.15rem;
+        }
+        .imgpick.is-open .imgpick-chev {
+            transform: rotate(-135deg) translate(-2px, -2px);
+            border-color: var(--accent);
+        }
+        .imgpick-panel {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            right: 0;
+            z-index: 30;
+            max-height: 320px;
+            overflow-y: auto;
+            background: var(--bg-1);
+            border: 1px solid var(--accent);
+            box-shadow:
+                0 12px 28px rgba(0, 0, 0, 0.55),
+                0 0 0 1px rgba(106, 176, 255, 0.14);
+            animation: imgpick-in 0.12s ease-out;
+        }
+        @keyframes imgpick-in {
+            from { opacity: 0; transform: translateY(-4px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+        .imgpick-panel::-webkit-scrollbar { width: 8px; }
+        .imgpick-panel::-webkit-scrollbar-track { background: var(--bg-0); }
+        .imgpick-panel::-webkit-scrollbar-thumb {
+            background: var(--line-2);
+            border: 2px solid var(--bg-1);
+        }
+        .imgpick-option {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.45rem 0.6rem 0.45rem 0.45rem;
+            cursor: pointer;
+            border-left: 2px solid transparent;
+            border-bottom: 1px solid var(--line);
+            font-size: 11px;
+            color: var(--ink);
+            transition: background 0.08s, border-color 0.08s;
+        }
+        .imgpick-option:last-child { border-bottom: none; }
+        .imgpick-option .imgpick-thumb {
+            flex: 0 0 36px;
+            width: 36px;
+            height: 36px;
+        }
+        .imgpick-option-name {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+        }
+        .imgpick-option.is-active {
+            background: rgba(106, 176, 255, 0.10);
+            border-left-color: var(--accent);
+        }
+        .imgpick-option.is-selected {
+            border-left-color: var(--accent);
+        }
+        .imgpick-option.is-selected .imgpick-option-name {
+            color: var(--accent);
+        }
+        .imgpick-option .check {
+            flex: 0 0 auto;
+            width: 12px;
+            height: 12px;
+            color: var(--accent);
+            opacity: 0;
+            font-weight: 700;
+            font-size: 11px;
+            text-align: center;
+        }
+        .imgpick-option.is-selected .check { opacity: 1; }
+
+        /* ============================================================
            FOOTER
            ============================================================ */
         footer {
@@ -2084,19 +2241,58 @@
                                         </div>
                                         <template x-if="configHost === t.hostname">
                                             <div style="width:100%;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--line);">
-                                                <div style="display:flex;gap:1rem;margin-bottom:0.6rem;align-items:center;">
+                                                <div style="display:flex;gap:1rem;margin-bottom:0.6rem;align-items:center;flex-wrap:wrap;">
                                                     <label style="font-size:10px;color:var(--ink-ghost);letter-spacing:0.12em;text-transform:uppercase;font-weight:600;">Icon</label>
-                                                    <select style="background:var(--bg-0);border:1px solid var(--line-2);color:var(--ink);font-family:inherit;font-size:11px;padding:2px 6px;"
-                                                            x-model="configImageId"
-                                                            @change="configImageId = $event.target.value ? parseInt($event.target.value) : null">
-                                                        <option value="">None</option>
-                                                        <template x-for="p in imagePresets" :key="p.id">
-                                                            <option :value="p.id" :selected="configImageId === p.id" x-text="p.name"></option>
+                                                    <div class="imgpick"
+                                                         :class="{ 'is-open': imgPickOpen }"
+                                                         @keydown.escape.prevent="imgPickOpen = false"
+                                                         @keydown.arrow-down.prevent="imgPickNav(1)"
+                                                         @keydown.arrow-up.prevent="imgPickNav(-1)"
+                                                         @keydown.enter.prevent="imgPickCommit()"
+                                                         @click.outside="imgPickOpen = false">
+                                                        <button type="button" class="imgpick-trigger" @click="imgPickToggle()">
+                                                            <template x-if="configImageId">
+                                                                <span class="imgpick-thumb">
+                                                                    <img :src="'/api/image-presets/' + configImageId + '/image'" alt="">
+                                                                </span>
+                                                            </template>
+                                                            <template x-if="!configImageId">
+                                                                <span class="imgpick-thumb is-empty">Ø</span>
+                                                            </template>
+                                                            <span class="imgpick-name" :class="{ 'is-empty': !configImageId }"
+                                                                  x-text="configImageId ? (imagePresetName(configImageId) || 'unknown') : 'none — no icon'"></span>
+                                                            <span class="imgpick-chev"></span>
+                                                        </button>
+                                                        <template x-if="imgPickOpen">
+                                                            <div class="imgpick-panel" @mouseleave="imgPickFocus = -1">
+                                                                <div class="imgpick-option"
+                                                                     :class="{ 'is-selected': configImageId === null, 'is-active': imgPickFocus === 0 }"
+                                                                     @click="imgPickSelect(null)"
+                                                                     @mouseenter="imgPickFocus = 0">
+                                                                    <span class="imgpick-thumb is-empty">Ø</span>
+                                                                    <span class="imgpick-option-name">none — no icon</span>
+                                                                    <span class="check">✓</span>
+                                                                </div>
+                                                                <template x-for="(p, idx) in imagePresets" :key="p.id">
+                                                                    <div class="imgpick-option"
+                                                                         :class="{ 'is-selected': configImageId === p.id, 'is-active': imgPickFocus === idx + 1 }"
+                                                                         @click="imgPickSelect(p.id)"
+                                                                         @mouseenter="imgPickFocus = idx + 1">
+                                                                        <span class="imgpick-thumb">
+                                                                            <img :src="'/api/image-presets/' + p.id + '/image'" :alt="p.name">
+                                                                        </span>
+                                                                        <span class="imgpick-option-name" x-text="p.name"></span>
+                                                                        <span class="check">✓</span>
+                                                                    </div>
+                                                                </template>
+                                                                <template x-if="imagePresets.length === 0">
+                                                                    <div class="imgpick-option" style="cursor:default;color:var(--ink-ghost);font-style:italic;">
+                                                                        <span class="imgpick-option-name">no icons uploaded — use the Icons tab</span>
+                                                                    </div>
+                                                                </template>
+                                                            </div>
                                                         </template>
-                                                    </select>
-                                                    <template x-if="configImageId">
-                                                        <img :src="'/api/image-presets/' + configImageId + '/image'" style="width:32px;height:32px;object-fit:contain;border:1px solid var(--line);">
-                                                    </template>
+                                                    </div>
                                                 </div>
                                                 <div style="margin-bottom:0.6rem;">
                                                     <label style="font-size:10px;color:var(--ink-ghost);letter-spacing:0.12em;text-transform:uppercase;font-weight:600;display:block;margin-bottom:0.3rem;">Comment</label>
@@ -2423,6 +2619,9 @@ WantedBy=multi-user.target</pre>
                 configImageId: null,
                 // Image presets
                 imagePresets: [],
+                // Custom image picker state
+                imgPickOpen: false,
+                imgPickFocus: -1,
                 scaleList: ['1min', '15min', '1h', '1d', '14d', '1MO', '1Y'],
                 scaleWindow: { '1min': 60, '15min': 900, '1h': 3600, '1d': 86400, '14d': 1209600, '1MO': 2592000, '1Y': 31536000 },
                 globalScale: '1h',
@@ -2783,20 +2982,53 @@ WantedBy=multi-user.target</pre>
                     this.configHost = hostname;
                     const cfg = this.hostConfigs[hostname] || {};
                     this.configComment = cfg.comment || '';
-                    this.configImageId = cfg.image_preset_id || null;
+                    this.configImageId = cfg.image_preset_id != null ? Number(cfg.image_preset_id) : null;
+                    this.imgPickOpen = false;
+                    this.imgPickFocus = -1;
                     this.loadTokens();
                     this.loadImagePresets();
                 },
 
+                // ---------- image picker ----------
+                imagePresetName(id) {
+                    const p = this.imagePresets.find(p => p.id === id);
+                    return p ? p.name : null;
+                },
+                imgPickToggle() {
+                    this.imgPickOpen = !this.imgPickOpen;
+                    if (this.imgPickOpen) {
+                        // Seed focus on the currently selected row
+                        const idx = this.imagePresets.findIndex(p => p.id === this.configImageId);
+                        this.imgPickFocus = idx >= 0 ? idx + 1 : 0;
+                    }
+                },
+                imgPickNav(delta) {
+                    if (!this.imgPickOpen) { this.imgPickOpen = true; }
+                    const max = this.imagePresets.length; // +1 virtual "none" at index 0
+                    if (this.imgPickFocus < 0) this.imgPickFocus = 0;
+                    this.imgPickFocus = (this.imgPickFocus + delta + (max + 1)) % (max + 1);
+                },
+                imgPickCommit() {
+                    if (!this.imgPickOpen) { this.imgPickOpen = true; return; }
+                    if (this.imgPickFocus === 0) { this.imgPickSelect(null); return; }
+                    const p = this.imagePresets[this.imgPickFocus - 1];
+                    if (p) this.imgPickSelect(p.id);
+                },
+                imgPickSelect(id) {
+                    this.configImageId = id == null ? null : Number(id);
+                    this.imgPickOpen = false;
+                },
+
                 async saveHostConfig() {
                     if (!this.configHost) return;
+                    const presetId = this.configImageId == null ? null : Number(this.configImageId);
                     try {
                         const res = await fetch('/api/host-config', {
                             method: 'PUT',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 hostname: this.configHost,
-                                image_preset_id: this.configImageId || null,
+                                image_preset_id: Number.isFinite(presetId) ? presetId : null,
                                 comment: this.configComment
                             })
                         });
