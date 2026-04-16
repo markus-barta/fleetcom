@@ -41,6 +41,7 @@
             --ok-glow: 0 0 6px var(--ok), 0 0 10px rgba(61, 220, 151, 0.4);
             --nav-active-bg: rgba(106, 176, 255, 0.06);
             --conn-live-border: rgba(61, 220, 151, 0.35);
+            --card-overlay: rgba(8, 10, 16, 0.92);
         }
         [data-theme="light"] {
             --bg-0: #f0f2f5;
@@ -75,6 +76,7 @@
             --ok-glow: none;
             --nav-active-bg: rgba(37, 99, 235, 0.06);
             --conn-live-border: rgba(22, 134, 79, 0.30);
+            --card-overlay: rgba(255, 255, 255, 0.92);
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -579,10 +581,10 @@
            chips visible in normal view, this was the main CPU killer.
            Higher background opacity gives readability instead. */
         .card .strip-block {
-            background: rgba(10, 13, 16, 0.92);
+            background: var(--card-overlay);
         }
         .card .chip {
-            background: rgba(8, 10, 16, 0.92);
+            background: var(--card-overlay);
         }
         /* .card-section-label has no background — backdrop-filter removed,
            nothing to replace. */
@@ -1114,10 +1116,8 @@
             gap: 0.5rem;
             margin-top: 0.65rem;
             padding: 0.6rem 0.8rem;
-            background: rgba(10, 13, 16, 0.6);
-            backdrop-filter: blur(6px);
-            -webkit-backdrop-filter: blur(6px);
-            border: 1px solid rgba(28, 32, 43, 0.6);
+            background: var(--card-overlay);
+            border: 1px solid var(--line);
             font-size: 10px;
         }
         .detail-field {
