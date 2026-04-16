@@ -89,6 +89,7 @@ func main() {
 	r.Get("/api/version", api.Version)
 	r.Get("/api/settings", api.GetSettings(store))
 	r.Get("/api/image-presets/{id}/image", api.GetImagePresetImage(store))
+	r.Get("/api/org-logo", api.GetOrgLogo(store))
 	r.Get("/LICENSE", api.License)
 	r.Post("/api/heartbeat", api.Heartbeat(store, hub))
 	r.Post("/api/container-events", api.ContainerEvents(store, hub))
@@ -163,6 +164,8 @@ func main() {
 			r.Delete("/{id}/hosts/{hostId}", api.RevokeUserHost(store))
 		})
 		r.With(auth.RequireAdmin).Get("/api/hosts/all", api.AllHostsList(store))
+		r.With(auth.RequireAdmin).Post("/api/org-logo", api.UploadOrgLogo(store, hub))
+		r.With(auth.RequireAdmin).Delete("/api/org-logo", api.DeleteOrgLogo(store, hub))
 
 	})
 
