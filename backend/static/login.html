@@ -72,17 +72,60 @@
             text-align: center;
             display: none;
         }
+        .success {
+            background: #1f3d1f;
+            border: 1px solid #306e30;
+            color: #3fb950;
+            padding: 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+            text-align: center;
+            display: none;
+        }
+        .forgot {
+            display: block;
+            text-align: center;
+            margin-top: 1rem;
+            color: #58a6ff;
+            font-size: 0.8125rem;
+            text-decoration: none;
+        }
+        .forgot:hover { text-decoration: underline; }
+        .forgot-form { display: none; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #2d333b; }
+        .forgot-form label { margin-top: 0.5rem; }
+        .forgot-form button { margin-top: 0.5rem; background: #30363d; }
+        .forgot-form button:hover { background: #484f58; }
     </style>
 </head>
 <body>
-    <form class="login-box" method="POST" action="/login">
+    <div class="login-box">
         <h1>FleetCom</h1>
+        <div class="success" id="success"></div>
         <div class="error" id="error"></div>
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" required autofocus>
-        <label for="totp">TOTP Code</label>
-        <input type="text" id="totp" name="totp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6">
-        <button type="submit">Sign in</button>
-    </form>
+        <form method="POST" action="/login">
+            <label for="email">Email</label>
+            <input type="email" id="email" name="email" required autofocus>
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+            <button type="submit">Sign in</button>
+        </form>
+        <a href="#" class="forgot" onclick="document.getElementById('forgot-form').style.display='block';this.style.display='none';return false;">Forgot password?</a>
+        <div class="forgot-form" id="forgot-form">
+            <form method="POST" action="/forgot-password">
+                <label for="reset-email">Email</label>
+                <input type="email" id="reset-email" name="email" required>
+                <button type="submit">Send Reset Link</button>
+            </form>
+        </div>
+    </div>
+    <script>
+        // Show success message after password reset
+        if (location.search.includes('reset=ok')) {
+            var el = document.getElementById('success');
+            el.textContent = 'Password reset successfully. Please sign in.';
+            el.style.display = 'block';
+        }
+    </script>
 </body>
 </html>

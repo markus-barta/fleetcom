@@ -45,6 +45,7 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE containers ADD COLUMN exit_code INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE containers ADD COLUMN oom_killed INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE hosts ADD COLUMN agent_version TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE sessions ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0`,
 	}
 	for _, stmt := range alterStmts {
 		db.Exec(stmt) // ignore "duplicate column" errors
@@ -163,4 +164,32 @@ CREATE TABLE IF NOT EXISTS host_configs (
 	image_preset_id INTEGER REFERENCES image_presets(id) ON DELETE SET NULL,
 	comment TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS users (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	email TEXT NOT NULL UNIQUE,
+	password_hash TEXT NOT NULL,
+	role TEXT NOT NULL DEFAULT 'user' CHECK(role IN ('admin','user')),
+	status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive','deleted')),
+	totp_secret TEXT NOT NULL DEFAULT '',
+	totp_enabled INTEGER NOT NULL DEFAULT 0,
+	created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS totp_pending (
+	token TEXT PRIMARY KEY,
+	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	expires_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	token_hash TEXT NOT NULL UNIQUE,
+	created_at TEXT NOT NULL,
+	expires_at TEXT NOT NULL,
+	used_at TEXT,
+	ip_address TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_prt_user ON password_reset_tokens(user_id);
 `

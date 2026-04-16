@@ -34,8 +34,14 @@ func main() {
 	}
 	defer store.Close()
 
+	// Seed admin user on first run
+	if err := auth.SeedAdmin(store, os.Getenv("FLEETCOM_ADMIN_EMAIL"), os.Getenv("FLEETCOM_ADMIN_PASSWORD")); err != nil {
+		log.Fatalf("failed to seed admin: %v", err)
+	}
+
 	hub := sse.NewHub()
 	a := auth.New(store)
+	resetHandlers := auth.NewResetHandlers(store)
 
 	// Purge samples older than 400 days (covers the 1Y history scale).
 	const sampleRetention = 400 * 24 * time.Hour
@@ -51,6 +57,9 @@ func main() {
 	} else if n > 0 {
 		log.Printf("purged %d old container events", n)
 	}
+	store.CleanExpiredSessions()
+	store.CleanExpiredTOTPPending()
+
 	go func() {
 		ticker := time.NewTicker(6 * time.Hour)
 		defer ticker.Stop()
@@ -65,6 +74,8 @@ func main() {
 			} else if n > 0 {
 				log.Printf("purged %d old container events", n)
 			}
+			store.CleanExpiredSessions()
+			store.CleanExpiredTOTPPending()
 		}
 	}()
 
@@ -81,9 +92,15 @@ func main() {
 	r.Get("/LICENSE", api.License)
 	r.Post("/api/heartbeat", api.Heartbeat(store, hub))
 	r.Post("/api/container-events", api.ContainerEvents(store, hub))
+
+	// Auth routes (public)
 	r.Get("/login", api.LoginPage)
 	r.Post("/login", a.HandleLogin)
+	r.Post("/login/totp", a.HandleTOTPVerify)
 	r.Get("/logout", a.HandleLogout)
+	r.Post("/forgot-password", resetHandlers.HandleForgotPassword)
+	r.Get("/reset/{token}", resetHandlers.HandleResetForm)
+	r.Post("/reset", resetHandlers.HandleResetPassword)
 
 	// Static files (public — CSS, JS, images)
 	fs := http.FileServer(http.Dir("static"))
@@ -93,7 +110,7 @@ func main() {
 	r.Get("/s/{token}", api.SharedDashboard(store))
 	r.Get("/s/{token}/events", api.SharedEvents(store, hub))
 
-	// Protected routes
+	// Protected routes (session required)
 	r.Group(func(r chi.Router) {
 		r.Use(a.RequireSession)
 		r.Get("/", api.Dashboard)
@@ -115,6 +132,26 @@ func main() {
 		r.Get("/api/image-presets", api.ListImagePresets(store))
 		r.Post("/api/image-presets", api.UploadImagePreset(store))
 		r.Delete("/api/image-presets/{id}", api.DeleteImagePreset(store))
+
+		// Self-service auth endpoints
+		r.Get("/api/me", api.Me(store))
+		r.Post("/api/auth/password", api.ChangePassword(store))
+		r.Get("/api/auth/totp/setup", api.TOTPSetup(store))
+		r.Post("/api/auth/totp/enable", api.TOTPEnable(store))
+		r.Post("/api/auth/totp/disable", api.TOTPDisable(store))
+		r.Get("/api/auth/sessions", api.ListSessions(store))
+		r.Delete("/api/auth/sessions/{id}", api.RevokeSession(store))
+
+		// Admin-only routes
+		r.Route("/api/users", func(r chi.Router) {
+			r.Use(auth.RequireAdmin)
+			r.Get("/", api.ListUsers(store))
+			r.Post("/", api.CreateUser(store))
+			r.Put("/{id}/status", api.UpdateUserStatus(store))
+			r.Post("/{id}/reset-totp", api.ResetUserTOTP(store))
+			r.Delete("/{id}/sessions", api.InvalidateUserSessions(store))
+		})
+
 	})
 
 	srv := &http.Server{
