@@ -1,0 +1,65 @@
+name: Deploy to BytePoets
+
+# Deploys FleetCom to the BytePoets server at fleet.bytepoets.com.
+# Manual trigger only. Uses the same host as PMO (pm.bytepoets.com).
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'GHCR tag to deploy (e.g. latest, sha-abc1234)'
+        required: true
+        default: 'latest'
+        type: string
+
+jobs:
+  deploy:
+    name: Pull + restart fleetcom on BP server
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-bytepoets
+      cancel-in-progress: false
+
+    steps:
+      - name: Show target
+        run: |
+          echo "Image: ghcr.io/markus-barta/fleetcom:${{ inputs.image_tag }}"
+          echo "Host:  fleet.bytepoets.com"
+
+      - name: Install SSH key
+        env:
+          SSH_KEY: ${{ secrets.BP_DEPLOY_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ secrets.BP_DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Pull + restart on BP server
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+              ${{ secrets.BP_DEPLOY_USER }}@${{ secrets.BP_DEPLOY_HOST }} \
+              "set -e
+               cd ~/docker
+               docker compose pull fleetcom
+               if [ '${{ inputs.image_tag }}' != 'latest' ]; then
+                 docker pull ghcr.io/markus-barta/fleetcom:${{ inputs.image_tag }}
+                 docker tag  ghcr.io/markus-barta/fleetcom:${{ inputs.image_tag }} ghcr.io/markus-barta/fleetcom:latest
+               fi
+               docker compose up -d fleetcom"
+
+      - name: Health check
+        run: |
+          for i in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -sf https://fleet.bytepoets.com/healthz > /dev/null; then
+              echo "OK — https://fleet.bytepoets.com/healthz"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "✗ health check failed after 30s"
+          exit 1
+
+      - name: Cleanup SSH key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
