@@ -110,9 +110,18 @@ func main() {
 	r.Get("/s/{token}", api.SharedDashboard(store))
 	r.Get("/s/{token}/events", api.SharedEvents(store, hub))
 
-	// Protected routes (session required)
+	// TOTP setup (session required, but exempt from TOTP enforcement)
 	r.Group(func(r chi.Router) {
 		r.Use(a.RequireSession)
+		r.Get("/setup-totp", a.HandleSetupTOTP)
+		r.Post("/setup-totp", a.HandleSetupTOTPSubmit)
+		r.Get("/api/me", api.Me(store))
+	})
+
+	// Protected routes (session + TOTP required)
+	r.Group(func(r chi.Router) {
+		r.Use(a.RequireSession)
+		r.Use(auth.RequireTOTP)
 		r.Get("/", api.Dashboard)
 		r.Get("/api/events", api.Events(store, hub))
 		r.Get("/api/hosts", api.ListHosts(store))
@@ -134,7 +143,6 @@ func main() {
 		r.Delete("/api/image-presets/{id}", api.DeleteImagePreset(store))
 
 		// Self-service auth endpoints
-		r.Get("/api/me", api.Me(store))
 		r.Post("/api/auth/password", api.ChangePassword(store))
 		r.Get("/api/auth/totp/setup", api.TOTPSetup(store))
 		r.Post("/api/auth/totp/enable", api.TOTPEnable(store))
