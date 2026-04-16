@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        :root {
+        :root, [data-theme="dark"] {
             --bg-0: #080a10;
             --bg-1: #0e1118;
             --bg-2: #141821;
@@ -30,6 +30,33 @@
             --crit-border: rgba(255, 77, 109, 0.55);
             --dead-bg: rgba(84, 88, 101, 0.18);
             --dead-border: rgba(84, 88, 101, 0.40);
+            --bg-card: #0e1118;
+            --border: #1c202b;
+        }
+        [data-theme="light"] {
+            --bg-0: #f5f6f8;
+            --bg-1: #ffffff;
+            --bg-2: #ebedf0;
+            --line: #d0d5dd;
+            --line-2: #bcc3cf;
+            --ink: #1a1d24;
+            --ink-dim: #5a5f6b;
+            --ink-ghost: #8a8f9a;
+            --ink-faint: #c0c4cc;
+            --ok: #1a9960;
+            --warn: #c47a00;
+            --crit: #d42b4e;
+            --dead: #8a8f9a;
+            --accent: #2563eb;
+            --ok-bg: rgba(26, 153, 96, 0.08);
+            --warn-bg: rgba(196, 122, 0, 0.08);
+            --warn-border: rgba(196, 122, 0, 0.40);
+            --crit-bg: rgba(212, 43, 78, 0.08);
+            --crit-border: rgba(212, 43, 78, 0.50);
+            --dead-bg: rgba(138, 143, 154, 0.12);
+            --dead-border: rgba(138, 143, 154, 0.35);
+            --bg-card: #ffffff;
+            --border: #d0d5dd;
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -1795,7 +1822,9 @@
     <div x-data="fleetcom()" x-init="init()" class="app">
         <header>
             <div class="header-left">
-                <div class="brand">FleetCom<span class="tag">TELEMETRY</span></div>
+                <img x-show="orgLogoURL" :src="orgLogoURL" style="height:24px;border-radius:3px;margin-right:6px" alt="">
+                <div class="brand">FleetCom<span class="tag" x-text="instanceLabel || 'TELEMETRY'"></span></div>
+                <span x-show="instanceLabel" style="color:var(--ink-ghost);font-size:9px;margin-left:6px;letter-spacing:0.1em" x-text="location.hostname"></span>
                 <div class="conn" :class="'state-' + connState">
                     <span class="dot"></span>
                     <span x-text="connState === 'live' ? 'Live' : (connState === 'reconnecting' ? 'Reconnecting' : 'Offline')"></span>
@@ -1816,6 +1845,9 @@
                 <div class="clock">
                     <span x-text="clockDate"></span><span class="sep">·</span><span x-text="clockTime"></span><span class="tz" @click="toggleTimezone()" style="cursor:pointer;" :title="'Click to switch to ' + (useUTC ? 'local' : 'UTC') + ' time'" x-text="tzLabel"></span>
                 </div>
+                <button class="theme-toggle" @click="cycleTheme()" :title="'Theme: ' + theme" style="background:none;border:1px solid var(--ink-faint);border-radius:4px;padding:2px 6px;cursor:pointer;color:var(--ink-dim);font-size:11px;font-family:inherit">
+                    <span x-text="theme === 'dark' ? '&#9790;' : theme === 'light' ? '&#9788;' : '&#9681;'"></span>
+                </button>
                 <a href="/logout" class="signout" x-show="!shared">
                     <i data-lucide="log-out"></i>
                     <span>Sign out</span>
@@ -2443,10 +2475,28 @@
                                     <span style="color:var(--ink-ghost);font-size:10px;" x-text="cardImgSize + 'px'"></span>
                                 </label>
                             </div>
+
+                            <template x-if="currentUser && currentUser.role === 'admin'">
+                                <div>
+                                    <h3 style="margin:2rem 0 1rem;color:var(--ink-dim)">Branding</h3>
+                                    <div class="form-row" style="flex-direction:column;gap:0.5rem;max-width:400px">
+                                        <label style="font-size:11px;color:var(--ink-dim)">Instance Label</label>
+                                        <div style="display:flex;gap:0.5rem">
+                                            <input type="text" x-model="configInstanceLabel" placeholder="e.g. BYTEPOETS" style="flex:1">
+                                            <button class="btn btn-primary" @click="saveInstanceLabel()">Save</button>
+                                        </div>
+                                        <label style="font-size:11px;color:var(--ink-dim);margin-top:0.5rem">Org Logo</label>
+                                        <div style="display:flex;gap:0.5rem;align-items:center">
+                                            <img x-show="orgLogoURL" :src="orgLogoURL" style="height:32px;border-radius:4px">
+                                            <input type="file" accept="image/*" @change="uploadOrgLogo($event)" style="font-size:11px">
+                                            <button class="btn" x-show="orgLogoURL" style="font-size:0.75rem;padding:0.25rem 0.5rem;background:var(--crit)" @click="deleteOrgLogo()">Remove</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
                         </div>
                     </template>
 
-                    <!-- Docs tab -->
                     <!-- Account tab -->
                     <template x-if="settingsTab === 'account'">
                         <div>
@@ -2780,6 +2830,10 @@ WantedBy=multi-user.target</pre>
                 usersList: [],
                 newUserEmail: '', newUserPassword: '', newUserRole: 'user',
                 selectedUser: null, selectedUserHosts: [], allHostsList: [],
+                // Branding
+                instanceLabel: '',
+                orgLogoURL: '',
+                theme: 'dark',
 
                 init() {
                     this.viewMode = localStorage.getItem('fleetcom.view') || 'normal';
@@ -2794,6 +2848,7 @@ WantedBy=multi-user.target</pre>
                     this.startClock();
                     this.loadVersion();
                     this.loadMe();
+                    this.initTheme();
                     this.connect();
                     this.startConnWatchdog();
                     this.startStripRefresher();
@@ -2903,6 +2958,26 @@ WantedBy=multi-user.target</pre>
                         const res = await fetch('/api/me');
                         if (res.ok) this.currentUser = await res.json();
                     } catch (_) {}
+                },
+
+                initTheme() {
+                    this.theme = localStorage.getItem('fleetcom.theme') || 'dark';
+                    this.applyTheme();
+                },
+
+                cycleTheme() {
+                    const order = ['dark', 'light', 'auto'];
+                    this.theme = order[(order.indexOf(this.theme) + 1) % order.length];
+                    localStorage.setItem('fleetcom.theme', this.theme);
+                    this.applyTheme();
+                },
+
+                applyTheme() {
+                    let effective = this.theme;
+                    if (effective === 'auto') {
+                        effective = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+                    }
+                    document.documentElement.setAttribute('data-theme', effective);
                 },
 
                 async changePassword() {
@@ -3066,6 +3141,34 @@ WantedBy=multi-user.target</pre>
                     } catch (_) {}
                 },
 
+                configInstanceLabel: '',
+
+                async saveInstanceLabel() {
+                    try {
+                        await fetch('/api/settings', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ instance_label: this.configInstanceLabel })
+                        });
+                    } catch (_) {}
+                },
+
+                async uploadOrgLogo(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    const form = new FormData();
+                    form.append('file', file);
+                    try {
+                        await fetch('/api/org-logo', { method: 'POST', body: form });
+                    } catch (_) {}
+                },
+
+                async deleteOrgLogo() {
+                    try {
+                        await fetch('/api/org-logo', { method: 'DELETE' });
+                    } catch (_) {}
+                },
+
                 formatBuildTime(iso) {
                     if (!iso || iso === 'unknown') return 'unknown';
                     const d = new Date(iso);
@@ -3120,6 +3223,8 @@ WantedBy=multi-user.target</pre>
                         try {
                             const cfg = JSON.parse(e.data);
                             if (cfg.heartbeat_interval) this.heartbeatInterval = cfg.heartbeat_interval;
+                            if (cfg.instance_label !== undefined) this.instanceLabel = cfg.instance_label;
+                            this.orgLogoURL = cfg.org_logo_url || '';
                             if (cfg.expected_agent_version) this.expectedAgentVersion = cfg.expected_agent_version;
                             // Detect new deployment — if the server commit changed, force reload
                             if (cfg.commit && this._serverCommit && cfg.commit !== this._serverCommit) {
