@@ -3018,6 +3018,10 @@ WantedBy=multi-user.target</pre>
                         effective = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
                     }
                     document.documentElement.setAttribute('data-theme', effective);
+                    // Redraw all history strips with new theme colors
+                    if (this.stripRegistry) {
+                        for (const c of this.stripRegistry) this.drawStrip(c);
+                    }
                 },
 
                 async changePassword() {
@@ -3741,7 +3745,9 @@ WantedBy=multi-user.target</pre>
                     }
                     const ctx = canvas.getContext('2d');
                     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-                    ctx.fillStyle = '#0a0d10';
+                    const cs = getComputedStyle(document.documentElement);
+                    const isLight = cs.getPropertyValue('--bg-0').trim().startsWith('#f') || cs.getPropertyValue('--bg-0').trim().startsWith('#e');
+                    ctx.fillStyle = isLight ? '#e0e2e6' : '#0a0d10';
                     ctx.fillRect(0, 0, cssW, cssH);
 
                     const data = ctrl.data;
@@ -3770,7 +3776,7 @@ WantedBy=multi-user.target</pre>
                         coverStartIdx = Math.floor(n * (1 - ratio));
                     }
                     if (coverStartIdx > 0) {
-                        ctx.fillStyle = '#13171b';
+                        ctx.fillStyle = isLight ? '#d0d3d8' : '#13171b';
                         ctx.fillRect(0, 0, coverStartIdx * cellW, cssH);
                     }
 
@@ -3805,15 +3811,20 @@ WantedBy=multi-user.target</pre>
                     }
 
                     // Real data vs interpolated — interpolated buckets use dimmed colors
-                    const colors     = { ok: '#3ddc97', warn: '#ffb84d', crit: '#ff4d6d', dead: '#5a6068' };
-                    const colorsDim  = { ok: '#2a9e6c', warn: '#b8832e', crit: '#b8364d', dead: '#44484f' };
+                    const colors = isLight
+                        ? { ok: '#16864f', warn: '#a86800', crit: '#c0243f', dead: '#8a8f9a' }
+                        : { ok: '#3ddc97', warn: '#ffb84d', crit: '#ff4d6d', dead: '#5a6068' };
+                    const colorsDim = isLight
+                        ? { ok: '#6bc09a', warn: '#c9a050', crit: '#d87080', dead: '#b0b5be' }
+                        : { ok: '#2a9e6c', warn: '#b8832e', crit: '#b8364d', dead: '#44484f' };
+                    const noneColor = isLight ? '#e8c0c6' : '#2a1518';
                     for (let i = 0; i < n; i++) {
                         if (i < coverStartIdx) continue;
                         const status = resolved[i];
                         const x = Math.floor(i * cellW);
                         const w = Math.max(1, Math.floor((i + 1) * cellW) - x - (cellW > 2 ? 1 : 0));
                         if (status === 'none') {
-                            ctx.fillStyle = '#2a1518';
+                            ctx.fillStyle = noneColor;
                             ctx.fillRect(x, 1, w, cssH - 2);
                             continue;
                         }
@@ -3826,7 +3837,7 @@ WantedBy=multi-user.target</pre>
                     }
 
                     // "now" marker on the right edge
-                    ctx.fillStyle = 'rgba(232, 230, 223, 0.5)';
+                    ctx.fillStyle = isLight ? 'rgba(26, 29, 36, 0.3)' : 'rgba(232, 230, 223, 0.5)';
                     ctx.fillRect(cssW - 1, 0, 1, cssH);
 
                     if (ctrl.meta) {
