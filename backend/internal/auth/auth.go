@@ -1,13 +1,17 @@
 package auth
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"html/template"
+	"image/png"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/markus-barta/fleetcom/internal/db"
@@ -176,6 +180,26 @@ func (a *Auth) RequireSession(next http.Handler) http.Handler {
 	})
 }
 
+// RequireTOTP is middleware that enforces TOTP setup.
+// Users without TOTP enabled are redirected to the setup page.
+// API requests get a 403 with a JSON hint.
+func RequireTOTP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u := GetUser(r)
+		if u != nil && !u.TOTPEnabled {
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				w.Write([]byte(`{"error":"totp_required","message":"Two-factor authentication must be set up before continuing."}`))
+				return
+			}
+			http.Redirect(w, r, "/setup-totp", http.StatusSeeOther)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // RequireAdmin is middleware that checks the user has admin role.
 func RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -236,6 +260,118 @@ func generateToken() (string, error) {
 		return "", fmt.Errorf("generate token: %w", err)
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// HandleSetupTOTP serves the mandatory TOTP setup page for users without 2FA.
+func (a *Auth) HandleSetupTOTP(w http.ResponseWriter, r *http.Request) {
+	u := GetUser(r)
+	if u == nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+	if u.TOTPEnabled {
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+
+	full, err := a.store.GetUserByID(u.ID)
+	if err != nil || full == nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	secret := full.TOTPSecret
+	// Generate new secret only if none stored yet
+	if secret == "" {
+		key, err := totp.Generate(totp.GenerateOpts{
+			Issuer:      "FleetCom",
+			AccountName: u.Email,
+		})
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		secret = key.Secret()
+		if err := a.store.UpdateUserTOTP(u.ID, secret, false); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Generate QR from the stored secret
+	key, err := totp.Generate(totp.GenerateOpts{
+		Issuer:      "FleetCom",
+		AccountName: u.Email,
+		Secret:      []byte(secret),
+	})
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	img, err := key.Image(200, 200)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	errMsg := ""
+	if r.URL.Query().Get("error") == "invalid" {
+		errMsg = "Invalid code. Please try again."
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	setupTOTPTmpl.Execute(w, struct {
+		QR     string
+		Secret string
+		Email  string
+		Error  string
+	}{
+		QR:     base64.StdEncoding.EncodeToString(buf.Bytes()),
+		Secret: secret,
+		Email:  u.Email,
+		Error:  errMsg,
+	})
+}
+
+// HandleSetupTOTPSubmit handles the mandatory TOTP setup form submission.
+func (a *Auth) HandleSetupTOTPSubmit(w http.ResponseWriter, r *http.Request) {
+	u := GetUser(r)
+	if u == nil {
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		return
+	}
+
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	code := r.FormValue("code")
+	full, err := a.store.GetUserByID(u.ID)
+	if err != nil || full == nil || full.TOTPSecret == "" {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if !totp.Validate(code, full.TOTPSecret) {
+		http.Redirect(w, r, "/setup-totp?error=invalid", http.StatusSeeOther)
+		return
+	}
+
+	if err := a.store.UpdateUserTOTP(u.ID, full.TOTPSecret, true); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("audit: totp_enabled user_id=%d email=%s ip=%s (mandatory setup)", u.ID, u.Email, ClientIP(r))
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // SeedAdmin creates the initial admin user if no users exist.
@@ -307,3 +443,44 @@ func renderTOTPForm(w http.ResponseWriter, token, errMsg string) {
 		Error string
 	}{token, errMsg})
 }
+
+var setupTOTPTmpl = template.Must(template.New("setup-totp").Parse(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FleetCom — Set Up Two-Factor Authentication</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0f1117;color:#e1e4e8;font-family:system-ui,-apple-system,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh}
+.box{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:32px;width:100%;max-width:420px}
+h2{font-size:18px;margin-bottom:8px;color:#f0f6fc;text-align:center}
+.subtitle{font-size:13px;color:#8b949e;text-align:center;margin-bottom:20px;line-height:1.5}
+label{display:block;font-size:13px;margin-bottom:6px;color:#8b949e}
+input[type="text"]{width:100%;padding:10px 12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e1e4e8;font-size:15px;margin-bottom:16px;text-align:center;letter-spacing:0.5em}
+input:focus{outline:none;border-color:#58a6ff}
+button{width:100%;padding:10px;background:#238636;border:none;border-radius:6px;color:#fff;font-size:14px;font-weight:600;cursor:pointer}
+button:hover{background:#2ea043}
+.err{background:#2d1215;border:1px solid #f8514950;color:#f85149;padding:10px;border-radius:6px;margin-bottom:16px;font-size:13px;text-align:center}
+.qr{display:block;margin:0 auto 16px;border-radius:8px;background:#fff;padding:8px}
+.secret{font-family:monospace;font-size:12px;color:#8b949e;text-align:center;margin-bottom:20px;user-select:all;word-break:break-all}
+.logout{display:block;text-align:center;margin-top:16px;color:#8b949e;font-size:12px;text-decoration:none}
+.logout:hover{color:#f85149}
+</style>
+</head>
+<body>
+<div class="box">
+<h2>Set Up Two-Factor Authentication</h2>
+<p class="subtitle">FleetCom requires 2FA for all users. Scan the QR code with your authenticator app, then enter the 6-digit code to continue.</p>
+{{if .Error}}<div class="err">{{.Error}}</div>{{end}}
+<img class="qr" src="data:image/png;base64,{{.QR}}" width="200" height="200" alt="TOTP QR Code">
+<div class="secret">Manual entry: {{.Secret}}</div>
+<form method="POST" action="/setup-totp">
+<label for="code">Verification Code</label>
+<input type="text" id="code" name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required autofocus>
+<button type="submit">Verify &amp; Enable 2FA</button>
+</form>
+<a class="logout" href="/logout">Sign out</a>
+</div>
+</body>
+</html>`))
