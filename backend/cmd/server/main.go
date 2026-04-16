@@ -158,7 +158,11 @@ func main() {
 			r.Put("/{id}/status", api.UpdateUserStatus(store))
 			r.Post("/{id}/reset-totp", api.ResetUserTOTP(store))
 			r.Delete("/{id}/sessions", api.InvalidateUserSessions(store))
+			r.Get("/{id}/hosts", api.ListUserHosts(store))
+			r.Post("/{id}/hosts", api.GrantUserHost(store))
+			r.Delete("/{id}/hosts/{hostId}", api.RevokeUserHost(store))
 		})
+		r.With(auth.RequireAdmin).Get("/api/hosts/all", api.AllHostsList(store))
 
 	})
 

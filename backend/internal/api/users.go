@@ -422,6 +422,90 @@ func InvalidateUserSessions(store *db.Store) http.HandlerFunc {
 	}
 }
 
+// --- Host access management (admin only) ---
+
+// ListUserHosts handles GET /api/users/{id}/hosts.
+func ListUserHosts(store *db.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		hosts, err := store.UserHostAccessList(id)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if hosts == nil {
+			hosts = []db.Host{}
+		}
+		writeJSON(w, hosts)
+	}
+}
+
+// GrantUserHost handles POST /api/users/{id}/hosts.
+func GrantUserHost(store *db.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		var body struct {
+			HostID int64 `json:"host_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.HostID == 0 {
+			http.Error(w, "host_id required", http.StatusBadRequest)
+			return
+		}
+		if err := store.GrantHostAccess(userID, body.HostID); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		admin := auth.GetUser(r)
+		log.Printf("audit: host_access_granted user_id=%d host_id=%d by=%d", userID, body.HostID, admin.ID)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}
+}
+
+// RevokeUserHost handles DELETE /api/users/{id}/hosts/{hostId}.
+func RevokeUserHost(store *db.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		hostID, err := strconv.ParseInt(chi.URLParam(r, "hostId"), 10, 64)
+		if err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if err := store.RevokeHostAccess(userID, hostID); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		admin := auth.GetUser(r)
+		log.Printf("audit: host_access_revoked user_id=%d host_id=%d by=%d", userID, hostID, admin.ID)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}
+}
+
+// AllHostsList handles GET /api/hosts/all — admin-only, returns all hosts for access management.
+func AllHostsList(store *db.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		hosts, err := store.AllHosts()
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, hosts)
+	}
+}
+
 func writeJSON(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(v)

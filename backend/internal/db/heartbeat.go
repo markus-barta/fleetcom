@@ -159,6 +159,42 @@ func (s *Store) AllHosts() ([]Host, error) {
 	return hosts, nil
 }
 
+// HostsForUser returns hosts filtered by user_host_access for regular users.
+func (s *Store) HostsForUser(userID int64) ([]Host, error) {
+	rows, err := s.DB.Query(
+		`SELECT h.id, h.hostname, h.os, h.kernel, h.uptime_seconds, h.agent_version, h.last_seen
+		 FROM hosts h
+		 JOIN user_host_access uha ON h.id = uha.host_id
+		 WHERE uha.user_id = ?
+		 ORDER BY h.hostname`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var hosts []Host
+	for rows.Next() {
+		var h Host
+		if err := rows.Scan(&h.ID, &h.Hostname, &h.OS, &h.Kernel, &h.UptimeSeconds, &h.AgentVersion, &h.LastSeen); err != nil {
+			return nil, err
+		}
+		hosts = append(hosts, h)
+	}
+
+	for i := range hosts {
+		hosts[i].Containers, err = s.containersForHost(hosts[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		hosts[i].Agents, err = s.agentsForHost(hosts[i].ID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return hosts, nil
+}
+
 func (s *Store) containersForHost(hostID int64) ([]Container, error) {
 	rows, err := s.DB.Query(`SELECT id, host_id, name, image, state, health, restart_count, started_at, exit_code, oom_killed, last_seen FROM containers WHERE host_id = ? ORDER BY name`, hostID)
 	if err != nil {
