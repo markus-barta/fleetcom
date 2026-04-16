@@ -80,11 +80,24 @@ hsb8       🟢       —                    —
 - When/if FleetCom grows into a multi-page app (Phase 3+), a heavier framework can be evaluated then
 - Rule: add complexity when the current approach hurts, not before
 
-### Phases
+### Shipped (MVP+)
+
+- Host grid with 3-column status (system/containers/agents), SSE real-time updates
+- Bosun agent (Go daemon, Docker socket event stream + periodic heartbeat)
+- Multi-user auth: email + bcrypt + mandatory TOTP, 24h sessions, rate limiting
+- Password reset via email (SMTP or stdout fallback in dev)
+- Admin panel: create/disable/delete users, reset TOTP, kill sessions
+- Per-user host permissions (admins see all, regular users only assigned hosts)
+- Dark/light/auto theme toggle
+- Instance branding: custom org logo + instance label + domain in header
+- Icon presets: upload, assign per-host, import/export as ZIP bundles
+- Share links: read-only dashboard access with optional expiry
+- Dual deployment: fleet.barta.cm (personal/NixOS) + fleet.bytepoets.com (BYTEPOETS/Ubuntu)
+
+### Roadmap
 
 | Phase | What |
 |-------|------|
-| **MVP** | Host grid, 3-column status (system/containers/agents), heartbeat agents, TOTP auth |
 | **Phase 2** | Alerting (Telegram on down), OpenRouter balance, basic orchestration (restart/deploy) |
 | **Phase 3** | Config editor, cost tracking, backup status, audit log, per-customer dashboards |
 | **Future** | Replaces NixFleet entirely, becomes customer-facing product feature |
