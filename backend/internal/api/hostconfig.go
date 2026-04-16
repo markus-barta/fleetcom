@@ -29,6 +29,11 @@ func GetHostConfigs(store *db.Store) http.HandlerFunc {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		// Filter by user access
+		hosts, _ := hostsForRequest(store, r)
+		if hosts != nil {
+			cfgs = filterHostConfigs(cfgs, hosts)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(cfgs)
 	}

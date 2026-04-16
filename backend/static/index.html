@@ -2543,6 +2543,8 @@
                                                                 @click="resetUserTOTP(u)">Reset 2FA</button>
                                                         <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem"
                                                                 @click="invalidateUserSessions(u)">Kill Sessions</button>
+                                                        <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem"
+                                                                @click="selectUserForHosts(u)">Hosts</button>
                                                     </span>
                                                 </template>
                                                 <template x-if="u.id === currentUser.id">
@@ -2553,6 +2555,39 @@
                                     </template>
                                 </tbody>
                             </table>
+
+                            <!-- Host access management -->
+                            <template x-if="selectedUser">
+                                <div style="margin-top:2rem;padding-top:1rem;border-top:1px solid var(--border)">
+                                    <h3 style="margin-bottom:1rem;color:var(--ink-dim)">
+                                        Host Access for <span x-text="selectedUser.email"></span>
+                                        <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem;margin-left:0.5rem" @click="selectedUser=null">Close</button>
+                                    </h3>
+                                    <div style="display:flex;gap:2rem;flex-wrap:wrap">
+                                        <div style="flex:1;min-width:200px">
+                                            <h4 style="font-size:0.8125rem;color:var(--ink-dim);margin-bottom:0.5rem">Granted Hosts</h4>
+                                            <template x-if="selectedUserHosts.length === 0">
+                                                <p style="color:var(--ink-dim);font-size:0.8125rem">No hosts assigned.</p>
+                                            </template>
+                                            <template x-for="h in selectedUserHosts" :key="h.id">
+                                                <div style="display:flex;justify-content:space-between;align-items:center;padding:0.375rem 0;border-bottom:1px solid var(--border)">
+                                                    <span style="font-size:0.875rem" x-text="h.hostname"></span>
+                                                    <button class="btn" style="font-size:0.7rem;padding:0.2rem 0.4rem;background:var(--crit)" @click="revokeHostAccess(h.id)">Revoke</button>
+                                                </div>
+                                            </template>
+                                        </div>
+                                        <div style="flex:1;min-width:200px">
+                                            <h4 style="font-size:0.8125rem;color:var(--ink-dim);margin-bottom:0.5rem">Available Hosts</h4>
+                                            <template x-for="h in availableHosts" :key="h.id">
+                                                <div style="display:flex;justify-content:space-between;align-items:center;padding:0.375rem 0;border-bottom:1px solid var(--border)">
+                                                    <span style="font-size:0.875rem" x-text="h.hostname"></span>
+                                                    <button class="btn btn-primary" style="font-size:0.7rem;padding:0.2rem 0.4rem" @click="grantHostAccess(h.id)">Grant</button>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
                         </div>
                     </template>
 
@@ -2744,6 +2779,7 @@ WantedBy=multi-user.target</pre>
                 mySessions: [],
                 usersList: [],
                 newUserEmail: '', newUserPassword: '', newUserRole: 'user',
+                selectedUser: null, selectedUserHosts: [], allHostsList: [],
 
                 init() {
                     this.viewMode = localStorage.getItem('fleetcom.view') || 'normal';
@@ -2982,6 +3018,51 @@ WantedBy=multi-user.target</pre>
                     try {
                         await fetch('/api/users/' + u.id + '/sessions', { method: 'DELETE' });
                         alert('Sessions invalidated for ' + u.email);
+                    } catch (_) {}
+                },
+
+                get availableHosts() {
+                    const granted = new Set(this.selectedUserHosts.map(h => h.id));
+                    return this.allHostsList.filter(h => !granted.has(h.id));
+                },
+
+                async selectUserForHosts(u) {
+                    this.selectedUser = u;
+                    await Promise.all([this.loadUserHosts(), this.loadAllHosts()]);
+                },
+
+                async loadUserHosts() {
+                    if (!this.selectedUser) return;
+                    try {
+                        const res = await fetch('/api/users/' + this.selectedUser.id + '/hosts');
+                        if (res.ok) this.selectedUserHosts = await res.json() || [];
+                    } catch (_) {}
+                },
+
+                async loadAllHosts() {
+                    try {
+                        const res = await fetch('/api/hosts/all');
+                        if (res.ok) this.allHostsList = await res.json() || [];
+                    } catch (_) {}
+                },
+
+                async grantHostAccess(hostId) {
+                    if (!this.selectedUser) return;
+                    try {
+                        await fetch('/api/users/' + this.selectedUser.id + '/hosts', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ host_id: hostId })
+                        });
+                        await this.loadUserHosts();
+                    } catch (_) {}
+                },
+
+                async revokeHostAccess(hostId) {
+                    if (!this.selectedUser) return;
+                    try {
+                        await fetch('/api/users/' + this.selectedUser.id + '/hosts/' + hostId, { method: 'DELETE' });
+                        await this.loadUserHosts();
                     } catch (_) {}
                 },
 

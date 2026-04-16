@@ -20,7 +20,7 @@ type AddHostResponse struct {
 
 func ListHosts(store *db.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		hosts, err := store.AllHosts()
+		hosts, err := hostsForRequest(store, r)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return

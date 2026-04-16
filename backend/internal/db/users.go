@@ -203,6 +203,65 @@ func (s *Store) UsePasswordResetToken(tokenHash string) error {
 	return err
 }
 
+// Host access control
+
+func (s *Store) UserHostIDs(userID int64) (map[int64]bool, error) {
+	rows, err := s.DB.Query(`SELECT host_id FROM user_host_access WHERE user_id = ?`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := make(map[int64]bool)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids[id] = true
+	}
+	return ids, rows.Err()
+}
+
+func (s *Store) GrantHostAccess(userID, hostID int64) error {
+	_, err := s.DB.Exec(
+		`INSERT OR IGNORE INTO user_host_access (user_id, host_id) VALUES (?, ?)`,
+		userID, hostID,
+	)
+	return err
+}
+
+func (s *Store) RevokeHostAccess(userID, hostID int64) error {
+	_, err := s.DB.Exec(
+		`DELETE FROM user_host_access WHERE user_id = ? AND host_id = ?`,
+		userID, hostID,
+	)
+	return err
+}
+
+func (s *Store) UserHostAccessList(userID int64) ([]Host, error) {
+	rows, err := s.DB.Query(
+		`SELECT h.id, h.hostname FROM hosts h
+		 JOIN user_host_access uha ON h.id = uha.host_id
+		 WHERE uha.user_id = ?
+		 ORDER BY h.hostname`, userID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var hosts []Host
+	for rows.Next() {
+		var h Host
+		if err := rows.Scan(&h.ID, &h.Hostname); err != nil {
+			return nil, err
+		}
+		hosts = append(hosts, h)
+	}
+	return hosts, rows.Err()
+}
+
 func (s *Store) ResetPasswordTx(userID int64, newHash, tokenHash string) error {
 	tx, err := s.DB.Begin()
 	if err != nil {

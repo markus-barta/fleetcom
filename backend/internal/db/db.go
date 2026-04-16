@@ -192,4 +192,10 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 	ip_address TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_prt_user ON password_reset_tokens(user_id);
+
+CREATE TABLE IF NOT EXISTS user_host_access (
+	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	host_id INTEGER NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,
+	PRIMARY KEY (user_id, host_id)
+);
 `

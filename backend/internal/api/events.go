@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/markus-barta/fleetcom/internal/auth"
 	"github.com/markus-barta/fleetcom/internal/db"
 	"github.com/markus-barta/fleetcom/internal/sse"
 )
@@ -33,6 +34,10 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("X-Accel-Buffering", "no")
 
+		// Determine user access scope
+		u := auth.GetUser(r)
+		isAdmin := u != nil && u.Role == "admin"
+
 		// Send initial config
 		cfgData, _ := json.Marshal(buildConfigPayload(store))
 		fmt.Fprintf(w, "event: config\ndata: %s\n\n", cfgData)
@@ -43,14 +48,18 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			fmt.Fprintf(w, "event: ignored\ndata: %s\n\n", igData)
 		}
 
-		// Send initial host configs
+		// Send initial host configs (filtered)
 		if hostCfgs, err := store.AllHostConfigs(); err == nil {
+			if !isAdmin {
+				hosts, _ := hostsForRequest(store, r)
+				hostCfgs = filterHostConfigs(hostCfgs, hosts)
+			}
 			hcData, _ := json.Marshal(hostCfgs)
 			fmt.Fprintf(w, "event: host-configs\ndata: %s\n\n", hcData)
 		}
 
-		// Send initial host state
-		hosts, err := store.AllHosts()
+		// Send initial host state (filtered)
+		hosts, err := hostsForRequest(store, r)
 		if err != nil {
 			log.Printf("SSE initial state error: %v", err)
 		} else {
@@ -76,7 +85,13 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 					return
 				}
 				extendDeadline()
-				fmt.Fprintf(w, "event: %s\ndata: %s\n\n", evt.Name, evt.Data)
+				// Filter host-related broadcasts for non-admin users
+				if !isAdmin && (evt.Name == "hosts" || evt.Name == "host-configs") {
+					filtered := filterSSEEvent(store, u, evt)
+					fmt.Fprintf(w, "event: %s\ndata: %s\n\n", filtered.Name, filtered.Data)
+				} else {
+					fmt.Fprintf(w, "event: %s\ndata: %s\n\n", evt.Name, evt.Data)
+				}
 				flusher.Flush()
 			case <-ticker.C:
 				extendDeadline()
@@ -85,4 +100,34 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			}
 		}
 	}
+}
+
+// filterSSEEvent re-filters broadcast data for a specific user's access.
+func filterSSEEvent(store *db.Store, u *db.User, evt sse.Event) sse.Event {
+	if u == nil {
+		return evt
+	}
+
+	switch evt.Name {
+	case "hosts":
+		// Re-query filtered hosts instead of filtering the broadcast payload
+		hosts, err := store.HostsForUser(u.ID)
+		if err != nil {
+			return evt
+		}
+		data, _ := json.Marshal(hosts)
+		return sse.Event{Name: "hosts", Data: data}
+
+	case "host-configs":
+		var cfgs map[string]db.HostConfig
+		if err := json.Unmarshal(evt.Data, &cfgs); err != nil {
+			return evt
+		}
+		hosts, _ := store.HostsForUser(u.ID)
+		filtered := filterHostConfigs(cfgs, hosts)
+		data, _ := json.Marshal(filtered)
+		return sse.Event{Name: "host-configs", Data: data}
+	}
+
+	return evt
 }
