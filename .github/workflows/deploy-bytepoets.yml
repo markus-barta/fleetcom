@@ -1,6 +1,6 @@
-name: Deploy to BytePoets
+name: Deploy to BYTEPOETS
 
-# Deploys FleetCom to the BytePoets server at fleet.bytepoets.com.
+# Deploys FleetCom to the BYTEPOETS server at fleet.bytepoets.com.
 # Manual trigger only. Uses the same host as PMO (pm.bytepoets.com).
 
 on:
