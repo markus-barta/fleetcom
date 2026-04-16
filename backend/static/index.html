@@ -2192,6 +2192,8 @@
                         <button class="settings-tab" :class="settingsTab === 'sharing' && 'active'" @click="settingsTab = 'sharing'; loadShares()">Sharing</button>
                         <button class="settings-tab" :class="settingsTab === 'ignored' && 'active'" @click="settingsTab = 'ignored'; loadIgnoredList()">Ignored</button>
                         <button class="settings-tab" :class="settingsTab === 'config' && 'active'" @click="settingsTab = 'config'">Config</button>
+                        <button class="settings-tab" :class="settingsTab === 'account' && 'active'" @click="settingsTab = 'account'; loadMySessions()">Account</button>
+                        <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'users' && 'active'" @click="settingsTab = 'users'; loadUsers()">Users</button>
                         <span class="tab-spacer"></span>
                         <button class="settings-tab" :class="settingsTab === 'docs' && 'active'" @click="settingsTab = 'docs'">Docs</button>
                     </div>
@@ -2445,6 +2447,115 @@
                     </template>
 
                     <!-- Docs tab -->
+                    <!-- Account tab -->
+                    <template x-if="settingsTab === 'account'">
+                        <div>
+                            <h3 style="margin-bottom:1rem;color:var(--ink-dim)">Change Password</h3>
+                            <div class="form-row" style="flex-direction:column;gap:0.5rem;max-width:360px">
+                                <input type="password" x-model="pwCurrent" placeholder="Current password">
+                                <input type="password" x-model="pwNew" placeholder="New password (min 6 chars)">
+                                <button class="btn btn-primary" @click="changePassword()" x-text="pwMsg || 'Change Password'" :disabled="!pwCurrent || !pwNew || pwNew.length < 6"></button>
+                            </div>
+
+                            <h3 style="margin:2rem 0 1rem;color:var(--ink-dim)">Two-Factor Authentication</h3>
+                            <template x-if="currentUser && !currentUser.totp_enabled && !totpSetup">
+                                <button class="btn btn-primary" @click="setupTOTP()">Set Up 2FA</button>
+                            </template>
+                            <template x-if="totpSetup">
+                                <div style="max-width:360px">
+                                    <p style="margin-bottom:0.5rem;color:var(--ink-dim);font-size:0.875rem">Scan this QR code with your authenticator app:</p>
+                                    <img :src="'data:image/png;base64,' + totpSetup.qr_png_base64" style="display:block;margin:0.5rem 0;border-radius:4px">
+                                    <p style="margin-bottom:0.5rem;color:var(--ink-dim);font-size:0.75rem">Manual entry: <code x-text="totpSetup.secret" style="user-select:all"></code></p>
+                                    <div class="form-row" style="gap:0.5rem">
+                                        <input type="text" x-model="totpCode" placeholder="6-digit code" maxlength="6" inputmode="numeric" style="max-width:160px">
+                                        <button class="btn btn-primary" @click="enableTOTP()">Verify & Enable</button>
+                                    </div>
+                                </div>
+                            </template>
+                            <template x-if="currentUser && currentUser.totp_enabled">
+                                <div style="max-width:360px">
+                                    <p style="color:var(--ok);margin-bottom:0.5rem;font-size:0.875rem">2FA is enabled.</p>
+                                    <div class="form-row" style="gap:0.5rem">
+                                        <input type="password" x-model="totpDisablePw" placeholder="Password to disable">
+                                        <button class="btn" style="background:var(--crit)" @click="disableTOTP()">Disable 2FA</button>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <h3 style="margin:2rem 0 1rem;color:var(--ink-dim)">Active Sessions</h3>
+                            <template x-if="mySessions.length === 0">
+                                <p style="color:var(--ink-dim);font-size:0.875rem">No active sessions.</p>
+                            </template>
+                            <template x-for="s in mySessions" :key="s.id">
+                                <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 0;border-bottom:1px solid var(--border)">
+                                    <span style="font-size:0.875rem">
+                                        <span x-text="new Date(s.created_at).toLocaleString()"></span>
+                                        <template x-if="s.current"><span style="color:var(--ok);margin-left:0.5rem;font-size:0.75rem">(current)</span></template>
+                                    </span>
+                                    <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem" x-show="!s.current" @click="revokeSession(s.id)">Revoke</button>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- Users tab (admin only) -->
+                    <template x-if="settingsTab === 'users'">
+                        <div>
+                            <h3 style="margin-bottom:1rem;color:var(--ink-dim)">Create User</h3>
+                            <div class="form-row" style="gap:0.5rem;flex-wrap:wrap;max-width:600px">
+                                <input type="email" x-model="newUserEmail" placeholder="email@example.com" style="flex:2;min-width:200px">
+                                <input type="password" x-model="newUserPassword" placeholder="Password (min 6)" style="flex:1;min-width:140px">
+                                <select x-model="newUserRole" style="background:var(--bg-card);color:var(--ink);border:1px solid var(--border);border-radius:4px;padding:0.5rem">
+                                    <option value="user">User</option>
+                                    <option value="admin">Admin</option>
+                                </select>
+                                <button class="btn btn-primary" @click="createUser()">Add User</button>
+                            </div>
+
+                            <h3 style="margin:2rem 0 1rem;color:var(--ink-dim)">Users</h3>
+                            <table style="width:100%;border-collapse:collapse;font-size:0.875rem">
+                                <thead>
+                                    <tr style="border-bottom:1px solid var(--border);text-align:left">
+                                        <th style="padding:0.5rem">Email</th>
+                                        <th style="padding:0.5rem">Role</th>
+                                        <th style="padding:0.5rem">Status</th>
+                                        <th style="padding:0.5rem">2FA</th>
+                                        <th style="padding:0.5rem">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="u in usersList" :key="u.id">
+                                        <tr style="border-bottom:1px solid var(--border)">
+                                            <td style="padding:0.5rem" x-text="u.email"></td>
+                                            <td style="padding:0.5rem" x-text="u.role"></td>
+                                            <td style="padding:0.5rem">
+                                                <span :style="'color:' + (u.status === 'active' ? 'var(--ok)' : 'var(--crit)')" x-text="u.status"></span>
+                                            </td>
+                                            <td style="padding:0.5rem" x-text="u.totp_enabled ? 'Yes' : 'No'"></td>
+                                            <td style="padding:0.5rem">
+                                                <template x-if="u.id !== currentUser.id">
+                                                    <span style="display:flex;gap:0.5rem;flex-wrap:wrap">
+                                                        <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem"
+                                                                @click="toggleUserStatus(u)"
+                                                                x-text="u.status === 'active' ? 'Disable' : 'Activate'"></button>
+                                                        <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem"
+                                                                x-show="u.totp_enabled"
+                                                                @click="resetUserTOTP(u)">Reset 2FA</button>
+                                                        <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem"
+                                                                @click="invalidateUserSessions(u)">Kill Sessions</button>
+                                                    </span>
+                                                </template>
+                                                <template x-if="u.id === currentUser.id">
+                                                    <span style="color:var(--ink-dim);font-size:0.75rem">(you)</span>
+                                                </template>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </template>
+
                     <template x-if="settingsTab === 'docs'">
                         <div class="docs">
                             <h3>Adding a Host</h3>
@@ -2626,6 +2737,13 @@ WantedBy=multi-user.target</pre>
                 scaleWindow: { '1min': 60, '15min': 900, '1h': 3600, '1d': 86400, '14d': 1209600, '1MO': 2592000, '1Y': 31536000 },
                 globalScale: '1h',
                 stripRegistry: null,
+                // User management
+                currentUser: null,
+                pwCurrent: '', pwNew: '', pwMsg: '',
+                totpSetup: null, totpCode: '', totpDisablePw: '',
+                mySessions: [],
+                usersList: [],
+                newUserEmail: '', newUserPassword: '', newUserRole: 'user',
 
                 init() {
                     this.viewMode = localStorage.getItem('fleetcom.view') || 'normal';
@@ -2639,6 +2757,7 @@ WantedBy=multi-user.target</pre>
                     this.stripRegistry = new Set();
                     this.startClock();
                     this.loadVersion();
+                    this.loadMe();
                     this.connect();
                     this.startConnWatchdog();
                     this.startStripRefresher();
@@ -2740,6 +2859,129 @@ WantedBy=multi-user.target</pre>
                         const v = await res.json();
                         v.build_time_display = this.formatBuildTime(v.build_time);
                         this.ver = v;
+                    } catch (_) {}
+                },
+
+                async loadMe() {
+                    try {
+                        const res = await fetch('/api/me');
+                        if (res.ok) this.currentUser = await res.json();
+                    } catch (_) {}
+                },
+
+                async changePassword() {
+                    try {
+                        const res = await fetch('/api/auth/password', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ current_password: this.pwCurrent, new_password: this.pwNew })
+                        });
+                        if (res.ok) {
+                            this.pwMsg = 'Password changed';
+                            this.pwCurrent = ''; this.pwNew = '';
+                            setTimeout(() => this.pwMsg = '', 3000);
+                        } else {
+                            this.pwMsg = await res.text();
+                            setTimeout(() => this.pwMsg = '', 3000);
+                        }
+                    } catch (e) { this.pwMsg = 'Error'; }
+                },
+
+                async setupTOTP() {
+                    try {
+                        const res = await fetch('/api/auth/totp/setup');
+                        if (res.ok) this.totpSetup = await res.json();
+                    } catch (_) {}
+                },
+
+                async enableTOTP() {
+                    try {
+                        const res = await fetch('/api/auth/totp/enable', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ code: this.totpCode })
+                        });
+                        if (res.ok) {
+                            this.totpSetup = null; this.totpCode = '';
+                            await this.loadMe();
+                        } else { alert(await res.text()); }
+                    } catch (_) {}
+                },
+
+                async disableTOTP() {
+                    try {
+                        const res = await fetch('/api/auth/totp/disable', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ password: this.totpDisablePw })
+                        });
+                        if (res.ok) {
+                            this.totpDisablePw = '';
+                            await this.loadMe();
+                        } else { alert(await res.text()); }
+                    } catch (_) {}
+                },
+
+                async loadMySessions() {
+                    try {
+                        const res = await fetch('/api/auth/sessions');
+                        if (res.ok) this.mySessions = await res.json() || [];
+                    } catch (_) {}
+                },
+
+                async revokeSession(id) {
+                    try {
+                        await fetch('/api/auth/sessions/' + id, { method: 'DELETE' });
+                        await this.loadMySessions();
+                    } catch (_) {}
+                },
+
+                async loadUsers() {
+                    try {
+                        const res = await fetch('/api/users');
+                        if (res.ok) this.usersList = await res.json() || [];
+                    } catch (_) {}
+                },
+
+                async createUser() {
+                    if (!this.newUserEmail || !this.newUserPassword) return;
+                    try {
+                        const res = await fetch('/api/users', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email: this.newUserEmail, password: this.newUserPassword, role: this.newUserRole })
+                        });
+                        if (res.ok) {
+                            this.newUserEmail = ''; this.newUserPassword = ''; this.newUserRole = 'user';
+                            await this.loadUsers();
+                        } else { alert(await res.text()); }
+                    } catch (_) {}
+                },
+
+                async toggleUserStatus(u) {
+                    const newStatus = u.status === 'active' ? 'inactive' : 'active';
+                    try {
+                        await fetch('/api/users/' + u.id + '/status', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ status: newStatus })
+                        });
+                        await this.loadUsers();
+                    } catch (_) {}
+                },
+
+                async resetUserTOTP(u) {
+                    if (!confirm('Reset 2FA for ' + u.email + '?')) return;
+                    try {
+                        await fetch('/api/users/' + u.id + '/reset-totp', { method: 'POST' });
+                        await this.loadUsers();
+                    } catch (_) {}
+                },
+
+                async invalidateUserSessions(u) {
+                    try {
+                        await fetch('/api/users/' + u.id + '/sessions', { method: 'DELETE' });
+                        alert('Sessions invalidated for ' + u.email);
                     } catch (_) {}
                 },
 
