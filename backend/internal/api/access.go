@@ -20,29 +20,6 @@ func hostsForRequest(store *db.Store, r *http.Request) ([]db.Host, error) {
 	return nil, nil
 }
 
-// userCanAccessHost checks if the current user can access a specific host.
-func userCanAccessHost(store *db.Store, r *http.Request, hostname string) bool {
-	u := auth.GetUser(r)
-	if u == nil {
-		return false
-	}
-	if u.Role == "admin" {
-		return true
-	}
-	ids, err := store.UserHostIDs(u.ID)
-	if err != nil {
-		return false
-	}
-	// Look up host ID by hostname
-	hosts, _ := store.AllHosts()
-	for _, h := range hosts {
-		if h.Hostname == hostname && ids[h.ID] {
-			return true
-		}
-	}
-	return false
-}
-
 // filterHostConfigs returns only configs for hosts the user can access.
 func filterHostConfigs(cfgs map[string]db.HostConfig, allowedHosts []db.Host) map[string]db.HostConfig {
 	allowed := make(map[string]bool)
