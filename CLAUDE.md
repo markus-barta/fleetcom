@@ -1,5 +1,7 @@
 # CLAUDE.md — FleetCom
 
+**Read `docs/DEPLOYMENT.md` at every session start.** Every deploy must bump the patch version in `.github/workflows/ci.yml` — never deploy the same version twice.
+
 ## Project
 
 **FleetCom** — Fleet management & agent monitoring platform.

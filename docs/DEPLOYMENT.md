@@ -1,5 +1,11 @@
 # Deployment
 
+## Version Rule
+
+**Every deploy must bump the patch version.** Never deploy the same version twice. The version lives in `.github/workflows/ci.yml` under `env.VERSION`. Bump it before pushing to main.
+
+---
+
 FleetCom runs as a Docker container. Two production instances exist:
 
 | Instance | Domain | Host | Secrets |
