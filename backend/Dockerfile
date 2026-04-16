@@ -16,6 +16,7 @@ RUN CGO_ENABLED=0 go build \
     -o /fleetcom-server ./cmd/server
 
 FROM alpine:3.21
+LABEL org.opencontainers.image.source="https://github.com/markus-barta/fleetcom"
 RUN apk add --no-cache ca-certificates tzdata
 COPY --from=builder /fleetcom-server /usr/local/bin/fleetcom-server
 COPY static/ /app/static/
