@@ -7,12 +7,12 @@ import (
 	"os"
 )
 
-func smtpHost() string     { return os.Getenv("SMTP_HOST") }
-func smtpPort() string     { return envOr("SMTP_PORT", "587") }
-func smtpUser() string     { return os.Getenv("SMTP_USER") }
-func smtpPass() string     { return os.Getenv("SMTP_PASS") }
-func smtpFrom() string     { return envOr("SMTP_FROM", "noreply@fleetcom.local") }
-func appBaseURL() string   { return envOr("APP_BASE_URL", "http://localhost:8090") }
+func smtpHost() string   { return os.Getenv("SMTP_HOST") }
+func smtpPort() string   { return envOr("SMTP_PORT", "587") }
+func smtpUser() string   { return os.Getenv("SMTP_USER") }
+func smtpPass() string   { return os.Getenv("SMTP_PASS") }
+func smtpFrom() string   { return envOr("SMTP_FROM", "noreply@fleetcom.local") }
+func appBaseURL() string { return envOr("APP_BASE_URL", "http://localhost:8090") }
 
 func envOr(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
