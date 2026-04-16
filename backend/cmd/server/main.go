@@ -142,6 +142,8 @@ func main() {
 		r.Get("/api/image-presets", api.ListImagePresets(store))
 		r.Post("/api/image-presets", api.UploadImagePreset(store))
 		r.Delete("/api/image-presets/{id}", api.DeleteImagePreset(store))
+		r.Get("/api/image-presets/export", api.ExportImagePresets(store))
+		r.Post("/api/image-presets/import", api.ImportImagePresets(store))
 
 		// Self-service auth endpoints
 		r.Post("/api/auth/password", api.ChangePassword(store))

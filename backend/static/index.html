@@ -2375,12 +2375,32 @@
                                 Upload transparent PNG graphics to identify hosts visually on the dashboard. Assign them per-host in the Hosts tab.
                             </p>
 
-                            <div class="form-row">
+                            <div class="form-row" style="gap:0.5rem;flex-wrap:wrap">
                                 <label class="btn btn-primary" style="cursor:pointer;">
                                     Upload graphic
                                     <input type="file" accept="image/*" @change="uploadPreset($event)" style="display:none;">
                                 </label>
+                                <button class="btn" style="background:var(--bg-2)" @click="exportPresets()" x-show="imagePresets.length > 0">Export ZIP</button>
+                                <label class="btn" style="background:var(--bg-2);cursor:pointer;">
+                                    Import ZIP
+                                    <input type="file" accept=".zip" @change="showImportDialog($event)" style="display:none;">
+                                </label>
                             </div>
+
+                            <!-- Import dialog -->
+                            <template x-if="importFile">
+                                <div style="margin:1rem 0;padding:1rem;border:1px solid var(--accent);border-radius:4px;background:var(--bg-2);max-width:400px">
+                                    <p style="font-size:0.875rem;margin-bottom:0.75rem">Importing: <strong x-text="importFile.name"></strong></p>
+                                    <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.8125rem;color:var(--ink-dim);margin-bottom:0.75rem;cursor:pointer">
+                                        <input type="checkbox" x-model="importOverwrite">
+                                        Overwrite existing icons with the same name
+                                    </label>
+                                    <div style="display:flex;gap:0.5rem">
+                                        <button class="btn btn-primary" @click="importPresets()">Import</button>
+                                        <button class="btn" @click="importFile=null">Cancel</button>
+                                    </div>
+                                </div>
+                            </template>
 
                             <ul class="token-list">
                                 <template x-for="p in imagePresets" :key="p.id">
@@ -2851,6 +2871,9 @@ WantedBy=multi-user.target</pre>
                 instanceLabel: '',
                 orgLogoURL: '',
                 theme: 'dark',
+                // Icon import
+                importFile: null,
+                importOverwrite: false,
 
                 init() {
                     this.viewMode = localStorage.getItem('fleetcom.view') || 'normal';
@@ -3514,6 +3537,34 @@ WantedBy=multi-user.target</pre>
                         if (res.ok) { this.loadImagePresets(); this.toast('Icon deleted'); }
                         else this.toast('Delete failed', 'err');
                     } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                exportPresets() {
+                    window.location.href = '/api/image-presets/export';
+                },
+
+                showImportDialog(event) {
+                    this.importFile = event.target.files[0] || null;
+                    this.importOverwrite = false;
+                    event.target.value = '';
+                },
+
+                async importPresets() {
+                    if (!this.importFile) return;
+                    const form = new FormData();
+                    form.append('file', this.importFile);
+                    const mode = this.importOverwrite ? 'overwrite' : 'append';
+                    try {
+                        const res = await fetch('/api/image-presets/import?mode=' + mode, { method: 'POST', body: form });
+                        if (res.ok) {
+                            const result = await res.json();
+                            this.toast('Imported ' + result.imported + ' of ' + result.total + ' icons');
+                            this.importFile = null;
+                            this.loadImagePresets();
+                        } else {
+                            this.toast(await res.text(), 'err');
+                        }
+                    } catch (_) { this.toast('Import failed', 'err'); }
                 },
 
                 // ---------- chip expand state ----------
