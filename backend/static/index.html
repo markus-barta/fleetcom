@@ -1696,6 +1696,85 @@
             font-size: 11px;
             color: var(--accent);
         }
+        .docs .doc-intro {
+            font-size: 11px;
+            color: var(--ink-ghost);
+            line-height: 1.65;
+            margin: 0 0 1rem;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg-0);
+            border-left: 2px solid var(--accent);
+            border-radius: 0 4px 4px 0;
+        }
+        .docs .doc-section {
+            border-bottom: 1px solid var(--line);
+        }
+        .docs .doc-section:last-of-type { border-bottom: none; }
+        .docs .doc-section > summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 0.7rem 0.25rem 0.7rem 0;
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            user-select: none;
+            font-size: 11px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--ink-dim);
+            font-weight: 700;
+            transition: color 0.15s;
+        }
+        .docs .doc-section > summary:hover { color: var(--accent); }
+        .docs .doc-section > summary::-webkit-details-marker { display: none; }
+        .docs .doc-section > summary::before {
+            content: "";
+            display: inline-block;
+            width: 0;
+            height: 0;
+            border-top: 4px solid transparent;
+            border-bottom: 4px solid transparent;
+            border-left: 5px solid var(--ink-ghost);
+            transition: transform 0.18s ease;
+            flex-shrink: 0;
+        }
+        .docs .doc-section[open] > summary::before { transform: rotate(90deg); }
+        .docs .doc-section > .doc-body {
+            padding: 0 0 1rem 1rem;
+            animation: doc-expand 0.2s ease-out;
+        }
+        @keyframes doc-expand {
+            from { opacity: 0; transform: translateY(-2px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .docs ol.doc-steps {
+            margin: 0.25rem 0 0.75rem 1.1rem;
+            padding: 0;
+            font-size: 11px;
+            color: var(--ink-ghost);
+            line-height: 1.7;
+        }
+        .docs ol.doc-steps li { margin-bottom: 0.3rem; }
+        .docs ol.doc-steps strong { color: var(--ink); }
+        .docs .doc-note {
+            border-left: 2px solid var(--warn, #d4a72c);
+            padding: 0.45rem 0.7rem;
+            background: var(--bg-0);
+            font-size: 11px;
+            color: var(--ink-dim);
+            margin: 0.5rem 0 0.75rem;
+            border-radius: 0 4px 4px 0;
+            line-height: 1.55;
+        }
+        .docs .doc-note strong { color: var(--ink); }
+        .docs .doc-body h4 {
+            font-size: 10.5px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--ink-dim);
+            font-weight: 600;
+            margin: 0.9rem 0 0.4rem;
+        }
         .settings-tab {
             background: transparent;
             border: none;
@@ -2550,9 +2629,17 @@
                             </template>
                             <template x-if="totpSetup">
                                 <div style="max-width:360px">
-                                    <p style="margin-bottom:0.5rem;color:var(--ink-dim);font-size:0.875rem">Scan this QR code with your authenticator app:</p>
+                                    <ol style="margin:0 0 0.75rem 1.25rem;padding:0;color:var(--ink-dim);font-size:0.875rem;line-height:1.6">
+                                        <li>Open your authenticator app (1Password, Authy, Google Authenticator, …).</li>
+                                        <li>Scan the QR code below — or tap the setup key to copy it.</li>
+                                        <li>Enter the 6-digit code your app shows, then click <strong>Verify &amp; Enable</strong>.</li>
+                                    </ol>
                                     <img :src="'data:image/png;base64,' + totpSetup.qr_png_base64" style="display:block;margin:0.5rem 0;border-radius:4px">
-                                    <p style="margin-bottom:0.5rem;color:var(--ink-dim);font-size:0.75rem">Manual entry: <code x-text="totpSetup.secret" style="user-select:all"></code></p>
+                                    <p style="margin:0.75rem 0 0.25rem;color:var(--ink-dim);font-size:0.75rem">Setup key (tap to copy):</p>
+                                    <code x-text="totpSetup.secret"
+                                          @click="copyToClipboard(totpSetup.secret, 'Code copied to clipboard')"
+                                          style="display:block;margin-bottom:0.75rem;padding:0.5rem 0.75rem;background:var(--bg-card,rgba(127,127,127,0.08));border:1px solid var(--border,rgba(127,127,127,0.2));border-radius:4px;font-size:0.8rem;word-break:break-all;cursor:pointer;user-select:all"
+                                          title="Click to copy"></code>
                                     <div class="form-row" style="gap:0.5rem">
                                         <input type="text" x-model="totpCode" placeholder="6-digit code" maxlength="6" inputmode="numeric" style="max-width:160px">
                                         <button class="btn btn-primary" @click="enableTOTP()">Verify & Enable</button>
@@ -2621,17 +2708,21 @@
                                             <td style="padding:0.5rem" x-text="u.totp_enabled ? 'Yes' : 'No'"></td>
                                             <td style="padding:0.5rem">
                                                 <template x-if="u.id !== currentUser.id">
-                                                    <span style="display:flex;gap:0.5rem;flex-wrap:wrap">
+                                                    <span style="display:flex;gap:0.4rem;flex-wrap:wrap">
                                                         <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem"
                                                                 @click="toggleUserStatus(u)"
                                                                 x-text="u.status === 'active' ? 'Disable' : 'Activate'"></button>
                                                         <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem"
+                                                                @click="setUserPassword(u)">Set Password</button>
+                                                        <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem"
                                                                 x-show="u.totp_enabled"
-                                                                @click="resetUserTOTP(u)">Reset 2FA</button>
+                                                                @click="disableUserTOTP(u)">Disable 2FA</button>
                                                         <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem"
                                                                 @click="invalidateUserSessions(u)">Kill Sessions</button>
                                                         <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem"
                                                                 @click="selectUserForHosts(u)">Hosts</button>
+                                                        <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem;background:var(--crit);color:#fff"
+                                                                @click="deleteUser(u)">Delete</button>
                                                     </span>
                                                 </template>
                                                 <template x-if="u.id === currentUser.id">
@@ -2652,19 +2743,32 @@
                                     </h3>
                                     <div style="display:flex;gap:2rem;flex-wrap:wrap">
                                         <div style="flex:1;min-width:200px">
-                                            <h4 style="font-size:0.8125rem;color:var(--ink-dim);margin-bottom:0.5rem">Granted Hosts</h4>
+                                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+                                                <h4 style="font-size:0.8125rem;color:var(--ink-dim);margin:0">Granted Hosts</h4>
+                                                <button class="btn" style="font-size:0.7rem;padding:0.2rem 0.5rem;background:var(--crit);color:#fff"
+                                                        x-show="selectedUserHosts.length > 0"
+                                                        @click="revokeAllHostAccess()">Revoke All</button>
+                                            </div>
                                             <template x-if="selectedUserHosts.length === 0">
                                                 <p style="color:var(--ink-dim);font-size:0.8125rem">No hosts assigned.</p>
                                             </template>
                                             <template x-for="h in selectedUserHosts" :key="h.id">
                                                 <div style="display:flex;justify-content:space-between;align-items:center;padding:0.375rem 0;border-bottom:1px solid var(--border)">
                                                     <span style="font-size:0.875rem" x-text="h.hostname"></span>
-                                                    <button class="btn" style="font-size:0.7rem;padding:0.2rem 0.4rem;background:var(--crit)" @click="revokeHostAccess(h.id)">Revoke</button>
+                                                    <button class="btn" style="font-size:0.7rem;padding:0.2rem 0.4rem;background:var(--crit);color:#fff" @click="revokeHostAccess(h.id)">Revoke</button>
                                                 </div>
                                             </template>
                                         </div>
                                         <div style="flex:1;min-width:200px">
-                                            <h4 style="font-size:0.8125rem;color:var(--ink-dim);margin-bottom:0.5rem">Available Hosts</h4>
+                                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+                                                <h4 style="font-size:0.8125rem;color:var(--ink-dim);margin:0">Available Hosts</h4>
+                                                <button class="btn btn-primary" style="font-size:0.7rem;padding:0.2rem 0.5rem"
+                                                        x-show="availableHosts.length > 0"
+                                                        @click="grantAllHostAccess()">Grant All</button>
+                                            </div>
+                                            <template x-if="availableHosts.length === 0">
+                                                <p style="color:var(--ink-dim);font-size:0.8125rem">All hosts granted.</p>
+                                            </template>
                                             <template x-for="h in availableHosts" :key="h.id">
                                                 <div style="display:flex;justify-content:space-between;align-items:center;padding:0.375rem 0;border-bottom:1px solid var(--border)">
                                                     <span style="font-size:0.875rem" x-text="h.hostname"></span>
@@ -2680,11 +2784,29 @@
 
                     <template x-if="settingsTab === 'docs'">
                         <div class="docs">
-                            <h3>Adding a Host</h3>
-                            <p>Go to <strong>Hosts</strong> tab, enter a hostname, and click <strong>Add Host</strong>. Copy the bearer token — it is shown only once.</p>
+                            <div class="doc-intro">
+                                FleetCom collects heartbeats from the <strong>Bosun</strong> agent running on each host. Bosun streams Docker events in real time and pushes enriched heartbeats every 60s. Expand any section below for details.
+                            </div>
 
-                            <h3>Docker Setup (recommended)</h3>
-                            <p>The agent runs as a Docker container with real-time container monitoring via the Docker socket. Works on any host with Docker.</p>
+                            <details class="doc-section" open>
+                                <summary>Adding a Host</summary>
+                                <div class="doc-body">
+                                    <p>Follow these steps to onboard a new host:</p>
+                                    <ol class="doc-steps">
+                                        <li>Open <strong>Settings → Hosts</strong>, enter a hostname, click <strong>Add Host</strong>.</li>
+                                        <li><strong>Copy the bearer token immediately</strong> — it is shown only once and cannot be retrieved later.</li>
+                                        <li>Install the Bosun agent on the host using <em>Docker Setup</em> (recommended) or <em>Static Binary</em> below. Pass the token as <code>FLEETCOM_TOKEN</code>.</li>
+                                        <li>Bosun starts pushing heartbeats within ~60 s. The host appears on the dashboard with Docker container details.</li>
+                                        <li>(Admin) Grant access to other users via <strong>Settings → Users → Hosts</strong>. Admins see all hosts by default; regular users see only what you grant them.</li>
+                                    </ol>
+                                    <div class="doc-note"><strong>Token lost?</strong> Delete the host in Settings → Hosts and add it again. The old token is invalidated on delete.</div>
+                                </div>
+                            </details>
+
+                            <details class="doc-section">
+                                <summary>Docker Setup (recommended)</summary>
+                                <div class="doc-body">
+                                    <p>Bosun runs as a container, mounts the Docker socket read-only, and watches the event stream for instant container lifecycle notifications. Works on any host with Docker.</p>
 <pre>sudo mkdir -p /opt/fleetcom-bosun
 
 # Create .env with your token
@@ -2710,29 +2832,36 @@ EOF
 
 cd /opt/fleetcom-bosun
 sudo docker compose pull &amp;&amp; sudo docker compose up -d</pre>
-                            <p>Updates: <code>docker compose pull &amp;&amp; docker compose up -d</code></p>
+                                    <h4>Updating</h4>
+                                    <pre>cd /opt/fleetcom-bosun &amp;&amp; sudo docker compose pull &amp;&amp; sudo docker compose up -d</pre>
+                                    <h4>Verifying</h4>
+                                    <p><code>sudo docker logs -f fleetcom-bosun</code> — should show periodic heartbeat POSTs returning 200.</p>
+                                </div>
+                            </details>
 
-                            <h3>Static Binary (lightweight hosts)</h3>
-                            <p>For hosts without Docker (Raspberry Pi, embedded, etc.) — cross-compile the Go agent and run it directly. Single binary, zero dependencies, ~6MB.</p>
-<pre># Cross-compile (from dev machine)
+                            <details class="doc-section">
+                                <summary>Static Binary (lightweight hosts)</summary>
+                                <div class="doc-body">
+                                    <p>For hosts without Docker (Raspberry Pi, embedded, OpenWrt, etc.) — cross-compile the Go agent and run it directly. Single binary, zero dependencies, ~6 MB.</p>
+                                    <h4>Cross-compile</h4>
+<pre># From your dev machine
 GOOS=linux GOARCH=arm GOARM=6 CGO_ENABLED=0 \
   go build -ldflags="-s -w \
     -X main.Version=0.1.0 \
     -X main.BuildTime=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   -o fleetcom-bosun ./cmd/fleetcom-bosun
 
-# Copy to host
-scp fleetcom-bosun host:/usr/local/bin/
-
-# Create env file
-sudo mkdir -p /etc/fleetcom
+scp fleetcom-bosun host:/usr/local/bin/</pre>
+                                    <h4>Environment file</h4>
+<pre>sudo mkdir -p /etc/fleetcom
 sudo tee /etc/fleetcom/env &lt;&lt;'EOF'
 FLEETCOM_URL=https://fleet.barta.cm
 FLEETCOM_TOKEN=your-token-here
 FLEETCOM_HOSTNAME=your-hostname
 EOF
 sudo chmod 600 /etc/fleetcom/env</pre>
-                            <p>Create <code>/etc/systemd/system/fleetcom-bosun.service</code>:</p>
+                                    <h4>systemd unit</h4>
+                                    <p>Create <code>/etc/systemd/system/fleetcom-bosun.service</code>:</p>
 <pre>[Unit]
 Description=FleetCom Bosun
 After=network-online.target
@@ -2748,15 +2877,54 @@ RestartSec=10
 [Install]
 WantedBy=multi-user.target</pre>
 <pre>sudo systemctl enable --now fleetcom-bosun</pre>
-                            <p>Common <code>GOARCH</code> values: <code>amd64</code> (x86_64), <code>arm64</code> (RPi 4/5, Apple Silicon), <code>arm GOARM=6</code> (RPi Zero/1), <code>arm GOARM=7</code> (RPi 2/3).</p>
+                                    <h4>Architecture cheat-sheet</h4>
+                                    <p>Common <code>GOARCH</code> values: <code>amd64</code> (x86_64), <code>arm64</code> (RPi 4/5, Apple Silicon), <code>arm GOARM=6</code> (RPi Zero/1), <code>arm GOARM=7</code> (RPi 2/3).</p>
+                                </div>
+                            </details>
 
-                            <h3>AI Agents (optional)</h3>
-                            <p>To report AI agents alongside system data, add <code>FLEETCOM_AGENTS</code> to the environment:</p>
+                            <details class="doc-section">
+                                <summary>AI Agents (optional)</summary>
+                                <div class="doc-body">
+                                    <p>To report AI agents alongside system data, add <code>FLEETCOM_AGENTS</code> to the agent environment:</p>
 <pre>FLEETCOM_AGENTS='[{"name":"Ocean","agent_type":"cto","status":"online"}]'</pre>
-                            <p>Docker: add to <code>environment:</code> in docker-compose.yml. Static binary: add to <code>/etc/fleetcom/env</code>.</p>
+                                    <p>Docker: add to <code>environment:</code> in <code>docker-compose.yml</code>. Static binary: add to <code>/etc/fleetcom/env</code>.</p>
+                                </div>
+                            </details>
 
-                            <h3>Agent Version</h3>
-                            <p>Hosts report their agent version in each heartbeat. The dashboard shows <span class="agent-version-badge current" style="display:inline">current</span> for up-to-date agents, <span class="agent-version-badge outdated" style="display:inline">outdated</span> with an alert icon for old versions, and <span class="agent-version-badge legacy" style="display:inline">LEGACY</span> for hosts running the old shell script agent. Expected version: <strong x-text="expectedAgentVersion || 'loading...'"></strong></p>
+                            <details class="doc-section">
+                                <summary>User Access &amp; Permissions</summary>
+                                <div class="doc-body">
+                                    <p><strong>Roles.</strong> <code>admin</code> sees and manages everything. <code>user</code> sees only hosts explicitly granted to them.</p>
+                                    <p><strong>Granting host access.</strong> Open <strong>Settings → Users</strong>, click <strong>Hosts</strong> on a user, then <strong>Grant</strong> individual hosts or <strong>Grant All</strong> for everything in the fleet. Use <strong>Revoke All</strong> to reset.</p>
+                                    <p><strong>Admin actions per user.</strong> Disable/activate the account, set a new password (kills all their sessions), disable 2FA (forces re-setup on next login), kill active sessions, or delete the user entirely. Deleted users are soft-deleted and can no longer log in.</p>
+                                    <div class="doc-note">All users must complete <strong>TOTP 2FA setup</strong> on first login — it is mandatory, not optional.</div>
+                                </div>
+                            </details>
+
+                            <details class="doc-section">
+                                <summary>Agent Versions</summary>
+                                <div class="doc-body">
+                                    <p>Hosts report their agent version in each heartbeat. The dashboard shows:</p>
+                                    <ul style="margin:0.25rem 0 0.5rem 1.1rem;padding:0;font-size:11px;color:var(--ink-ghost);line-height:1.75">
+                                        <li><span class="agent-version-badge current" style="display:inline">current</span> — agent matches the expected version.</li>
+                                        <li><span class="agent-version-badge outdated" style="display:inline">outdated</span> — older than expected; update recommended.</li>
+                                        <li><span class="agent-version-badge legacy" style="display:inline">LEGACY</span> — host still running the old shell-script agent; migrate to Bosun.</li>
+                                    </ul>
+                                    <p>Expected version: <strong x-text="expectedAgentVersion || 'loading…'"></strong></p>
+                                </div>
+                            </details>
+
+                            <details class="doc-section">
+                                <summary>Troubleshooting</summary>
+                                <div class="doc-body">
+                                    <h4>Host shows <em>Offline</em> immediately after install</h4>
+                                    <p>Check <code>FLEETCOM_URL</code> is reachable from the host (<code>curl -sS $FLEETCOM_URL/healthz</code>) and <code>FLEETCOM_TOKEN</code> matches the one generated in the UI. Docker: <code>sudo docker logs fleetcom-bosun</code>. Systemd: <code>journalctl -u fleetcom-bosun -f</code>.</p>
+                                    <h4>Dashboard empty for a regular user</h4>
+                                    <p>Grant host access under <strong>Settings → Users → Hosts</strong>. New non-admin users start with no host permissions.</p>
+                                    <h4>Can't log in after password change</h4>
+                                    <p>Changing or resetting a password invalidates all existing sessions for that user — this is intentional. Log back in with the new password.</p>
+                                </div>
+                            </details>
                         </div>
                     </template>
                 </div>
@@ -3125,19 +3293,48 @@ WantedBy=multi-user.target</pre>
                     } catch (_) {}
                 },
 
-                async resetUserTOTP(u) {
-                    if (!confirm('Reset 2FA for ' + u.email + '?')) return;
+                async disableUserTOTP(u) {
+                    if (!confirm('Disable 2FA for ' + u.email + '?\nThey will be prompted to set up a new authenticator on next login.')) return;
                     try {
-                        await fetch('/api/users/' + u.id + '/reset-totp', { method: 'POST' });
-                        await this.loadUsers();
-                    } catch (_) {}
+                        const res = await fetch('/api/users/' + u.id + '/reset-totp', { method: 'POST' });
+                        if (res.ok) { this.toast('2FA disabled for ' + u.email); await this.loadUsers(); }
+                        else this.toast('Failed to disable 2FA', 'err');
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                async setUserPassword(u) {
+                    const pw = prompt('New password for ' + u.email + ' (min 6 chars):');
+                    if (!pw) return;
+                    if (pw.length < 6) { this.toast('Password must be at least 6 characters', 'err'); return; }
+                    try {
+                        const res = await fetch('/api/users/' + u.id + '/password', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ new_password: pw })
+                        });
+                        if (res.ok) this.toast('Password updated — all sessions killed');
+                        else this.toast(await res.text() || 'Failed to set password', 'err');
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                async deleteUser(u) {
+                    if (!confirm('Delete user ' + u.email + '?\nThis cannot be undone from the UI.')) return;
+                    try {
+                        const res = await fetch('/api/users/' + u.id, { method: 'DELETE' });
+                        if (res.ok) {
+                            this.toast('User ' + u.email + ' deleted');
+                            if (this.selectedUser && this.selectedUser.id === u.id) this.selectedUser = null;
+                            await this.loadUsers();
+                        } else this.toast(await res.text() || 'Failed to delete user', 'err');
+                    } catch (_) { this.toast('Network error', 'err'); }
                 },
 
                 async invalidateUserSessions(u) {
                     try {
-                        await fetch('/api/users/' + u.id + '/sessions', { method: 'DELETE' });
-                        alert('Sessions invalidated for ' + u.email);
-                    } catch (_) {}
+                        const res = await fetch('/api/users/' + u.id + '/sessions', { method: 'DELETE' });
+                        if (res.ok) this.toast('Sessions killed for ' + u.email);
+                        else this.toast('Failed to kill sessions', 'err');
+                    } catch (_) { this.toast('Network error', 'err'); }
                 },
 
                 get availableHosts() {
@@ -3183,6 +3380,30 @@ WantedBy=multi-user.target</pre>
                         await fetch('/api/users/' + this.selectedUser.id + '/hosts/' + hostId, { method: 'DELETE' });
                         await this.loadUserHosts();
                     } catch (_) {}
+                },
+
+                async grantAllHostAccess() {
+                    if (!this.selectedUser) return;
+                    try {
+                        const res = await fetch('/api/users/' + this.selectedUser.id + '/hosts/grant-all', { method: 'POST' });
+                        if (res.ok) {
+                            const data = await res.json().catch(() => ({}));
+                            this.toast('Granted ' + (data.added ?? '') + ' host(s) to ' + this.selectedUser.email);
+                            await this.loadUserHosts();
+                        } else this.toast('Grant all failed', 'err');
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                async revokeAllHostAccess() {
+                    if (!this.selectedUser) return;
+                    if (!confirm('Revoke ALL host access for ' + this.selectedUser.email + '?')) return;
+                    try {
+                        const res = await fetch('/api/users/' + this.selectedUser.id + '/hosts', { method: 'DELETE' });
+                        if (res.ok) {
+                            this.toast('All host access revoked for ' + this.selectedUser.email);
+                            await this.loadUserHosts();
+                        } else this.toast('Revoke all failed', 'err');
+                    } catch (_) { this.toast('Network error', 'err'); }
                 },
 
                 configInstanceLabel: '',
@@ -4102,6 +4323,15 @@ WantedBy=multi-user.target</pre>
                         el.classList.add('toast-out');
                         setTimeout(() => el.remove(), 200);
                     }, type === 'err' ? 5000 : 3000);
+                },
+
+                async copyToClipboard(text, okMsg = 'Copied to clipboard') {
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        this.toast(okMsg);
+                    } catch (_) {
+                        this.toast('Copy failed', 'err');
+                    }
                 },
 
                 // ---------- time helpers ----------
