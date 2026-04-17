@@ -42,10 +42,14 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 		cfgData, _ := json.Marshal(buildConfigPayload(store))
 		fmt.Fprintf(w, "event: config\ndata: %s\n\n", cfgData)
 
-		// Send initial ignored set
-		if ignoredSet, err := store.IgnoredSet(); err == nil {
-			igData, _ := json.Marshal(ignoredSet)
-			fmt.Fprintf(w, "event: ignored\ndata: %s\n\n", igData)
+		// Send initial ignored set (scoped to this user). Ignores are per-user,
+		// so there's no hub broadcast — clients update local state after their
+		// own POST/DELETE /api/ignore calls succeed.
+		if u != nil {
+			if ignoredSet, err := store.IgnoredSet(u.ID); err == nil {
+				igData, _ := json.Marshal(ignoredSet)
+				fmt.Fprintf(w, "event: ignored\ndata: %s\n\n", igData)
+			}
 		}
 
 		// Send initial host configs (filtered)

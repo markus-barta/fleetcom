@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/markus-barta/fleetcom/internal/auth"
 	"github.com/markus-barta/fleetcom/internal/db"
 )
 
@@ -30,6 +31,19 @@ func History(store *db.Store) http.HandlerFunc {
 		}
 		if entityType != "host" && entityType != "container" && entityType != "agent" {
 			http.Error(w, "entity_type must be host|container|agent", http.StatusBadRequest)
+			return
+		}
+
+		// Host-access check: non-admin users can only query history for entities
+		// on hosts they've been granted. Parses the hostname from entity_key
+		// (host → key itself; container/agent → first "/"-segment).
+		u := auth.GetUser(r)
+		if u == nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if !userCanAccessEntity(store, u, entityType, entityKey) {
+			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
 
