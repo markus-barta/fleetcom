@@ -401,6 +401,80 @@ func ResetUserTOTP(store *db.Store) http.HandlerFunc {
 	}
 }
 
+// AdminSetUserPassword handles POST /api/users/{id}/password (admin only).
+// Sets a new password for the user and invalidates all of their sessions.
+func AdminSetUserPassword(store *db.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+
+		var body struct {
+			NewPassword string `json:"new_password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if len(body.NewPassword) < 6 {
+			http.Error(w, "password must be at least 6 characters", http.StatusBadRequest)
+			return
+		}
+
+		target, err := store.GetUserByID(id)
+		if err != nil || target == nil {
+			http.Error(w, "user not found", http.StatusNotFound)
+			return
+		}
+
+		hash, err := auth.HashPassword(body.NewPassword)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if err := store.UpdateUserPassword(id, hash); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		// Force re-login everywhere
+		store.DeleteUserSessions(id)
+
+		admin := auth.GetUser(r)
+		log.Printf("audit: password_set_by_admin user_id=%d by=%d", id, admin.ID)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}
+}
+
+// DeleteUser handles DELETE /api/users/{id} (admin only).
+// Soft-deletes (status='deleted') + kills sessions. Cannot delete self.
+func DeleteUser(store *db.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		admin := auth.GetUser(r)
+		if admin.ID == id {
+			http.Error(w, "cannot delete yourself", http.StatusBadRequest)
+			return
+		}
+
+		if err := store.UpdateUserStatus(id, "deleted"); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		store.DeleteUserSessions(id)
+
+		log.Printf("audit: user_deleted id=%d by=%d", id, admin.ID)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}
+}
+
 // InvalidateUserSessions handles DELETE /api/users/{id}/sessions (admin only).
 func InvalidateUserSessions(store *db.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -465,6 +539,46 @@ func GrantUserHost(store *db.Store) http.HandlerFunc {
 		}
 		admin := auth.GetUser(r)
 		log.Printf("audit: host_access_granted user_id=%d host_id=%d by=%d", userID, body.HostID, admin.ID)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}
+}
+
+// GrantAllUserHosts handles POST /api/users/{id}/hosts/grant-all.
+// Grants the user access to every host in the fleet.
+func GrantAllUserHosts(store *db.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		n, err := store.GrantAllHostAccess(userID)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		admin := auth.GetUser(r)
+		log.Printf("audit: host_access_granted_all user_id=%d added=%d by=%d", userID, n, admin.ID)
+		writeJSON(w, map[string]int64{"added": n})
+	}
+}
+
+// RevokeAllUserHosts handles DELETE /api/users/{id}/hosts.
+// Revokes the user's access from every host.
+func RevokeAllUserHosts(store *db.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		userID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if err := store.RevokeAllHostAccess(userID); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		admin := auth.GetUser(r)
+		log.Printf("audit: host_access_revoked_all user_id=%d by=%d", userID, admin.ID)
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"ok":true}`))
 	}

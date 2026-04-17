@@ -239,6 +239,26 @@ func (s *Store) RevokeHostAccess(userID, hostID int64) error {
 	return err
 }
 
+// GrantAllHostAccess grants the user access to every host currently in the hosts table.
+// Idempotent via INSERT OR IGNORE.
+func (s *Store) GrantAllHostAccess(userID int64) (int64, error) {
+	res, err := s.DB.Exec(
+		`INSERT OR IGNORE INTO user_host_access (user_id, host_id)
+		 SELECT ?, id FROM hosts`,
+		userID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// RevokeAllHostAccess removes every host grant for the user.
+func (s *Store) RevokeAllHostAccess(userID int64) error {
+	_, err := s.DB.Exec(`DELETE FROM user_host_access WHERE user_id = ?`, userID)
+	return err
+}
+
 func (s *Store) UserHostAccessList(userID int64) ([]Host, error) {
 	rows, err := s.DB.Query(
 		`SELECT h.id, h.hostname FROM hosts h
