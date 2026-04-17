@@ -63,6 +63,11 @@ func migrate(db *sql.DB) error {
 		return fmt.Errorf("migrate ignored_entities: %w", err)
 	}
 
+	// Index is created here (not in the schema const) so that the column
+	// user_id is guaranteed to exist — either via fresh-install schema or via
+	// the rebuild above.
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_ignored_user ON ignored_entities(user_id)`)
+
 	return nil
 }
 
@@ -235,7 +240,9 @@ CREATE TABLE IF NOT EXISTS ignored_entities (
 	created_at TEXT NOT NULL DEFAULT (datetime('now')),
 	UNIQUE(user_id, entity_type, entity_key)
 );
-CREATE INDEX IF NOT EXISTS idx_ignored_user ON ignored_entities(user_id);
+-- idx_ignored_user is created in migrate() after migrateIgnoredEntitiesToPerUser
+-- runs, because on upgrade the column "user_id" does not yet exist when the
+-- schema SQL is first executed.
 
 CREATE TABLE IF NOT EXISTS image_presets (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
