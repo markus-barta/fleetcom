@@ -218,6 +218,12 @@ func GetUser(r *http.Request) *db.User {
 	return u
 }
 
+// WithUser returns a new context with the given user attached.
+// Used by share-link viewers to inherit the creator's access scope.
+func WithUser(ctx context.Context, u *db.User) context.Context {
+	return context.WithValue(ctx, userContextKey, u)
+}
+
 // GetSessionToken extracts the raw session token from the request cookie.
 func GetSessionToken(r *http.Request) string {
 	cookie, err := r.Cookie(sessionCookie)

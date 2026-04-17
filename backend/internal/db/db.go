@@ -46,11 +46,94 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE containers ADD COLUMN oom_killed INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE hosts ADD COLUMN agent_version TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE sessions ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0`,
+		// Data-isolation pass:
+		`ALTER TABLE share_links ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0`,
 	}
 	for _, stmt := range alterStmts {
 		db.Exec(stmt) // ignore "duplicate column" errors
 	}
+
+	// Backfill share_links.user_id to the first admin (once). Idempotent: only touches rows with user_id=0.
+	db.Exec(`UPDATE share_links SET user_id = COALESCE((SELECT id FROM users WHERE role='admin' AND status='active' ORDER BY id LIMIT 1), 0) WHERE user_id = 0`)
+
+	// Rebuild ignored_entities to attach user_id (per-user scope). SQLite can't
+	// drop the legacy UNIQUE(entity_type, entity_key) constraint via ALTER, so
+	// we detect the old schema and rebuild the table exactly once.
+	if err := migrateIgnoredEntitiesToPerUser(db); err != nil {
+		return fmt.Errorf("migrate ignored_entities: %w", err)
+	}
+
 	return nil
+}
+
+// migrateIgnoredEntitiesToPerUser adds user_id scoping to ignored_entities.
+// Existing global rows are assigned to the first admin (so their view is
+// preserved). If no admin exists yet (fresh install mid-boot), existing rows
+// are dropped — safer than leaving orphans referencing a non-user.
+func migrateIgnoredEntitiesToPerUser(db *sql.DB) error {
+	// Detect old schema: if user_id column is absent, rebuild.
+	rows, err := db.Query(`PRAGMA table_info(ignored_entities)`)
+	if err != nil {
+		return err
+	}
+	hasUserID := false
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notnull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			rows.Close()
+			return err
+		}
+		if name == "user_id" {
+			hasUserID = true
+		}
+	}
+	rows.Close()
+	if hasUserID {
+		return nil
+	}
+
+	var adminID int64
+	_ = db.QueryRow(`SELECT COALESCE((SELECT id FROM users WHERE role='admin' AND status='active' ORDER BY id LIMIT 1), 0)`).Scan(&adminID)
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec(`
+		CREATE TABLE ignored_entities_new (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			entity_type TEXT NOT NULL,
+			entity_key TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT (datetime('now')),
+			UNIQUE(user_id, entity_type, entity_key)
+		)`); err != nil {
+		return err
+	}
+	if adminID > 0 {
+		if _, err := tx.Exec(
+			`INSERT INTO ignored_entities_new (user_id, entity_type, entity_key, created_at)
+			 SELECT ?, entity_type, entity_key, created_at FROM ignored_entities`,
+			adminID,
+		); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.Exec(`DROP TABLE ignored_entities`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`ALTER TABLE ignored_entities_new RENAME TO ignored_entities`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_ignored_user ON ignored_entities(user_id)`); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 const schema = `
@@ -121,6 +204,7 @@ CREATE TABLE IF NOT EXISTS share_links (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	token TEXT NOT NULL UNIQUE,
 	label TEXT NOT NULL DEFAULT '',
+	user_id INTEGER NOT NULL DEFAULT 0,
 	created_at TEXT NOT NULL DEFAULT (datetime('now')),
 	expires_at TEXT NOT NULL
 );
@@ -145,11 +229,13 @@ INSERT OR IGNORE INTO settings (key, value) VALUES ('heartbeat_interval', '60');
 
 CREATE TABLE IF NOT EXISTS ignored_entities (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 	entity_type TEXT NOT NULL,
 	entity_key TEXT NOT NULL,
 	created_at TEXT NOT NULL DEFAULT (datetime('now')),
-	UNIQUE(entity_type, entity_key)
+	UNIQUE(user_id, entity_type, entity_key)
 );
+CREATE INDEX IF NOT EXISTS idx_ignored_user ON ignored_entities(user_id);
 
 CREATE TABLE IF NOT EXISTS image_presets (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,

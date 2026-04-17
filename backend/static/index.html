@@ -2315,11 +2315,11 @@
             <template x-if="view === 'settings'">
                 <div class="admin-panel">
                     <div class="settings-tabs">
-                        <button class="settings-tab" :class="settingsTab === 'hosts' && 'active'" @click="settingsTab = 'hosts'; loadTokens(); loadImagePresets()">Hosts</button>
-                        <button class="settings-tab" :class="settingsTab === 'icons' && 'active'" @click="settingsTab = 'icons'; loadImagePresets()">Icons</button>
-                        <button class="settings-tab" :class="settingsTab === 'sharing' && 'active'" @click="settingsTab = 'sharing'; loadShares()">Sharing</button>
+                        <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'hosts' && 'active'" @click="settingsTab = 'hosts'; loadTokens(); loadImagePresets()">Hosts</button>
+                        <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'icons' && 'active'" @click="settingsTab = 'icons'; loadImagePresets()">Icons</button>
+                        <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'sharing' && 'active'" @click="settingsTab = 'sharing'; loadShares()">Sharing</button>
                         <button class="settings-tab" :class="settingsTab === 'ignored' && 'active'" @click="settingsTab = 'ignored'; loadIgnoredList()">Ignored</button>
-                        <button class="settings-tab" :class="settingsTab === 'config' && 'active'" @click="settingsTab = 'config'">Config</button>
+                        <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'config' && 'active'" @click="settingsTab = 'config'">Config</button>
                         <button class="settings-tab" :class="settingsTab === 'account' && 'active'" @click="settingsTab = 'account'; loadMySessions()">Account</button>
                         <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'users' && 'active'" @click="settingsTab = 'users'; loadUsers()">Users</button>
                         <span class="tab-spacer"></span>
@@ -3005,7 +3005,7 @@ WantedBy=multi-user.target</pre>
 
                 // Which chip is expanded in its card (key = `${type}:${entityKey}`, one at a time globally)
                 openChip: null,
-                // Settings view
+                // Settings view — default "hosts" for admins; flipped to "account" on load for non-admins.
                 settingsTab: 'hosts',
                 // Ignored entities (set from SSE, list for settings tab)
                 ignoredSet: {},
@@ -3164,7 +3164,13 @@ WantedBy=multi-user.target</pre>
                 async loadMe() {
                     try {
                         const res = await fetch('/api/me');
-                        if (res.ok) this.currentUser = await res.json();
+                        if (res.ok) {
+                            this.currentUser = await res.json();
+                            // Non-admins have no access to the admin-only tabs; land them on Account.
+                            if (this.currentUser && this.currentUser.role !== 'admin' && (this.settingsTab === 'hosts' || this.settingsTab === 'icons' || this.settingsTab === 'sharing' || this.settingsTab === 'config')) {
+                                this.settingsTab = 'account';
+                            }
+                        }
                     } catch (_) {}
                 },
 
@@ -3633,8 +3639,16 @@ WantedBy=multi-user.target</pre>
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ entity_type: entityType, entity_key: entityKey })
                         });
-                        if (res.ok) this.toast(entityType + ' ignored');
-                        else this.toast('Failed to ignore', 'err');
+                        if (res.ok) {
+                            // Ignores are per-user now, so no SSE broadcast fires — mutate local state directly.
+                            this.ignoredSet = { ...this.ignoredSet, [entityType + ':' + entityKey]: true };
+                            if (this.settingsTab === 'ignored') this.loadIgnoredList();
+                            this.toast(entityType + ' ignored');
+                        } else if (res.status === 403) {
+                            this.toast('Not allowed for this ' + entityType, 'err');
+                        } else {
+                            this.toast('Failed to ignore', 'err');
+                        }
                     } catch (_) { this.toast('Network error', 'err'); }
                 },
 
@@ -3643,10 +3657,16 @@ WantedBy=multi-user.target</pre>
                         const res = await fetch('/api/ignore?entity_type=' + encodeURIComponent(entityType) + '&entity_key=' + encodeURIComponent(entityKey), {
                             method: 'DELETE'
                         });
-                        if (res.ok) this.toast(entityType + ' unignored');
-                        else this.toast('Failed to unignore', 'err');
+                        if (res.ok) {
+                            const next = { ...this.ignoredSet };
+                            delete next[entityType + ':' + entityKey];
+                            this.ignoredSet = next;
+                            if (this.settingsTab === 'ignored') this.loadIgnoredList();
+                            this.toast(entityType + ' unignored');
+                        } else {
+                            this.toast('Failed to unignore', 'err');
+                        }
                     } catch (_) { this.toast('Network error', 'err'); }
-                    if (this.settingsTab === 'ignored') this.loadIgnoredList();
                 },
 
                 async loadIgnoredList() {
