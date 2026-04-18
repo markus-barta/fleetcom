@@ -222,16 +222,22 @@ func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []Agent
 		return
 	}
 
-	// Read server-provided interval
+	// Read server-provided interval + optional command
 	var result struct {
-		OK       bool `json:"ok"`
-		Interval int  `json:"interval"`
+		OK       bool   `json:"ok"`
+		Interval int    `json:"interval"`
+		Command  string `json:"command,omitempty"`
 	}
-	if err := json.Unmarshal(resp, &result); err == nil && result.Interval >= 10 {
-		newInterval := time.Duration(result.Interval) * time.Second
-		if newInterval != *interval {
-			log.Printf("interval updated: %s → %s", *interval, newInterval)
-			*interval = newInterval
+	if err := json.Unmarshal(resp, &result); err == nil {
+		if result.Interval >= 10 {
+			newInterval := time.Duration(result.Interval) * time.Second
+			if newInterval != *interval {
+				log.Printf("interval updated: %s → %s", *interval, newInterval)
+				*interval = newInterval
+			}
+		}
+		if result.Command != "" {
+			handleServerCommand(result.Command)
 		}
 	}
 

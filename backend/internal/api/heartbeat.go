@@ -75,7 +75,8 @@ func Heartbeat(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			Live:      payload.HwLive,
 			Fastfetch: payload.Fastfetch,
 		}
-		if err := store.UpsertHeartbeat(payload.Hostname, payload.OS, payload.Kernel, payload.UptimeSeconds, payload.AgentVersion, toDBContainers(payload.Containers), toDBAgents(payload.Agents), hw); err != nil {
+		command, err := store.UpsertHeartbeat(payload.Hostname, payload.OS, payload.Kernel, payload.UptimeSeconds, payload.AgentVersion, toDBContainers(payload.Containers), toDBAgents(payload.Agents), hw)
+		if err != nil {
 			log.Printf("heartbeat upsert error: %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
@@ -90,12 +91,16 @@ func Heartbeat(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			hub.Broadcast("hosts", data)
 		}
 
-		// Return interval so agents can adapt their reporting cadence
+		// Return interval + optional command so agents can adapt and act.
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]any{
+		resp := map[string]any{
 			"ok":       true,
 			"interval": store.HeartbeatInterval(),
-		})
+		}
+		if command != "" {
+			resp["command"] = command
+		}
+		json.NewEncoder(w).Encode(resp)
 	}
 }
 

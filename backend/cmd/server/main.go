@@ -152,6 +152,8 @@ func main() {
 		r.With(auth.RequireAdmin).Get("/api/tokens", api.ListTokens(store))
 		r.With(auth.RequireAdmin).Post("/api/hosts", api.AddHost(store))
 		r.With(auth.RequireAdmin).Delete("/api/hosts", api.DeleteHost(store))
+		r.With(auth.RequireAdmin).Post("/api/hosts/{hostname}/update", api.RequestHostUpdate(store, hub))
+		r.With(auth.RequireAdmin).Post("/api/hosts/update-all", api.RequestUpdateAll(store, hub))
 		r.With(auth.RequireAdmin).Get("/api/shares", api.ListShareLinks(store))
 		r.With(auth.RequireAdmin).Post("/api/shares", api.CreateShareLink(store))
 		r.With(auth.RequireAdmin).Delete("/api/shares", api.DeleteShareLink(store))

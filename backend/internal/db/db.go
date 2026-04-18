@@ -54,6 +54,8 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE hosts ADD COLUMN hw_live_at TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE hosts ADD COLUMN fastfetch_json TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE hosts ADD COLUMN fastfetch_at TEXT NOT NULL DEFAULT ''`,
+		// Auto-update / server-triggered update request:
+		`ALTER TABLE hosts ADD COLUMN update_requested_at TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, stmt := range alterStmts {
 		db.Exec(stmt) // ignore "duplicate column" errors
@@ -161,7 +163,8 @@ CREATE TABLE IF NOT EXISTS hosts (
 	hw_live TEXT NOT NULL DEFAULT '',
 	hw_live_at TEXT NOT NULL DEFAULT '',
 	fastfetch_json TEXT NOT NULL DEFAULT '',
-	fastfetch_at TEXT NOT NULL DEFAULT ''
+	fastfetch_at TEXT NOT NULL DEFAULT '',
+	update_requested_at TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS host_metrics (

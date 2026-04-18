@@ -3,6 +3,10 @@ services:
     image: ghcr.io/markus-barta/fleetcom-bosun:latest
     container_name: fleetcom-bosun
     restart: unless-stopped
+    labels:
+      # Opt-in: watchtower only manages containers with this label, so it
+      # never touches unrelated host containers.
+      - com.centurylinklabs.watchtower.enable=true
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /proc:/host/proc:ro
@@ -14,3 +18,22 @@ services:
       - FLEETCOM_TOKEN=${FLEETCOM_TOKEN}
       - FLEETCOM_HOSTNAME=${FLEETCOM_HOSTNAME}
       - FLEETCOM_AGENTS=${FLEETCOM_AGENTS:-[]}
+      # Watchtower-triggered updates: bosun calls this endpoint when the
+      # server sends command="update" in a heartbeat response.
+      - WATCHTOWER_URL=http://watchtower:8080
+      - WATCHTOWER_TOKEN=${WATCHTOWER_TOKEN}
+
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: fleetcom-watchtower
+    restart: unless-stopped
+    # No host port — the HTTP API is only reachable inside the compose
+    # network by fleetcom-bosun.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_LABEL_ENABLE=true
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_POLL_INTERVAL=86400
+      - WATCHTOWER_HTTP_API_UPDATE=true
+      - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_TOKEN}
