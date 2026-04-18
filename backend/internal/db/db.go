@@ -48,6 +48,12 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE sessions ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0`,
 		// Data-isolation pass:
 		`ALTER TABLE share_links ADD COLUMN user_id INTEGER NOT NULL DEFAULT 0`,
+		// Hardware/metadata pass:
+		`ALTER TABLE hosts ADD COLUMN hw_static TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE hosts ADD COLUMN hw_live TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE hosts ADD COLUMN hw_live_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE hosts ADD COLUMN fastfetch_json TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE hosts ADD COLUMN fastfetch_at TEXT NOT NULL DEFAULT ''`,
 	}
 	for _, stmt := range alterStmts {
 		db.Exec(stmt) // ignore "duplicate column" errors
@@ -150,8 +156,25 @@ CREATE TABLE IF NOT EXISTS hosts (
 	uptime_seconds INTEGER NOT NULL DEFAULT 0,
 	agent_version TEXT NOT NULL DEFAULT '',
 	last_seen TEXT NOT NULL DEFAULT '',
-	created_at TEXT NOT NULL DEFAULT (datetime('now'))
+	created_at TEXT NOT NULL DEFAULT (datetime('now')),
+	hw_static TEXT NOT NULL DEFAULT '',
+	hw_live TEXT NOT NULL DEFAULT '',
+	hw_live_at TEXT NOT NULL DEFAULT '',
+	fastfetch_json TEXT NOT NULL DEFAULT '',
+	fastfetch_at TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS host_metrics (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	host_id INTEGER NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,
+	ts TEXT NOT NULL,
+	cpu_load REAL NOT NULL DEFAULT 0,
+	mem_used_pct REAL NOT NULL DEFAULT 0,
+	cpu_temp_c REAL,
+	gpu_temp_c REAL
+);
+CREATE INDEX IF NOT EXISTS idx_host_metrics_host_ts ON host_metrics(host_id, ts);
+CREATE INDEX IF NOT EXISTS idx_host_metrics_ts ON host_metrics(ts);
 
 CREATE TABLE IF NOT EXISTS containers (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,

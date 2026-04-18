@@ -1902,6 +1902,144 @@
         .toast.toast-out { animation: toast-out 0.2s ease-in forwards; }
         @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(4px); } }
+
+        /* --- Host hardware chips + panel --- */
+        .hw-chips {
+            display: flex;
+            gap: 0.35rem;
+            margin-top: 0.2rem;
+            font-size: 9px;
+            color: var(--ink-dim);
+            letter-spacing: 0.06em;
+            font-variant-numeric: tabular-nums;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+        }
+        .hw-chip {
+            display: inline-flex;
+            gap: 0.25rem;
+            padding: 1px 5px;
+            border: 1px solid var(--line);
+            background: var(--card-overlay);
+            border-radius: 2px;
+        }
+        .hw-chip .hw-chip-k { color: var(--ink-ghost); text-transform: uppercase; }
+        .hw-chip .hw-chip-v { color: var(--ink); font-weight: 600; }
+        .hw-chip.hot .hw-chip-v { color: var(--warn); }
+        .hw-chip.crit .hw-chip-v { color: var(--crit); font-weight: 700; }
+
+        .hw-toggle {
+            background: var(--bg-2);
+            border: 1px solid var(--line);
+            color: var(--ink-dim);
+            font-size: 10px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            padding: 0.3rem 0.6rem;
+            cursor: pointer;
+            margin-top: 0.4rem;
+            font-family: inherit;
+            align-self: flex-start;
+        }
+        .hw-toggle:hover { color: var(--ink); }
+        .hw-toggle .chev { display: inline-block; transition: transform 0.12s ease; margin-left: 0.2rem; }
+        .hw-toggle.is-open .chev { transform: rotate(90deg); }
+
+        .hw-panel {
+            margin-top: 0.5rem;
+            padding: 0.75rem;
+            background: var(--card-overlay);
+            border: 1px solid var(--line);
+            font-size: 11px;
+            display: grid;
+            gap: 0.85rem;
+        }
+        .hw-section-label {
+            font-size: 9px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--ink-ghost);
+            font-weight: 600;
+            margin-bottom: 0.3rem;
+        }
+        .hw-specs {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 0.2rem 0.75rem;
+            font-size: 11px;
+            margin: 0;
+        }
+        .hw-specs dt { color: var(--ink-ghost); }
+        .hw-specs dd { margin: 0; color: var(--ink); word-break: break-word; }
+
+        .hw-sparks {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 0.5rem;
+        }
+        .hw-spark {
+            background: var(--bg-1);
+            border: 1px solid var(--line);
+            padding: 0.4rem 0.5rem;
+        }
+        .hw-spark-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            font-size: 9px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--ink-ghost);
+            margin-bottom: 0.15rem;
+        }
+        .hw-spark-head .v {
+            color: var(--ink);
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            font-size: 11px;
+            letter-spacing: 0;
+            text-transform: none;
+        }
+        .hw-spark svg { width: 100%; height: 28px; display: block; }
+        .hw-spark svg path.line { fill: none; stroke: var(--ink-dim); stroke-width: 1; }
+        .hw-spark svg path.area { fill: var(--ink-dim); opacity: 0.18; stroke: none; }
+
+        .hw-mounts {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10px;
+        }
+        .hw-mounts th, .hw-mounts td {
+            padding: 0.25rem 0.4rem;
+            text-align: left;
+            border-bottom: 1px solid var(--line);
+            font-variant-numeric: tabular-nums;
+        }
+        .hw-mounts th {
+            font-size: 9px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--ink-ghost);
+            font-weight: 600;
+        }
+
+        .hw-fastfetch {
+            max-height: 220px;
+            overflow: auto;
+            background: var(--bg-0);
+            border: 1px solid var(--line);
+            padding: 0.5rem;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 10px;
+            white-space: pre;
+            color: var(--ink-dim);
+            margin: 0;
+        }
+        .hw-empty {
+            color: var(--ink-ghost);
+            font-style: italic;
+            font-size: 10px;
+        }
     </style>
 </head>
 <body>
@@ -2044,6 +2182,13 @@
                                                     <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionShort(host)"></span>
                                                     <span class="agent-version-rest" x-show="agentVersionRest(host)" x-text="agentVersionRest(host)"></span>
                                                 </div>
+                                                <div class="hw-chips" x-show="host.hw_live">
+                                                    <span class="hw-chip" :title="'CPU load 1m: ' + (host.hw_live ? host.hw_live.cpu_load_1.toFixed(2) : '—')"><span class="hw-chip-k">CPU</span><span class="hw-chip-v" x-text="hwCpuPct(host) != null ? hwCpuPct(host) + '%' : '—'"></span></span>
+                                                    <span class="hw-chip" :title="'Memory: ' + (host.hw_live && host.hw_live.mem_used_bytes ? formatBytes(host.hw_live.mem_used_bytes) + ' / ' + formatBytes(host.hw_live.mem_total_bytes) : '—')"><span class="hw-chip-k">RAM</span><span class="hw-chip-v" x-text="hwMemPct(host) != null ? hwMemPct(host) + '%' : '—'"></span></span>
+                                                    <template x-if="hwCpuTemp(host) != null">
+                                                        <span class="hw-chip" :class="hwTempLevel(hwCpuTemp(host))" title="CPU temperature"><span class="hw-chip-k">°C</span><span class="hw-chip-v" x-text="hwCpuTemp(host)"></span></span>
+                                                    </template>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -2143,6 +2288,13 @@
                                             <div>
                                                 <div x-text="(host.os || 'unknown') + (host.uptime_seconds ? ' · up ' + formatUptime(host.uptime_seconds) : '')"></div>
                                                 <div class="seen" x-text="'seen ' + formatAgo(host.last_seen)"></div>
+                                                <div class="hw-chips" x-show="host.hw_live">
+                                                    <span class="hw-chip" :title="'CPU load 1m: ' + (host.hw_live ? host.hw_live.cpu_load_1.toFixed(2) : '—')"><span class="hw-chip-k">CPU</span><span class="hw-chip-v" x-text="hwCpuPct(host) != null ? hwCpuPct(host) + '%' : '—'"></span></span>
+                                                    <span class="hw-chip" :title="'Memory: ' + (host.hw_live && host.hw_live.mem_used_bytes ? formatBytes(host.hw_live.mem_used_bytes) + ' / ' + formatBytes(host.hw_live.mem_total_bytes) : '—')"><span class="hw-chip-k">RAM</span><span class="hw-chip-v" x-text="hwMemPct(host) != null ? hwMemPct(host) + '%' : '—'"></span></span>
+                                                    <template x-if="hwCpuTemp(host) != null">
+                                                        <span class="hw-chip" :class="hwTempLevel(hwCpuTemp(host))" title="CPU temperature"><span class="hw-chip-k">°C</span><span class="hw-chip-v" x-text="hwCpuTemp(host)"></span></span>
+                                                    </template>
+                                                </div>
                                                 <div class="agent-version-line">
                                                     <template x-if="isOutdatedAgent(host)"><svg class="agent-alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></template>
                                                     <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionLabel(host)"></span>
@@ -2185,6 +2337,80 @@
                                             <span class="df-value" x-text="countOnlineAgents(host.agents) + '/' + (host.agents ? host.agents.length : 0) + ' online'"></span>
                                         </div>
                                     </div>
+
+                                    <button class="hw-toggle" :class="hwOpen[host.hostname] ? 'is-open' : ''" @click="toggleHardware(host.hostname)">
+                                        Hardware <span class="chev">▸</span>
+                                    </button>
+                                    <template x-if="hwOpen[host.hostname]">
+                                        <div class="hw-panel">
+                                            <template x-if="hardwareCache[host.hostname] && hardwareCache[host.hostname].static">
+                                                <div>
+                                                    <div class="hw-section-label">System</div>
+                                                    <dl class="hw-specs">
+                                                        <dt>CPU</dt><dd x-text="(hardwareCache[host.hostname].static.cpu_model || '—') + (hardwareCache[host.hostname].static.cpu_cores ? ' · ' + hardwareCache[host.hostname].static.cpu_cores + ' cores' : '')"></dd>
+                                                        <dt>RAM total</dt><dd x-text="formatBytes(hardwareCache[host.hostname].static.mem_total_bytes)"></dd>
+                                                        <dt>OS</dt><dd x-text="hardwareCache[host.hostname].static.os_pretty || '—'"></dd>
+                                                        <dt>Kernel</dt><dd x-text="hardwareCache[host.hostname].static.kernel_version || '—'"></dd>
+                                                    </dl>
+                                                </div>
+                                            </template>
+
+                                            <template x-if="hardwareCache[host.hostname] && hardwareCache[host.hostname].metrics && hardwareCache[host.hostname].metrics.length > 1">
+                                                <div>
+                                                    <div class="hw-section-label">Last hour</div>
+                                                    <div class="hw-sparks">
+                                                        <div class="hw-spark">
+                                                            <div class="hw-spark-head"><span>CPU load 1m</span><span class="v" x-text="host.hw_live ? host.hw_live.cpu_load_1.toFixed(2) : '—'"></span></div>
+                                                            <div x-html="renderSparkline(hardwareCache[host.hostname].metrics, 'cpu_load')"></div>
+                                                        </div>
+                                                        <div class="hw-spark">
+                                                            <div class="hw-spark-head"><span>Memory used</span><span class="v" x-text="host.hw_live && host.hw_live.mem_used_pct ? host.hw_live.mem_used_pct.toFixed(0) + '%' : '—'"></span></div>
+                                                            <div x-html="renderSparkline(hardwareCache[host.hostname].metrics, 'mem_used_pct')"></div>
+                                                        </div>
+                                                        <template x-if="hwCpuTemp(host) != null">
+                                                            <div class="hw-spark">
+                                                                <div class="hw-spark-head"><span>CPU °C</span><span class="v" x-text="hwCpuTemp(host)"></span></div>
+                                                                <div x-html="renderSparkline(hardwareCache[host.hostname].metrics, 'cpu_temp_c')"></div>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </div>
+                                            </template>
+
+                                            <template x-if="hardwareCache[host.hostname] && hardwareCache[host.hostname].static && hardwareCache[host.hostname].static.mounts && hardwareCache[host.hostname].static.mounts.length > 0">
+                                                <div>
+                                                    <div class="hw-section-label">Mounts</div>
+                                                    <table class="hw-mounts">
+                                                        <thead><tr><th>Mountpoint</th><th>Type</th><th>Device</th></tr></thead>
+                                                        <tbody>
+                                                            <template x-for="m in hardwareCache[host.hostname].static.mounts" :key="m.mountpoint">
+                                                                <tr>
+                                                                    <td x-text="m.mountpoint"></td>
+                                                                    <td x-text="m.fstype"></td>
+                                                                    <td x-text="m.device || '—'"></td>
+                                                                </tr>
+                                                            </template>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </template>
+
+                                            <template x-if="hardwareCache[host.hostname] && hardwareCache[host.hostname].fastfetch">
+                                                <div>
+                                                    <div class="hw-section-label">Fastfetch<span x-show="hardwareCache[host.hostname].fastfetch_at" x-text="' · ' + formatAgo(hardwareCache[host.hostname].fastfetch_at)" style="font-weight:normal;letter-spacing:0.04em;text-transform:none;color:var(--ink-ghost);"></span></div>
+                                                    <pre class="hw-fastfetch" x-text="hwFastfetchText(host.hostname)"></pre>
+                                                </div>
+                                            </template>
+
+                                            <template x-if="!hardwareCache[host.hostname]">
+                                                <div class="hw-empty">loading…</div>
+                                            </template>
+
+                                            <template x-if="hardwareCache[host.hostname] && !hardwareCache[host.hostname].static && !hardwareCache[host.hostname].live && !hardwareCache[host.hostname].fastfetch">
+                                                <div class="hw-empty">No hardware data reported yet. Bosun will populate this on its next heartbeat.</div>
+                                            </template>
+                                        </div>
+                                    </template>
 
                                     <div class="strip-block host-strip" x-init="mountStrip($el, 'host', host.hostname, { kind: 'host' })"></div>
 
@@ -3023,6 +3249,10 @@ WantedBy=multi-user.target</pre>
                 // Custom image picker state
                 imgPickOpen: false,
                 imgPickFocus: -1,
+                // Host hardware panel state
+                hwOpen: {},
+                hardwareCache: {},
+                hardwareLoading: {},
                 scaleList: ['1min', '15min', '1h', '1d', '14d', '1MO', '1Y'],
                 scaleWindow: { '1min': 60, '15min': 900, '1h': 3600, '1d': 86400, '14d': 1209600, '1MO': 2592000, '1Y': 31536000 },
                 globalScale: '1h',
@@ -3686,6 +3916,109 @@ WantedBy=multi-user.target</pre>
                         key: entityKey,
                         ignored: this.isIgnored(entityType, entityKey)
                     };
+                },
+
+                // ---------- host hardware panel ----------
+                toggleHardware(hostname) {
+                    if (this.hwOpen[hostname]) {
+                        delete this.hwOpen[hostname];
+                    } else {
+                        this.hwOpen[hostname] = true;
+                        this.loadHardware(hostname);
+                    }
+                },
+                async loadHardware(hostname) {
+                    if (this.hardwareLoading[hostname]) return;
+                    this.hardwareLoading[hostname] = true;
+                    try {
+                        const res = await fetch('/api/hosts/' + encodeURIComponent(hostname) + '/hardware');
+                        if (res.ok) {
+                            this.hardwareCache[hostname] = await res.json();
+                        }
+                    } catch (_) {
+                        // silent — panel shows "loading…" until cache is set
+                    } finally {
+                        delete this.hardwareLoading[hostname];
+                    }
+                },
+                hwCpuPct(host) {
+                    const live = host && host.hw_live;
+                    if (!live) return null;
+                    if (typeof live.cpu_used_pct === 'number' && live.cpu_used_pct > 0) {
+                        return Math.min(999, Math.round(live.cpu_used_pct));
+                    }
+                    // Fallback — cpu_cores from hardwareCache if bosun didn't pre-compute
+                    const hw = this.hardwareCache[host.hostname];
+                    const cores = hw && hw.static && hw.static.cpu_cores ? hw.static.cpu_cores : 0;
+                    if (cores > 0) {
+                        return Math.min(999, Math.round((live.cpu_load_1 / cores) * 100));
+                    }
+                    return null;
+                },
+                hwMemPct(host) {
+                    const live = host && host.hw_live;
+                    if (!live || !live.mem_used_pct) return null;
+                    return Math.round(live.mem_used_pct);
+                },
+                hwCpuTemp(host) {
+                    const live = host && host.hw_live;
+                    if (!live || live.cpu_temp_c == null) return null;
+                    return Math.round(live.cpu_temp_c);
+                },
+                hwTempLevel(c) {
+                    if (c == null) return '';
+                    if (c >= 85) return 'crit';
+                    if (c >= 70) return 'hot';
+                    return '';
+                },
+                hwFastfetchText(hostname) {
+                    const hw = this.hardwareCache[hostname];
+                    if (!hw || !hw.fastfetch) return '';
+                    try {
+                        const arr = hw.fastfetch;
+                        if (!Array.isArray(arr)) return JSON.stringify(arr, null, 2);
+                        const lines = [];
+                        for (const m of arr) {
+                            if (!m) continue;
+                            const t = m.type || 'Item';
+                            const r = m.result;
+                            let v;
+                            if (r == null) v = '(null)';
+                            else if (typeof r === 'string' || typeof r === 'number') v = String(r);
+                            else v = JSON.stringify(r);
+                            lines.push(t + ': ' + v);
+                        }
+                        return lines.join('\n');
+                    } catch (_) {
+                        return JSON.stringify(hw.fastfetch, null, 2);
+                    }
+                },
+                renderSparkline(points, valueKey) {
+                    if (!points || points.length === 0) return '';
+                    const values = points.map(p => Number(p[valueKey])).filter(v => Number.isFinite(v));
+                    if (values.length < 2) return '';
+                    const w = 100, h = 28, pad = 2;
+                    let min = Infinity, max = -Infinity;
+                    for (const v of values) { if (v < min) min = v; if (v > max) max = v; }
+                    const span = Math.max(1e-6, max - min);
+                    const n = values.length;
+                    const step = (w - pad*2) / Math.max(1, n - 1);
+                    let d = '';
+                    for (let i = 0; i < n; i++) {
+                        const x = pad + i * step;
+                        const y = h - pad - ((values[i] - min) / span) * (h - pad*2);
+                        d += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+                    }
+                    const xLast = (pad + (n-1)*step).toFixed(1);
+                    const area = d + 'L' + xLast + ' ' + (h - pad) + ' L' + pad + ' ' + (h - pad) + ' Z';
+                    return '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg"><path class="area" d="' + area + '"/><path class="line" d="' + d.trim() + '"/></svg>';
+                },
+                formatBytes(n) {
+                    if (!n || n <= 0) return '—';
+                    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+                    let i = 0, v = n;
+                    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+                    return v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2) + ' ' + units[i];
                 },
 
                 // ---------- host config ----------

@@ -47,6 +47,9 @@ func main() {
 	const sampleRetention = 400 * 24 * time.Hour
 	// Keep container events for 24 hours (only needed for crash loop detection).
 	const eventRetention = 24 * time.Hour
+	// Keep host hardware metrics for 24h (sparklines are a rolling 1h window;
+	// 24h gives headroom and is still tiny — ~1440 rows/host).
+	const hostMetricsRetention = 24 * time.Hour
 	if n, err := store.PurgeOldSamples(sampleRetention); err != nil {
 		log.Printf("initial sample purge failed: %v", err)
 	} else if n > 0 {
@@ -56,6 +59,11 @@ func main() {
 		log.Printf("initial container event purge failed: %v", err)
 	} else if n > 0 {
 		log.Printf("purged %d old container events", n)
+	}
+	if n, err := store.PruneOldHostMetrics(hostMetricsRetention); err != nil {
+		log.Printf("initial host_metrics purge failed: %v", err)
+	} else if n > 0 {
+		log.Printf("purged %d old host metrics", n)
 	}
 	store.CleanExpiredSessions()
 	store.CleanExpiredTOTPPending()
@@ -73,6 +81,11 @@ func main() {
 				log.Printf("container event purge failed: %v", err)
 			} else if n > 0 {
 				log.Printf("purged %d old container events", n)
+			}
+			if n, err := store.PruneOldHostMetrics(hostMetricsRetention); err != nil {
+				log.Printf("host_metrics purge failed: %v", err)
+			} else if n > 0 {
+				log.Printf("purged %d old host metrics", n)
 			}
 			store.CleanExpiredSessions()
 			store.CleanExpiredTOTPPending()
@@ -126,6 +139,7 @@ func main() {
 		r.Get("/", api.Dashboard)
 		r.Get("/api/events", api.Events(store, hub))
 		r.Get("/api/hosts", api.ListHosts(store))
+		r.Get("/api/hosts/{hostname}/hardware", api.HostHardware(store))
 		r.Get("/api/history", api.History(store))
 		r.Get("/api/ignored", api.ListIgnored(store))
 		r.Post("/api/ignore", api.AddIgnore(store))
