@@ -8,11 +8,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 env:
-  VERSION: 0.5.9
+  VERSION: 0.5.10
   AGENT_VERSION: 0.1.3
 
 jobs:
@@ -180,6 +180,67 @@ jobs:
             ghcr.io/markus-barta/fleetcom-agent:latest
             ghcr.io/markus-barta/fleetcom-agent:v${{ env.AGENT_VERSION }}
             ghcr.io/markus-barta/fleetcom-agent:sha-${{ steps.meta.outputs.short_sha }}
+
+  publish-agent-binaries:
+    name: Publish Agent Binaries (GitHub Release)
+    runs-on: ubuntu-latest
+    needs: [build-agent]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: agent/go.mod
+
+      - name: Build metadata
+        id: meta
+        run: |
+          echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "build_time=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
+
+      - name: Cross-compile binaries
+        working-directory: agent
+        env:
+          BT: ${{ steps.meta.outputs.build_time }}
+          V: ${{ env.AGENT_VERSION }}
+        run: |
+          set -euo pipefail
+          mkdir -p ../dist
+          LDF="-s -w -X main.Version=$V -X main.BuildTime=$BT"
+          build() {
+            local goos=$1 goarch=$2 goarm=${3:-} name=$4
+            echo "building $name..."
+            GOOS=$goos GOARCH=$goarch GOARM=$goarm CGO_ENABLED=0 \
+              go build -ldflags "$LDF" -o "../dist/$name" ./cmd/fleetcom-bosun
+            (cd ../dist && sha256sum "$name" > "$name.sha256")
+          }
+          build linux amd64 ""  fleetcom-bosun-linux-amd64
+          build linux arm   6   fleetcom-bosun-linux-armv6
+          build linux arm64 ""  fleetcom-bosun-linux-arm64
+          ls -lh ../dist/
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: agent-v${{ env.AGENT_VERSION }}
+          name: Agent v${{ env.AGENT_VERSION }}
+          body: |
+            fleetcom-bosun ${{ env.AGENT_VERSION }}
+
+            Commit: ${{ steps.meta.outputs.short_sha }}
+            Built: ${{ steps.meta.outputs.build_time }}
+
+            Use these binaries on hosts without Docker (e.g. Raspberry Pi).
+            Docker hosts pull `ghcr.io/markus-barta/fleetcom-bosun:v${{ env.AGENT_VERSION }}`.
+          files: |
+            dist/fleetcom-bosun-linux-amd64
+            dist/fleetcom-bosun-linux-amd64.sha256
+            dist/fleetcom-bosun-linux-armv6
+            dist/fleetcom-bosun-linux-armv6.sha256
+            dist/fleetcom-bosun-linux-arm64
+            dist/fleetcom-bosun-linux-arm64.sha256
 
   deploy:
     name: Deploy to csb1
