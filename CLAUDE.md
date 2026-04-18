@@ -197,6 +197,7 @@ fleetcom-bosun:
     - /proc:/host/proc:ro
     - /sys:/host/sys:ro
     - /etc/os-release:/host/etc/os-release:ro
+    - /etc/mtab:/host/etc/mtab:ro
   environment:
     - FLEETCOM_URL=https://fleet.barta.cm
     - FLEETCOM_TOKEN=${HOST_TOKEN}

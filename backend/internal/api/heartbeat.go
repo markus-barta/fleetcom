@@ -20,6 +20,12 @@ type HeartbeatPayload struct {
 	AgentVersion  string             `json:"agent_version"`
 	Containers    []ContainerPayload `json:"containers"`
 	Agents        []AgentPayload     `json:"agents"`
+	// Hardware/metadata fields — all optional. Bosun sends HwStatic on
+	// startup + on change, HwLive on every heartbeat once collection is
+	// active, and Fastfetch only when it has been (re)run.
+	HwStatic  *db.HwStatic    `json:"hw_static,omitempty"`
+	HwLive    *db.HwLive      `json:"hw_live,omitempty"`
+	Fastfetch json.RawMessage `json:"fastfetch_json,omitempty"`
 }
 
 type ContainerPayload struct {
@@ -64,7 +70,12 @@ func Heartbeat(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 		// Override hostname from token — agents can't impersonate other hosts
 		payload.Hostname = hostname
 
-		if err := store.UpsertHeartbeat(payload.Hostname, payload.OS, payload.Kernel, payload.UptimeSeconds, payload.AgentVersion, toDBContainers(payload.Containers), toDBAgents(payload.Agents)); err != nil {
+		hw := &db.HardwareHeartbeat{
+			Static:    payload.HwStatic,
+			Live:      payload.HwLive,
+			Fastfetch: payload.Fastfetch,
+		}
+		if err := store.UpsertHeartbeat(payload.Hostname, payload.OS, payload.Kernel, payload.UptimeSeconds, payload.AgentVersion, toDBContainers(payload.Containers), toDBAgents(payload.Agents), hw); err != nil {
 			log.Printf("heartbeat upsert error: %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return

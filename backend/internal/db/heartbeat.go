@@ -1,6 +1,8 @@
 package db
 
 import (
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -13,8 +15,20 @@ type Host struct {
 	UptimeSeconds int64       `json:"uptime_seconds"`
 	AgentVersion  string      `json:"agent_version"`
 	LastSeen      string      `json:"last_seen"`
+	HwLive        *HwLive     `json:"hw_live,omitempty"`
+	HwLiveAt      string      `json:"hw_live_at,omitempty"`
 	Containers    []Container `json:"containers"`
 	Agents        []Agent     `json:"agents"`
+}
+
+// HardwareHeartbeat carries optional hardware/metadata fields from a heartbeat.
+// All three sub-fields are independently optional: bosun omits Static on beats
+// where it hasn't changed, Live is present on every beat once collection is
+// active, and Fastfetch is only included on refresh (startup + daily).
+type HardwareHeartbeat struct {
+	Static    *HwStatic
+	Live      *HwLive
+	Fastfetch json.RawMessage
 }
 
 type Container struct {
@@ -41,7 +55,7 @@ type Agent struct {
 	LastSeen  string `json:"last_seen"`
 }
 
-func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64, agentVersion string, containers []Container, agents []Agent) error {
+func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64, agentVersion string, containers []Container, agents []Agent, hw *HardwareHeartbeat) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	tx, err := s.DB.Begin()
@@ -65,6 +79,36 @@ func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64
 	`, hostname, os, kernel, uptimeSeconds, agentVersion, now).Scan(&hostID)
 	if err != nil {
 		return fmt.Errorf("upsert host: %w", err)
+	}
+
+	// Persist hardware fields (all optional).
+	if hw != nil {
+		if hw.Static != nil {
+			blob, err := json.Marshal(hw.Static)
+			if err != nil {
+				return fmt.Errorf("marshal hw_static: %w", err)
+			}
+			if _, err := tx.Exec(`UPDATE hosts SET hw_static = ? WHERE id = ?`, string(blob), hostID); err != nil {
+				return fmt.Errorf("update hw_static: %w", err)
+			}
+		}
+		if hw.Live != nil {
+			blob, err := json.Marshal(hw.Live)
+			if err != nil {
+				return fmt.Errorf("marshal hw_live: %w", err)
+			}
+			if _, err := tx.Exec(`UPDATE hosts SET hw_live = ?, hw_live_at = ? WHERE id = ?`, string(blob), now, hostID); err != nil {
+				return fmt.Errorf("update hw_live: %w", err)
+			}
+			if err := insertHostMetric(tx, hostID, now, hw.Live); err != nil {
+				return err
+			}
+		}
+		if len(hw.Fastfetch) > 0 {
+			if _, err := tx.Exec(`UPDATE hosts SET fastfetch_json = ?, fastfetch_at = ? WHERE id = ?`, string(hw.Fastfetch), now, hostID); err != nil {
+				return fmt.Errorf("update fastfetch: %w", err)
+			}
+		}
 	}
 
 	// Detect crash loops: read previous restart counts before replacing
@@ -129,20 +173,35 @@ func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64
 	return tx.Commit()
 }
 
+func scanHosts(rows *sql.Rows) ([]Host, error) {
+	var hosts []Host
+	for rows.Next() {
+		var h Host
+		var liveBlob string
+		if err := rows.Scan(&h.ID, &h.Hostname, &h.OS, &h.Kernel, &h.UptimeSeconds, &h.AgentVersion, &h.LastSeen, &liveBlob, &h.HwLiveAt); err != nil {
+			return nil, err
+		}
+		if liveBlob != "" {
+			var hl HwLive
+			if err := json.Unmarshal([]byte(liveBlob), &hl); err == nil {
+				h.HwLive = &hl
+			}
+		}
+		hosts = append(hosts, h)
+	}
+	return hosts, rows.Err()
+}
+
 func (s *Store) AllHosts() ([]Host, error) {
-	rows, err := s.DB.Query(`SELECT id, hostname, os, kernel, uptime_seconds, agent_version, last_seen FROM hosts ORDER BY hostname`)
+	rows, err := s.DB.Query(`SELECT id, hostname, os, kernel, uptime_seconds, agent_version, last_seen, hw_live, hw_live_at FROM hosts ORDER BY hostname`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var hosts []Host
-	for rows.Next() {
-		var h Host
-		if err := rows.Scan(&h.ID, &h.Hostname, &h.OS, &h.Kernel, &h.UptimeSeconds, &h.AgentVersion, &h.LastSeen); err != nil {
-			return nil, err
-		}
-		hosts = append(hosts, h)
+	hosts, err := scanHosts(rows)
+	if err != nil {
+		return nil, err
 	}
 
 	for i := range hosts {
@@ -162,7 +221,7 @@ func (s *Store) AllHosts() ([]Host, error) {
 // HostsForUser returns hosts filtered by user_host_access for regular users.
 func (s *Store) HostsForUser(userID int64) ([]Host, error) {
 	rows, err := s.DB.Query(
-		`SELECT h.id, h.hostname, h.os, h.kernel, h.uptime_seconds, h.agent_version, h.last_seen
+		`SELECT h.id, h.hostname, h.os, h.kernel, h.uptime_seconds, h.agent_version, h.last_seen, h.hw_live, h.hw_live_at
 		 FROM hosts h
 		 JOIN user_host_access uha ON h.id = uha.host_id
 		 WHERE uha.user_id = ?
@@ -172,13 +231,9 @@ func (s *Store) HostsForUser(userID int64) ([]Host, error) {
 	}
 	defer rows.Close()
 
-	var hosts []Host
-	for rows.Next() {
-		var h Host
-		if err := rows.Scan(&h.ID, &h.Hostname, &h.OS, &h.Kernel, &h.UptimeSeconds, &h.AgentVersion, &h.LastSeen); err != nil {
-			return nil, err
-		}
-		hosts = append(hosts, h)
+	hosts, err := scanHosts(rows)
+	if err != nil {
+		return nil, err
 	}
 
 	for i := range hosts {

@@ -12,6 +12,6 @@ RUN CGO_ENABLED=0 go build \
     -o /fleetcom-bosun ./cmd/fleetcom-bosun
 
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata fastfetch
 COPY --from=builder /fleetcom-bosun /usr/local/bin/fleetcom-bosun
 ENTRYPOINT ["fleetcom-bosun"]

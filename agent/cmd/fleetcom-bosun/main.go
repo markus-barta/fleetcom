@@ -23,6 +23,8 @@ var (
 )
 
 // HeartbeatPayload is the full state snapshot sent every interval.
+// HwStatic / HwLive / Fastfetch are optional and only included when bosun
+// has fresh values — see sendHeartbeat for the cadence rules.
 type HeartbeatPayload struct {
 	Hostname      string             `json:"hostname"`
 	OS            string             `json:"os"`
@@ -31,6 +33,9 @@ type HeartbeatPayload struct {
 	AgentVersion  string             `json:"agent_version"`
 	Containers    []ContainerPayload `json:"containers"`
 	Agents        []AgentPayload     `json:"agents"`
+	HwStatic      *HwStatic          `json:"hw_static,omitempty"`
+	HwLive        *HwLive            `json:"hw_live,omitempty"`
+	Fastfetch     json.RawMessage    `json:"fastfetch_json,omitempty"`
 }
 
 type ContainerPayload struct {
@@ -107,8 +112,12 @@ func main() {
 		log.Println("no Docker socket found — heartbeat-only mode")
 	}
 
+	// Hardware/metadata state: track last static hash + last fastfetch time
+	// so we only send Static on change and refresh fastfetch once a day.
+	hw := &hwState{fastfetchInterval: 24 * time.Hour}
+
 	// Periodic heartbeat
-	sendHeartbeat(serverURL, token, hostname, socketPath, agents, agentVersionStr, &interval)
+	sendHeartbeat(serverURL, token, hostname, socketPath, agents, agentVersionStr, &interval, hw)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -117,10 +126,20 @@ func main() {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			sendHeartbeat(serverURL, token, hostname, socketPath, agents, agentVersionStr, &interval)
+			sendHeartbeat(serverURL, token, hostname, socketPath, agents, agentVersionStr, &interval, hw)
 			ticker.Reset(interval)
 		}
 	}
+}
+
+// hwState tracks what bosun has already sent so we avoid repeating the
+// large static block every 60s. cachedCPUCores is updated each static
+// scan and used by collectLive() to pre-compute cpu_used_pct.
+type hwState struct {
+	lastStaticHash    string
+	cachedCPUCores    int
+	lastFastfetchRun  time.Time
+	fastfetchInterval time.Duration
 }
 
 func dockerSocketPath() string {
@@ -145,7 +164,7 @@ func formatAgentVersion() string {
 	return Version
 }
 
-func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []AgentPayload, agentVersion string, interval *time.Duration) {
+func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []AgentPayload, agentVersion string, interval *time.Duration, hw *hwState) {
 	containers := listContainers(socketPath)
 
 	payload := HeartbeatPayload{
@@ -156,6 +175,39 @@ func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []Agent
 		AgentVersion:  agentVersion,
 		Containers:    containers,
 		Agents:        agents,
+	}
+
+	// Static first so we have a fresh core count for live's CPU %. Only
+	// sent on first beat or when something changed (e.g., new mount).
+	if hw != nil {
+		static := collectStatic()
+		if static.CPUCores > 0 {
+			hw.cachedCPUCores = static.CPUCores
+		}
+		if h := hwStaticHash(static); h != "" && h != hw.lastStaticHash {
+			payload.HwStatic = &static
+			hw.lastStaticHash = h
+		}
+	}
+
+	// Live block every beat (cheap — handful of /proc + /sys reads).
+	cores := 0
+	if hw != nil {
+		cores = hw.cachedCPUCores
+	}
+	live := collectLive(cores)
+	payload.HwLive = &live
+
+	if hw != nil {
+
+		// Fastfetch: run on first beat, then every fastfetchInterval.
+		if hw.lastFastfetchRun.IsZero() || time.Since(hw.lastFastfetchRun) >= hw.fastfetchInterval {
+			if raw := runFastfetch(8 * time.Second); len(raw) > 0 {
+				payload.Fastfetch = raw
+			}
+			// Always stamp, even on failure — avoids hammering a broken binary.
+			hw.lastFastfetchRun = time.Now()
+		}
 	}
 
 	data, err := json.Marshal(payload)
