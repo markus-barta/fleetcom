@@ -226,6 +226,33 @@ watchtower on each host. Watchtower only manages containers that carry the
 `com.centurylinklabs.watchtower.enable=true` label, so unrelated host
 containers are untouched.
 
+### Two deployment modes
+
+**Standalone** — host has no watchtower. Bring up both services:
+```
+docker compose --profile standalone up -d
+```
+The bundled watchtower sidecar is gated behind the `standalone` profile, so
+plain `docker compose up -d` skips it.
+
+**Piggyback on an existing host watchtower** — default path when the host
+already runs watchtower (common on multi-service NixOS hosts):
+```
+docker compose up -d   # skips the sidecar
+```
+Enable HTTP API on the existing watchtower with
+`WATCHTOWER_HTTP_API_UPDATE=true` and a matching token, then set
+`WATCHTOWER_URL=http://<existing-watchtower-container>:8080` in bosun's env so
+the "Update now" button from the dashboard hits the right daemon.
+
+### Image names (compatibility)
+
+CI currently publishes to **both** `ghcr.io/markus-barta/fleetcom-bosun` and
+`ghcr.io/markus-barta/fleetcom-agent` for the same digest. The `-agent` name
+is kept temporarily so hosts still pointing at the pre-rename image keep
+receiving updates. New hosts and existing hosts being reconfigured should
+switch to `fleetcom-bosun`.
+
 ## Secret Safety
 
 **NEVER** read, cat, print, head, tail, echo, or source secret files to stdout. This includes:
