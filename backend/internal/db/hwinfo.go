@@ -54,13 +54,13 @@ type HwDisk struct {
 
 // HostHardware is the aggregate shape returned by GET /api/hosts/{name}/hardware.
 type HostHardware struct {
-	Hostname      string            `json:"hostname"`
-	Static        *HwStatic         `json:"static,omitempty"`
-	Live          *HwLive           `json:"live,omitempty"`
-	LiveAt        string            `json:"live_at,omitempty"`
-	Fastfetch     json.RawMessage   `json:"fastfetch,omitempty"`
-	FastfetchAt   string            `json:"fastfetch_at,omitempty"`
-	Metrics       []HostMetricPoint `json:"metrics"`
+	Hostname    string            `json:"hostname"`
+	Static      *HwStatic         `json:"static,omitempty"`
+	Live        *HwLive           `json:"live,omitempty"`
+	LiveAt      string            `json:"live_at,omitempty"`
+	Fastfetch   json.RawMessage   `json:"fastfetch,omitempty"`
+	FastfetchAt string            `json:"fastfetch_at,omitempty"`
+	Metrics     []HostMetricPoint `json:"metrics"`
 }
 
 // HostMetricPoint is a single timeseries row for sparkline rendering.
