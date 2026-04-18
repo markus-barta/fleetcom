@@ -23,10 +23,15 @@ services:
       - WATCHTOWER_URL=http://watchtower:8080
       - WATCHTOWER_TOKEN=${WATCHTOWER_TOKEN}
 
+  # Opt-in: only starts when you run `docker compose --profile standalone up -d`.
+  # Skip this service on hosts that already run a host-wide watchtower.
+  # In that case, enable the existing watchtower's HTTP API and point bosun's
+  # WATCHTOWER_URL at it (e.g. http://<existing-watchtower-name>:8080).
   watchtower:
     image: containrrr/watchtower:latest
     container_name: fleetcom-watchtower
     restart: unless-stopped
+    profiles: [standalone]
     # No host port — the HTTP API is only reachable inside the compose
     # network by fleetcom-bosun.
     volumes:
