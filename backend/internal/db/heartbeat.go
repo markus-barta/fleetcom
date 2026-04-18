@@ -8,17 +8,19 @@ import (
 )
 
 type Host struct {
-	ID            int64       `json:"id"`
-	Hostname      string      `json:"hostname"`
-	OS            string      `json:"os"`
-	Kernel        string      `json:"kernel"`
-	UptimeSeconds int64       `json:"uptime_seconds"`
-	AgentVersion  string      `json:"agent_version"`
-	LastSeen      string      `json:"last_seen"`
-	HwLive        *HwLive     `json:"hw_live,omitempty"`
-	HwLiveAt      string      `json:"hw_live_at,omitempty"`
-	Containers    []Container `json:"containers"`
-	Agents        []Agent     `json:"agents"`
+	ID                int64       `json:"id"`
+	Hostname          string      `json:"hostname"`
+	OS                string      `json:"os"`
+	Kernel            string      `json:"kernel"`
+	UptimeSeconds     int64       `json:"uptime_seconds"`
+	AgentVersion      string      `json:"agent_version"`
+	LastSeen          string      `json:"last_seen"`
+	CreatedAt         string      `json:"created_at,omitempty"`
+	UpdateRequestedAt string      `json:"update_requested_at,omitempty"`
+	HwLive            *HwLive     `json:"hw_live,omitempty"`
+	HwLiveAt          string      `json:"hw_live_at,omitempty"`
+	Containers        []Container `json:"containers"`
+	Agents            []Agent     `json:"agents"`
 }
 
 // HardwareHeartbeat carries optional hardware/metadata fields from a heartbeat.
@@ -55,12 +57,16 @@ type Agent struct {
 	LastSeen  string `json:"last_seen"`
 }
 
-func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64, agentVersion string, containers []Container, agents []Agent, hw *HardwareHeartbeat) error {
+// UpsertHeartbeat persists a heartbeat and, atomically in the same tx,
+// consumes a pending "update" command if one was flagged for this host.
+// Returns a non-empty command string when the caller should relay a
+// command to the agent in the heartbeat response.
+func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64, agentVersion string, containers []Container, agents []Agent, hw *HardwareHeartbeat) (string, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	tx, err := s.DB.Begin()
 	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+		return "", fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
 
@@ -78,7 +84,7 @@ func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64
 		RETURNING id
 	`, hostname, os, kernel, uptimeSeconds, agentVersion, now).Scan(&hostID)
 	if err != nil {
-		return fmt.Errorf("upsert host: %w", err)
+		return "", fmt.Errorf("upsert host: %w", err)
 	}
 
 	// Persist hardware fields (all optional).
@@ -86,27 +92,27 @@ func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64
 		if hw.Static != nil {
 			blob, err := json.Marshal(hw.Static)
 			if err != nil {
-				return fmt.Errorf("marshal hw_static: %w", err)
+				return "", fmt.Errorf("marshal hw_static: %w", err)
 			}
 			if _, err := tx.Exec(`UPDATE hosts SET hw_static = ? WHERE id = ?`, string(blob), hostID); err != nil {
-				return fmt.Errorf("update hw_static: %w", err)
+				return "", fmt.Errorf("update hw_static: %w", err)
 			}
 		}
 		if hw.Live != nil {
 			blob, err := json.Marshal(hw.Live)
 			if err != nil {
-				return fmt.Errorf("marshal hw_live: %w", err)
+				return "", fmt.Errorf("marshal hw_live: %w", err)
 			}
 			if _, err := tx.Exec(`UPDATE hosts SET hw_live = ?, hw_live_at = ? WHERE id = ?`, string(blob), now, hostID); err != nil {
-				return fmt.Errorf("update hw_live: %w", err)
+				return "", fmt.Errorf("update hw_live: %w", err)
 			}
 			if err := insertHostMetric(tx, hostID, now, hw.Live); err != nil {
-				return err
+				return "", err
 			}
 		}
 		if len(hw.Fastfetch) > 0 {
 			if _, err := tx.Exec(`UPDATE hosts SET fastfetch_json = ?, fastfetch_at = ? WHERE id = ?`, string(hw.Fastfetch), now, hostID); err != nil {
-				return fmt.Errorf("update fastfetch: %w", err)
+				return "", fmt.Errorf("update fastfetch: %w", err)
 			}
 		}
 	}
@@ -128,7 +134,7 @@ func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64
 
 	// Replace containers: delete old, insert new
 	if _, err := tx.Exec(`DELETE FROM containers WHERE host_id = ?`, hostID); err != nil {
-		return fmt.Errorf("delete containers: %w", err)
+		return "", fmt.Errorf("delete containers: %w", err)
 	}
 	for i, c := range containers {
 		oom := 0
@@ -137,7 +143,7 @@ func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64
 		}
 		if _, err := tx.Exec(`INSERT INTO containers (host_id, name, image, state, health, restart_count, started_at, exit_code, oom_killed, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			hostID, c.Name, c.Image, c.State, c.Health, c.RestartCount, c.StartedAt, c.ExitCode, oom, now); err != nil {
-			return fmt.Errorf("insert container: %w", err)
+			return "", fmt.Errorf("insert container: %w", err)
 		}
 		// Record restart events if restart count increased
 		if prev, ok := prevCounts[c.Name]; ok && c.RestartCount > prev {
@@ -157,20 +163,32 @@ func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64
 
 	// Replace agents: delete old, insert new
 	if _, err := tx.Exec(`DELETE FROM agents WHERE host_id = ?`, hostID); err != nil {
-		return fmt.Errorf("delete agents: %w", err)
+		return "", fmt.Errorf("delete agents: %w", err)
 	}
 	for _, a := range agents {
 		if _, err := tx.Exec(`INSERT INTO agents (host_id, name, agent_type, status, last_seen) VALUES (?, ?, ?, ?, ?)`,
 			hostID, a.Name, a.AgentType, a.Status, now); err != nil {
-			return fmt.Errorf("insert agent: %w", err)
+			return "", fmt.Errorf("insert agent: %w", err)
 		}
 	}
 
 	if err := recordSamples(tx, now, hostname, containers, agents); err != nil {
-		return err
+		return "", err
 	}
 
-	return tx.Commit()
+	// Consume any pending server-triggered command atomically with the
+	// heartbeat so we never double-dispatch or lose a request on crash.
+	command := ""
+	if pending, err := consumePendingCommand(tx, hostID); err != nil {
+		return "", err
+	} else if pending {
+		command = "update"
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", err
+	}
+	return command, nil
 }
 
 func scanHosts(rows *sql.Rows) ([]Host, error) {
@@ -178,7 +196,7 @@ func scanHosts(rows *sql.Rows) ([]Host, error) {
 	for rows.Next() {
 		var h Host
 		var liveBlob string
-		if err := rows.Scan(&h.ID, &h.Hostname, &h.OS, &h.Kernel, &h.UptimeSeconds, &h.AgentVersion, &h.LastSeen, &liveBlob, &h.HwLiveAt); err != nil {
+		if err := rows.Scan(&h.ID, &h.Hostname, &h.OS, &h.Kernel, &h.UptimeSeconds, &h.AgentVersion, &h.LastSeen, &liveBlob, &h.HwLiveAt, &h.CreatedAt, &h.UpdateRequestedAt); err != nil {
 			return nil, err
 		}
 		if liveBlob != "" {
@@ -193,7 +211,7 @@ func scanHosts(rows *sql.Rows) ([]Host, error) {
 }
 
 func (s *Store) AllHosts() ([]Host, error) {
-	rows, err := s.DB.Query(`SELECT id, hostname, os, kernel, uptime_seconds, agent_version, last_seen, hw_live, hw_live_at FROM hosts ORDER BY hostname`)
+	rows, err := s.DB.Query(`SELECT id, hostname, os, kernel, uptime_seconds, agent_version, last_seen, hw_live, hw_live_at, created_at, update_requested_at FROM hosts ORDER BY hostname`)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +239,7 @@ func (s *Store) AllHosts() ([]Host, error) {
 // HostsForUser returns hosts filtered by user_host_access for regular users.
 func (s *Store) HostsForUser(userID int64) ([]Host, error) {
 	rows, err := s.DB.Query(
-		`SELECT h.id, h.hostname, h.os, h.kernel, h.uptime_seconds, h.agent_version, h.last_seen, h.hw_live, h.hw_live_at
+		`SELECT h.id, h.hostname, h.os, h.kernel, h.uptime_seconds, h.agent_version, h.last_seen, h.hw_live, h.hw_live_at, h.created_at, h.update_requested_at
 		 FROM hosts h
 		 JOIN user_host_access uha ON h.id = uha.host_id
 		 WHERE uha.user_id = ?

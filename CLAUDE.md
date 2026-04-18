@@ -192,6 +192,8 @@ Read-only dashboard links with optional expiry. Settings > Sharing.
 fleetcom-bosun:
   image: ghcr.io/markus-barta/fleetcom-bosun:latest
   restart: unless-stopped
+  labels:
+    - com.centurylinklabs.watchtower.enable=true
   volumes:
     - /var/run/docker.sock:/var/run/docker.sock:ro
     - /proc:/host/proc:ro
@@ -203,7 +205,26 @@ fleetcom-bosun:
     - FLEETCOM_TOKEN=${HOST_TOKEN}
     - FLEETCOM_HOSTNAME=${HOSTNAME}
     - FLEETCOM_AGENTS=${AGENTS_JSON}
+    - WATCHTOWER_URL=http://watchtower:8080
+    - WATCHTOWER_TOKEN=${WATCHTOWER_TOKEN}
+
+watchtower:
+  image: containrrr/watchtower:latest
+  restart: unless-stopped
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock
+  environment:
+    - WATCHTOWER_LABEL_ENABLE=true
+    - WATCHTOWER_CLEANUP=true
+    - WATCHTOWER_POLL_INTERVAL=86400
+    - WATCHTOWER_HTTP_API_UPDATE=true
+    - WATCHTOWER_HTTP_API_TOKEN=${WATCHTOWER_TOKEN}
 ```
+
+`WATCHTOWER_TOKEN` is a random string (any 20+ chars) shared between bosun and
+watchtower on each host. Watchtower only manages containers that carry the
+`com.centurylinklabs.watchtower.enable=true` label, so unrelated host
+containers are untouched.
 
 ## Secret Safety
 

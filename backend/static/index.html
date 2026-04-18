@@ -2040,6 +2040,43 @@
             font-style: italic;
             font-size: 10px;
         }
+
+        /* Agent stale marker — shown next to version badge for any host
+           whose agent build is more than 24h old (or a legacy agent alive
+           for >24h). Red-ish accent, hover tooltip explains. */
+        .agent-stale-mark {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--crit);
+            color: var(--bg-0);
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1;
+            margin-left: 0.3rem;
+            cursor: help;
+        }
+        .agent-update-pending {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 9px;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--accent, var(--ink-dim));
+            margin-left: 0.3rem;
+        }
+        .agent-update-pending::before {
+            content: '';
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--accent, var(--ink-dim));
+            animation: updpulse 1.2s ease-in-out infinite;
+        }
+        @keyframes updpulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
     </style>
 </head>
 <body>
@@ -2181,6 +2218,12 @@
                                                     <svg class="agent-version-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1" fill="currentColor"/></svg>
                                                     <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionShort(host)"></span>
                                                     <span class="agent-version-rest" x-show="agentVersionRest(host)" x-text="agentVersionRest(host)"></span>
+                                                    <template x-if="isAgentStale(host)">
+                                                        <span class="agent-stale-mark" title="Agent has not been updated in over 24h. Docker hosts should auto-update daily via watchtower; legacy hosts need manual rollout.">!</span>
+                                                    </template>
+                                                    <template x-if="hasPendingUpdate(host)">
+                                                        <span class="agent-update-pending" title="Update requested — will run on next heartbeat">upd</span>
+                                                    </template>
                                                 </div>
                                                 <div class="hw-chips" x-show="host.hw_live">
                                                     <span class="hw-chip" :title="'CPU load 1m: ' + (host.hw_live ? host.hw_live.cpu_load_1.toFixed(2) : '—')"><span class="hw-chip-k">CPU</span><span class="hw-chip-v" x-text="hwCpuPct(host) != null ? hwCpuPct(host) + '%' : '—'"></span></span>
@@ -2298,6 +2341,12 @@
                                                 <div class="agent-version-line">
                                                     <template x-if="isOutdatedAgent(host)"><svg class="agent-alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></template>
                                                     <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionLabel(host)"></span>
+                                                    <template x-if="isAgentStale(host)">
+                                                        <span class="agent-stale-mark" title="Agent has not been updated in over 24h. Docker hosts should auto-update daily via watchtower; legacy hosts need manual rollout.">!</span>
+                                                    </template>
+                                                    <template x-if="hasPendingUpdate(host)">
+                                                        <span class="agent-update-pending" title="Update requested — will run on next heartbeat">upd</span>
+                                                    </template>
                                                 </div>
                                             </div>
                                         </div>
@@ -2313,6 +2362,12 @@
                                             <span class="df-value">
                                                 <template x-if="isOutdatedAgent(host)"><svg class="agent-alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></template>
                                                 <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionLabel(host)"></span>
+                                                <template x-if="isAgentStale(host)">
+                                                    <span class="agent-stale-mark" title="Agent has not been updated in over 24h. Docker hosts should auto-update daily via watchtower; legacy hosts need manual rollout.">!</span>
+                                                </template>
+                                                <template x-if="hasPendingUpdate(host)">
+                                                    <span class="agent-update-pending" title="Update requested — will run on next heartbeat">upd</span>
+                                                </template>
                                                 <template x-if="isOutdatedAgent(host)"><span class="agent-expected"> (expected: <span x-text="expectedAgentVersion"></span>)</span></template>
                                             </span>
                                         </div>
@@ -2558,6 +2613,7 @@
                             <div class="form-row">
                                 <input type="text" x-model="newHostname" placeholder="hostname (e.g. dsc0)" @keydown.enter="addHost()">
                                 <button class="btn btn-primary" @click="addHost()">Add Host</button>
+                                <button class="btn" style="margin-left:auto;" @click="requestUpdateAll()" :title="'Trigger a watchtower pull on every host you can access'">Update all</button>
                             </div>
 
                             <template x-if="newToken">
@@ -2590,7 +2646,11 @@
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div style="display:flex;gap:0.4rem;">
+                                            <div style="display:flex;gap:0.4rem;align-items:center;">
+                                                <template x-if="hostByName(t.hostname) && hasPendingUpdate(hostByName(t.hostname))">
+                                                    <span class="agent-update-pending" title="Update requested — will run on next heartbeat">upd</span>
+                                                </template>
+                                                <button class="btn" @click="requestHostUpdate(t.hostname)" :disabled="!hostByName(t.hostname)" :title="hostByName(t.hostname) ? 'Trigger watchtower pull on this host' : 'Host has not reported yet'">Update</button>
                                                 <button class="btn" @click="configHost === t.hostname ? configHost = '' : openHostConfig(t.hostname)" x-text="configHost === t.hostname ? 'Close' : 'Configure'"></button>
                                                 <button class="btn btn-danger" @click="removeHost(t.hostname)">Remove</button>
                                             </div>
@@ -4298,6 +4358,11 @@ WantedBy=multi-user.target</pre>
                     const url = '/api/history?entity_type=' + encodeURIComponent(ctrl.type)
                         + '&entity_key=' + encodeURIComponent(ctrl.key)
                         + '&scale=' + scale;
+                    // Clear stale data so the canvas + meta don't silently
+                    // keep showing the previous scale's numbers if the fetch
+                    // fails. drawStrip renders 'loading…' when data is null.
+                    ctrl.data = null;
+                    this.drawStrip(ctrl);
                     try {
                         const res = await fetch(url);
                         if (!res.ok) return;
@@ -4651,6 +4716,53 @@ WantedBy=multi-user.target</pre>
                     if (!host.agent_version) return '';
                     const rest = host.agent_version.slice(host.agent_version.indexOf(' ') + 1);
                     return rest === host.agent_version ? '' : rest;
+                },
+                // Parse the build timestamp out of an agent_version string
+                // like "0.1.1 (2026-04-18, 17:45:27)". Returns ms since epoch
+                // or null when no build time is present.
+                agentBuildTimestamp(host) {
+                    if (!host.agent_version) return null;
+                    const m = host.agent_version.match(/\(([\d-]+),\s*([\d:]+)\)/);
+                    if (!m) return null;
+                    const t = Date.parse(m[1] + 'T' + m[2] + 'Z');
+                    return Number.isFinite(t) ? t : null;
+                },
+                // A host is considered stale when either:
+                //  - it's a legacy (no-version) agent and was created >24h ago
+                //    (grace period so fresh hosts aren't nagged during setup), or
+                //  - its agent build timestamp is more than 24h old.
+                isAgentStale(host) {
+                    const cutoffMs = 24 * 3600 * 1000;
+                    if (!host.agent_version) {
+                        if (!host.created_at) return false;
+                        const created = Date.parse(host.created_at);
+                        return Number.isFinite(created) && (Date.now() - created) > cutoffMs;
+                    }
+                    const built = this.agentBuildTimestamp(host);
+                    if (built == null) return false;
+                    return (Date.now() - built) > cutoffMs;
+                },
+                hasPendingUpdate(host) {
+                    return !!(host && host.update_requested_at);
+                },
+                async requestHostUpdate(hostname) {
+                    try {
+                        const res = await fetch('/api/hosts/' + encodeURIComponent(hostname) + '/update', { method: 'POST' });
+                        if (res.ok) this.toast('Update requested for ' + hostname);
+                        else this.toast('Failed to request update', 'err');
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+                async requestUpdateAll() {
+                    if (!confirm('Request an agent update on every host in your scope?')) return;
+                    try {
+                        const res = await fetch('/api/hosts/update-all', { method: 'POST' });
+                        if (res.ok) {
+                            const body = await res.json().catch(() => ({}));
+                            this.toast('Update requested on ' + (body.count || 'all') + ' hosts');
+                        } else {
+                            this.toast('Failed to request updates', 'err');
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
                 },
                 agentStatus(a) {
                     if (a.status === 'online') return 'ok';
