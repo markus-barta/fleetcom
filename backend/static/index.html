@@ -2031,7 +2031,12 @@
             padding: 0.5rem;
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
             font-size: 10px;
-            white-space: pre;
+            /* Preserve newlines, but wrap long lines so JSON blobs don't
+               blow the card width out to 10k px. overflow-wrap: anywhere
+               allows breaking inside JSON tokens when nothing else works. */
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            word-break: break-word;
             color: var(--ink-dim);
             margin: 0;
         }
