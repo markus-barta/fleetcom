@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -81,52 +82,57 @@ func (m *Manager) stopAll() {
 	}
 }
 
-// reconcile diffs DB-paired-gateways against running clients and starts
-// / stops as needed. Gateways without on-disk keypairs are skipped with
-// a single log line so boot isn't noisy when FLEET-52 hasn't deployed
-// secrets yet.
+// reconcile discovers gateways from on-disk keypair files and ensures
+// one running client per configured gateway. Auto-pairing semantics:
+// the presence of `fleetcom-openclaw-<host>-key` in keyDir IS the
+// operator's declaration that FleetCom should manage that gateway.
+// (FLEET-52 agenix populates these; no separate "pair gateway" API is
+// needed.) Rows in openclaw_gateways are kept in sync so the dashboard
+// reflects reality.
 func (m *Manager) reconcile(ctx context.Context) {
-	gws, err := m.store.AllGateways()
-	if err != nil {
-		log.Printf("openclaw reconcile: %v", err)
-		return
-	}
-
-	want := make(map[string]db.OpenClawGateway)
-	for _, g := range gws {
-		if g.Status == "paired" && g.URL != "" {
-			want[g.Host] = g
-		}
-	}
+	keyHosts := m.scanKeyDir()
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	want := make(map[string]bool, len(keyHosts))
+	for _, h := range keyHosts {
+		want[h] = true
+	}
+
 	for host, h := range m.clients {
-		if _, ok := want[host]; !ok {
-			log.Printf("openclaw: stopping client for %s (no longer paired)", host)
+		if !want[host] {
+			log.Printf("openclaw: stopping client for %s (keypair removed)", host)
 			h.cancel()
 			delete(m.clients, host)
 		}
 	}
 
-	for host, g := range want {
+	for _, host := range keyHosts {
 		if _, ok := m.clients[host]; ok {
 			continue
 		}
 		id, token, err := m.loadGatewayCreds(host)
 		if err != nil {
-			// Quiet if files simply don't exist yet; noisy if malformed.
-			if errors.Is(err, os.ErrNotExist) {
-				continue
-			}
-			log.Printf("openclaw: load creds for %s: %v", host, err)
+			log.Printf("openclaw %s: load creds: %v", host, err)
 			continue
 		}
+		url := fmt.Sprintf("wss://%s:18789", host)
+		if _, err := m.store.UpsertGateway(host, url); err != nil {
+			log.Printf("openclaw %s: upsert gateway: %v", host, err)
+		}
+		// Mark paired unconditionally so the dashboard reflects that
+		// FleetCom is configured for this gateway. Runtime connection
+		// health surfaces via logs + (future) a per-client connected
+		// indicator in the Gateways tab.
+		if err := m.store.MarkGatewayPaired(host, id.PubKeyRawB64U, ""); err != nil {
+			log.Printf("openclaw %s: mark paired: %v", host, err)
+		}
+
 		cctx, cancel := context.WithCancel(ctx)
 		host := host // capture
 		cl := NewClient(ClientOptions{
-			URL:           g.URL,
+			URL:           url,
 			Identity:      id,
 			OperatorToken: token,
 			Role:          "operator",
@@ -149,8 +155,38 @@ func (m *Manager) reconcile(ctx context.Context) {
 				log.Printf("openclaw %s: client exited: %v", host, err)
 			}
 		}()
-		log.Printf("openclaw: started client for %s (%s)", host, g.URL)
+		log.Printf("openclaw: started client for %s (%s)", host, url)
 	}
+
+	// Broadcast gateway list update so the dashboard reflects any
+	// newly-discovered rows immediately.
+	if gs, err := m.store.AllGateways(); err == nil {
+		if data, err := json.Marshal(gs); err == nil {
+			m.hub.Broadcast("gateways", data)
+		}
+	}
+}
+
+// scanKeyDir returns the hostnames for which a FleetCom↔gateway keypair
+// exists on disk. Naming convention: `fleetcom-openclaw-<host>-key`.
+func (m *Manager) scanKeyDir() []string {
+	entries, err := os.ReadDir(m.keyDir)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, "fleetcom-openclaw-") || !strings.HasSuffix(name, "-key") {
+			continue
+		}
+		host := strings.TrimSuffix(strings.TrimPrefix(name, "fleetcom-openclaw-"), "-key")
+		if host == "" {
+			continue
+		}
+		out = append(out, host)
+	}
+	return out
 }
 
 // loadGatewayCreds reads the Ed25519 private key and operator token for
