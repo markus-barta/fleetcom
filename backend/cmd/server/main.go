@@ -119,6 +119,8 @@ func main() {
 	r.Post("/api/heartbeat", api.Heartbeat(store, hub))
 	r.Post("/api/container-events", api.ContainerEvents(store, hub))
 	r.Post("/api/agent-events", api.AgentEvents(store, hub))
+	// FLEET-51: bridge registration — bosun-bearer-authenticated, public endpoint.
+	r.Post("/api/bridges/register", api.RegisterBridge(store, hub))
 
 	// Auth routes (public)
 	r.Get("/login", api.LoginPage)
@@ -155,6 +157,11 @@ func main() {
 		r.Get("/api/hosts/{hostname}/hardware", api.HostHardware(store))
 		r.Get("/api/agents", api.ListAgents(store))
 		r.Get("/api/agents/{host}/{name}", api.AgentDetail(store))
+		// FLEET-51: OpenClaw gateway pairing + bridge registry.
+		r.With(auth.RequireAdmin).Get("/api/gateways", api.ListGateways(store))
+		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/auto-approve/{mode}", api.SetGatewayAutoApprove(store, hub))
+		r.With(auth.RequireAdmin).Get("/api/bridges", api.ListBridges(store))
+		r.With(auth.RequireAdmin).Delete("/api/bridges/{host}/{agent}", api.RevokeBridge(store, hub))
 		r.Get("/api/history", api.History(store))
 		r.Get("/api/ignored", api.ListIgnored(store))
 		r.Post("/api/ignore", api.AddIgnore(store))
