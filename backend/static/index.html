@@ -460,6 +460,72 @@
         }
         .card:hover { background: var(--bg-2); }
 
+        /* Ghost tile for + Add Host — admin-only, appears as the last
+           entry in every dashboard view. Dashed border + centered "+"
+           keeps it visually distinct from real host cards. */
+        .card-ghost {
+            border: 1px dashed var(--line-2);
+            border-left: 1px dashed var(--line-2);
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 120px;
+            cursor: pointer;
+            transition: border-color 0.15s, background 0.15s;
+        }
+        .card-ghost:hover {
+            border-color: var(--accent);
+            background: rgba(106, 176, 255, 0.04);
+        }
+        .grid-detail .card-ghost { min-height: 140px; padding: 1.5rem; padding-right: 1.5rem; }
+        .card-ghost-body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.6rem;
+            color: var(--ink-dim);
+            width: 100%;
+            max-width: 380px;
+        }
+        .card-ghost-icon {
+            font-size: 2.2rem;
+            font-weight: 200;
+            line-height: 1;
+            color: var(--ink-dim);
+        }
+        .card-ghost:hover .card-ghost-icon { color: var(--accent); }
+        .card-ghost-label {
+            font-size: 9px;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+        }
+        .card-ghost-input {
+            background: var(--bg-0);
+            border: 1px solid var(--line);
+            padding: 0.5rem 0.7rem;
+            color: var(--ink);
+            font-family: inherit;
+            font-size: 13px;
+            width: 100%;
+        }
+        .card-ghost-input:focus { outline: none; border-color: var(--accent); }
+        .card-ghost-actions { display: flex; gap: 0.5rem; }
+
+        /* Compact-view ghost row */
+        .fleet-table tr.row-ghost td {
+            border-top: 1px dashed var(--line);
+            text-align: center;
+            padding: 0.7rem;
+            color: var(--ink-dim);
+            cursor: pointer;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            font-size: 10px;
+            transition: color 0.15s, background 0.15s;
+        }
+        .fleet-table tr.row-ghost:hover td { color: var(--accent); background: rgba(106, 176, 255, 0.04); }
+
         .card.state-ok {
             border-left-color: var(--ok);
             box-shadow: -1px 0 18px -3px rgba(61, 220, 151, 0.22);
@@ -1353,6 +1419,14 @@
             background: transparent;
         }
         .btn-danger:hover { background: rgba(255, 77, 109, 0.08); }
+        /* Ghost button for rarely-used / secondary actions — low contrast so the eye skips them unless needed. */
+        .btn-ghost {
+            color: var(--ink-dim);
+            border-color: var(--line);
+            background: transparent;
+            opacity: 0.75;
+        }
+        .btn-ghost:hover { opacity: 1; background: var(--bg-1); }
 
         .token-list { list-style: none; }
         .token-list li {
@@ -2549,7 +2623,32 @@
                     <template x-if="hosts.length === 0">
                         <div class="empty-state">
                             <h2>No hosts reporting</h2>
-                            <p>Go to Hosts to register an agent and receive its bearer token.</p>
+                            <p>Register your first host to start receiving heartbeats.</p>
+                            <template x-if="currentUser && currentUser.role === 'admin'">
+                                <div class="grid" style="margin-top:1.5rem;max-width:420px;margin-left:auto;margin-right:auto;">
+                                    <div class="card card-ghost" @click="showAddHostInline || (showAddHostInline = true)">
+                                        <template x-if="!showAddHostInline">
+                                            <div class="card-ghost-body">
+                                                <div class="card-ghost-icon">+</div>
+                                                <div class="card-ghost-label">Add Host</div>
+                                            </div>
+                                        </template>
+                                        <template x-if="showAddHostInline">
+                                            <div class="card-ghost-body" @click.stop>
+                                                <input type="text" class="card-ghost-input" x-model="newHostnameInline"
+                                                    placeholder="hostname (e.g. dsc0)"
+                                                    @keydown.enter="addHostInline()"
+                                                    @keydown.escape="showAddHostInline = false; newHostnameInline = ''"
+                                                    x-init="$nextTick(() => $el.focus())">
+                                                <div class="card-ghost-actions">
+                                                    <button class="btn btn-primary" @click.stop="addHostInline()">Add</button>
+                                                    <button class="btn btn-ghost" @click.stop="showAddHostInline = false; newHostnameInline = ''">Cancel</button>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
                         </div>
                     </template>
 
@@ -2566,8 +2665,8 @@
                                         </div>
                                     </template>
 
-                                    <button class="card-gear" @click.stop="openHostConfig(host.hostname)" title="Host settings">
-                                        <span class="card-gear-label">Configure</span>
+                                    <button class="card-gear" @click.stop="openHostConfig(host.hostname)" title="Edit how this host appears on the dashboard (icon, label, comment)">
+                                        <span class="card-gear-label">Display</span>
                                         <i data-lucide="settings"></i>
                                     </button>
 
@@ -2691,6 +2790,30 @@
                                     </template>
                                 </div>
                             </template>
+                            <!-- Admin-only + Add Host ghost tile (FLEET-56) -->
+                            <template x-if="currentUser && currentUser.role === 'admin'">
+                                <div class="card card-ghost" @click="showAddHostInline || (showAddHostInline = true)">
+                                    <template x-if="!showAddHostInline">
+                                        <div class="card-ghost-body">
+                                            <div class="card-ghost-icon">+</div>
+                                            <div class="card-ghost-label">Add Host</div>
+                                        </div>
+                                    </template>
+                                    <template x-if="showAddHostInline">
+                                        <div class="card-ghost-body" @click.stop>
+                                            <input type="text" class="card-ghost-input" x-model="newHostnameInline"
+                                                placeholder="hostname (e.g. dsc0)"
+                                                @keydown.enter="addHostInline()"
+                                                @keydown.escape="showAddHostInline = false; newHostnameInline = ''"
+                                                x-init="$nextTick(() => $el.focus())">
+                                            <div class="card-ghost-actions">
+                                                <button class="btn btn-primary" @click.stop="addHostInline()">Add</button>
+                                                <button class="btn btn-ghost" @click.stop="showAddHostInline = false; newHostnameInline = ''">Cancel</button>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
                         </div>
                     </template>
 
@@ -2707,8 +2830,8 @@
                                         </div>
                                     </template>
 
-                                    <button class="card-gear" @click.stop="openHostConfig(host.hostname)" title="Host settings">
-                                        <span class="card-gear-label">Configure</span>
+                                    <button class="card-gear" @click.stop="openHostConfig(host.hostname)" title="Edit how this host appears on the dashboard (icon, label, comment)">
+                                        <span class="card-gear-label">Display</span>
                                         <i data-lucide="settings"></i>
                                     </button>
 
@@ -2917,6 +3040,30 @@
                                     </template>
                                 </div>
                             </template>
+                            <!-- Admin-only + Add Host ghost tile (FLEET-56) -->
+                            <template x-if="currentUser && currentUser.role === 'admin'">
+                                <div class="card card-ghost" @click="showAddHostInline || (showAddHostInline = true)">
+                                    <template x-if="!showAddHostInline">
+                                        <div class="card-ghost-body">
+                                            <div class="card-ghost-icon">+</div>
+                                            <div class="card-ghost-label">Add Host</div>
+                                        </div>
+                                    </template>
+                                    <template x-if="showAddHostInline">
+                                        <div class="card-ghost-body" @click.stop>
+                                            <input type="text" class="card-ghost-input" x-model="newHostnameInline"
+                                                placeholder="hostname (e.g. dsc0)"
+                                                @keydown.enter="addHostInline()"
+                                                @keydown.escape="showAddHostInline = false; newHostnameInline = ''"
+                                                x-init="$nextTick(() => $el.focus())">
+                                            <div class="card-ghost-actions">
+                                                <button class="btn btn-primary" @click.stop="addHostInline()">Add</button>
+                                                <button class="btn btn-ghost" @click.stop="showAddHostInline = false; newHostnameInline = ''">Cancel</button>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </template>
                         </div>
                     </template>
 
@@ -2977,6 +3124,12 @@
                                         </td>
                                     </tr>
                                 </template>
+                                <!-- Admin-only + Add Host ghost row (FLEET-56) -->
+                                <template x-if="currentUser && currentUser.role === 'admin'">
+                                    <tr class="row-ghost" @click="view = 'settings'; settingsTab = 'hosts'; loadTokens()">
+                                        <td :colspan="9">+ Add Host</td>
+                                    </tr>
+                                </template>
                             </tbody>
                         </table>
                     </template>
@@ -3006,7 +3159,7 @@
                             <div class="form-row">
                                 <input type="text" x-model="newHostname" placeholder="hostname (e.g. dsc0)" @keydown.enter="addHost()">
                                 <button class="btn btn-primary" @click="addHost()">Add Host</button>
-                                <button class="btn" style="margin-left:auto;" @click="requestUpdateAll()" :title="'Trigger a watchtower pull on every host you can access'">Update all</button>
+                                <button class="btn" style="margin-left:auto;" @click="requestUpdateAll()" :title="'Force watchtower to pull the latest fleetcom-bosun image on every host you can access (bypasses the 24h poll).'">Update all agents</button>
                             </div>
 
                             <template x-if="newToken">
@@ -3046,10 +3199,10 @@
                                                 <template x-if="hostByName(t.hostname) && hasPendingUpdate(hostByName(t.hostname))">
                                                     <span class="agent-update-pending" title="Update requested — will run on next heartbeat">upd</span>
                                                 </template>
-                                                <button class="btn" @click="requestHostUpdate(t.hostname)" :disabled="!hostByName(t.hostname)" :title="hostByName(t.hostname) ? 'Trigger watchtower pull on this host' : 'Host has not reported yet'">Update</button>
-                                                <button class="btn" @click="configHost === t.hostname ? configHost = '' : openHostConfig(t.hostname)" x-text="configHost === t.hostname ? 'Close' : 'Configure'"></button>
-                                                <button class="btn" @click="regenerateToken(t.hostname)" title="Regenerate this host's bearer token. The old token stops working immediately — you'll need to update agenix and recreate bosun on the host.">Regen</button>
-                                                <button class="btn btn-danger" @click="removeHost(t.hostname)">Remove</button>
+                                                <button class="btn" @click="requestHostUpdate(t.hostname)" :disabled="!hostByName(t.hostname)" :title="hostByName(t.hostname) ? 'Force watchtower to pull the latest fleetcom-bosun image on this host now (bypasses the 24h poll).' : 'Host has not reported yet'">Update agent</button>
+                                                <button class="btn btn-ghost" @click="configHost === t.hostname ? configHost = '' : openHostConfig(t.hostname)" x-text="configHost === t.hostname ? 'Close' : 'Display'" title="Edit how this host appears on the dashboard: icon, label, comment. Does not touch the host itself."></button>
+                                                <button class="btn btn-ghost" @click="regenerateToken(t.hostname)" title="Replace this host's bearer token. The old token stops working immediately — you'll need to update the host's env (agenix on NixOS) and restart bosun.">New token</button>
+                                                <button class="btn btn-danger" @click="removeHost(t.hostname)" title="Delete this host from FleetCom. Invalidates the token permanently and removes all history.">Remove</button>
                                             </div>
                                         </div>
                                         <template x-if="configHost === t.hostname">
@@ -4044,6 +4197,9 @@ WantedBy=multi-user.target</pre>
                 // Gateways + Bridges (FLEET-51)
                 gateways: [],
                 bridges: [],
+                // + Add Host ghost tile (FLEET-56)
+                showAddHostInline: false,
+                newHostnameInline: '',
 
                 init() {
                     this.viewMode = localStorage.getItem('fleetcom.view') || 'normal';
@@ -4637,6 +4793,23 @@ WantedBy=multi-user.target</pre>
                             this.toast('Failed to add host', 'err');
                         }
                     } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                // Ghost tile "+ Add Host" on dashboard views (FLEET-56).
+                // Tile swaps to an inline input on click; submit reuses
+                // addHost(). On success, flips to Settings → Hosts so the
+                // admin sees the token reveal immediately.
+                async addHostInline() {
+                    const hostname = this.newHostnameInline.trim();
+                    if (!hostname) return;
+                    this.newHostname = hostname;
+                    await this.addHost();
+                    this.showAddHostInline = false;
+                    this.newHostnameInline = '';
+                    if (this.newToken) {
+                        this.view = 'settings';
+                        this.settingsTab = 'hosts';
+                    }
                 },
 
                 async regenerateToken(hostname) {
