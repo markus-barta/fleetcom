@@ -89,7 +89,8 @@ type commandHandler func(params json.RawMessage) (json.RawMessage, error)
 // bosun into arbitrary behaviour. New handlers land by adding entries
 // here in a subsequent FLEET-6x ticket.
 var commandAllowlist = map[string]commandHandler{
-	"openclaw.pair": handleOpenclawPair, // FLEET-61
+	"openclaw.pair":     handleOpenclawPair,     // FLEET-61
+	"container.restart": handleContainerRestart, // FLEET-62
 }
 
 // dispatchCommands is called once per heartbeat with the commands the
