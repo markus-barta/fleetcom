@@ -50,7 +50,9 @@ func main() {
 	// keypairs (FLEET-52 pre-seed) so boot is quiet until secrets exist.
 	ocKeyDir := os.Getenv("FLEETCOM_OPENCLAW_KEY_DIR")
 	if ocKeyDir == "" {
-		ocKeyDir = "/run/agenix"
+		// Default scans both agenix (nixcfg-managed pairings) and the
+		// in-container data dir (wizard-generated pairings, FLEET-61).
+		ocKeyDir = "/run/agenix:/app/data/openclaw-keys"
 	}
 	ocMgr := openclaw.NewManager(store, hub, ocKeyDir, version.Version)
 	ocCtx, ocCancel := context.WithCancel(context.Background())
@@ -193,6 +195,13 @@ func main() {
 		r.Get("/api/agents/{host}/{name}", api.AgentDetail(store))
 		// FLEET-51: OpenClaw gateway pairing + bridge registry.
 		r.With(auth.RequireAdmin).Get("/api/gateways", api.ListGateways(store))
+		r.With(auth.RequireAdmin).Get("/api/gateways/pairable-hosts", api.HostsAvailableForPairing(store))
+		// FLEET-61: wizard-style gateway pairing. Generates keys + enqueues
+		// openclaw.pair command. First dir of ocKeyDir (colon-separated)
+		// that's writable is used for key storage; /app/data is the
+		// conventional choice inside the fleetcom container.
+		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/pair", api.PairGateway(store, "/app/data/openclaw-keys"))
+		r.With(auth.RequireAdmin).Delete("/api/gateways/{host}", api.UnpairGateway(store, "/app/data/openclaw-keys"))
 		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/auto-approve/{mode}", api.SetGatewayAutoApprove(store, hub))
 		r.With(auth.RequireAdmin).Get("/api/bridges", api.ListBridges(store))
 		r.With(auth.RequireAdmin).Delete("/api/bridges/{host}/{agent}", api.RevokeBridge(store, hub, ocMgr))

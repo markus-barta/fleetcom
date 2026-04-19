@@ -81,6 +81,15 @@ func (s *Store) AllGateways() ([]OpenClawGateway, error) {
 	return out, rows.Err()
 }
 
+// DeleteGateway drops an openclaw_gateways row (the unpair path).
+// Callers are responsible for stopping the manager's WS client and
+// removing the on-disk keypair before calling this; otherwise the
+// manager will just re-upsert the row on its next reconcile.
+func (s *Store) DeleteGateway(host string) error {
+	_, err := s.DB.Exec(`DELETE FROM openclaw_gateways WHERE host = ?`, host)
+	return err
+}
+
 // SetAutoApprove flips the per-gateway auto-approval flag.
 func (s *Store) SetAutoApprove(host string, on bool) error {
 	val := 0

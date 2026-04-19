@@ -3684,7 +3684,7 @@
                     <template x-if="settingsTab === 'gateways'">
                         <div>
                             <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em; margin-bottom: 1rem;">
-                                OpenClaw gateways FleetCom has paired with. Auto-approve lets FleetCom approve bridge pairing requests on a gateway without manual UI clicks once the bridge has registered here with a valid host bearer token.
+                                OpenClaw gateways FleetCom has paired with. Adding one generates FleetCom's Ed25519 keypair + operator token server-side, then enqueues an <code>openclaw.pair</code> command so the host's bosun merges them into the gateway's <code>paired.json</code> and restarts it. Whole flow is zero-SSH and typically completes within one bosun heartbeat (~60s).
                             </p>
 
                             <ul class="token-list">
@@ -3702,18 +3702,50 @@
                                                 </template>
                                             </span>
                                         </div>
-                                        <label style="display:flex;align-items:center;gap:0.4rem;font-size:10px;color:var(--ink-dim);cursor:pointer;">
-                                            <input type="checkbox" :checked="g.auto_approve_bridges"
-                                                @change="toggleAutoApprove(g.host, $event.target.checked)">
-                                            auto-approve
-                                        </label>
+                                        <div style="display:flex;align-items:center;gap:0.8rem;">
+                                            <label style="display:flex;align-items:center;gap:0.4rem;font-size:10px;color:var(--ink-dim);cursor:pointer;">
+                                                <input type="checkbox" :checked="g.auto_approve_bridges"
+                                                    @change="toggleAutoApprove(g.host, $event.target.checked)">
+                                                auto-approve
+                                            </label>
+                                            <button class="btn btn-danger" @click="unpairGateway(g.host)">Unpair</button>
+                                        </div>
                                     </li>
                                 </template>
                             </ul>
 
+                            <!-- + Add Gateway ghost tile — pick a registered host without a gateway, generate keys + enqueue openclaw.pair. -->
+                            <div class="card card-ghost" style="margin-top: 0.75rem;" @click="showAddGatewayInline || loadPairableHosts()">
+                                <template x-if="!showAddGatewayInline">
+                                    <div class="card-ghost-body">
+                                        <div class="card-ghost-icon">+</div>
+                                        <div class="card-ghost-label">Add Gateway</div>
+                                    </div>
+                                </template>
+                                <template x-if="showAddGatewayInline">
+                                    <div class="card-ghost-body" @click.stop>
+                                        <template x-if="pairableHosts.length === 0">
+                                            <div style="color:var(--ink-dim); font-size:11px;">No hosts available — all registered hosts are already paired, or no hosts are registered.</div>
+                                        </template>
+                                        <template x-if="pairableHosts.length > 0">
+                                            <select x-model="newGatewayHost" class="card-ghost-input" style="cursor:pointer;">
+                                                <option value="" disabled>Pick a host…</option>
+                                                <template x-for="h in pairableHosts" :key="h">
+                                                    <option :value="h" x-text="h"></option>
+                                                </template>
+                                            </select>
+                                        </template>
+                                        <div class="card-ghost-actions">
+                                            <button class="btn btn-primary" @click.stop="pairGateway()" :disabled="!newGatewayHost || pairableHosts.length === 0">Pair</button>
+                                            <button class="btn btn-ghost" @click.stop="showAddGatewayInline = false; newGatewayHost = ''">Cancel</button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+
                             <template x-if="gateways.length === 0">
-                                <div class="empty-state" style="padding: 2rem;">
-                                    <p>No OpenClaw gateways registered yet. Gateways appear here once bosun reports one on a host.</p>
+                                <div class="empty-state" style="padding: 1rem; margin-top: 0.5rem;">
+                                    <p style="font-size:11px;">No gateways yet. Click <strong>+ Add Gateway</strong> above to pair one.</p>
                                 </div>
                             </template>
                         </div>
@@ -4259,6 +4291,10 @@ WantedBy=multi-user.target</pre>
                 // Gateways + Bridges (FLEET-51)
                 gateways: [],
                 bridges: [],
+                // + Add Gateway wizard (FLEET-61)
+                showAddGatewayInline: false,
+                newGatewayHost: '',
+                pairableHosts: [],
                 // + Add Host ghost tile (FLEET-56)
                 showAddHostInline: false,
                 newHostnameInline: '',
@@ -5810,6 +5846,47 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Failed to toggle auto-approve', 'err');
                             this.loadGateways();
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                async loadPairableHosts() {
+                    try {
+                        const res = await fetch('/api/gateways/pairable-hosts');
+                        if (res.ok) {
+                            this.pairableHosts = await res.json() || [];
+                            this.showAddGatewayInline = true;
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                async pairGateway() {
+                    const host = (this.newGatewayHost || '').trim();
+                    if (!host) return;
+                    try {
+                        const res = await fetch('/api/gateways/' + encodeURIComponent(host) + '/pair', { method: 'POST' });
+                        if (res.ok) {
+                            const body = await res.json();
+                            this.toast('Gateway pairing enqueued for ' + host + ' (cmd ' + body.command_id + ')');
+                            this.showAddGatewayInline = false;
+                            this.newGatewayHost = '';
+                            this.loadGateways();
+                        } else {
+                            const msg = await res.text();
+                            this.toast('Pair failed: ' + msg.slice(0, 160), 'err');
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                async unpairGateway(host) {
+                    if (!confirm('Unpair gateway ' + host + '? Drops FleetCom-side keys + the row. The host-side paired.json entry for this instance stays until manually removed.')) return;
+                    try {
+                        const res = await fetch('/api/gateways/' + encodeURIComponent(host), { method: 'DELETE' });
+                        if (res.ok || res.status === 204) {
+                            this.toast('Gateway unpaired');
+                            this.loadGateways();
+                        } else {
+                            this.toast('Unpair failed', 'err');
                         }
                     } catch (_) { this.toast('Network error', 'err'); }
                 },
