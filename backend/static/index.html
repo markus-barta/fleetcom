@@ -3559,6 +3559,35 @@
                             </details>
 
                             <details class="doc-section">
+                                <summary>Adding an Agent</summary>
+                                <div class="doc-body">
+                                    <p>An "agent" here is an AI agent instance (e.g. <em>merlin</em>, <em>nimue</em>, <em>percival</em>) running inside an <strong>OpenClaw gateway</strong>. What you do depends on whether the host already has FleetCom-managed agents or not.</p>
+
+                                    <h4>A. New agent on a host that already has agents</h4>
+                                    <p>Fastest path — nothing to do in the FleetCom UI.</p>
+                                    <ol class="doc-steps">
+                                        <li>Add the agent to OpenClaw's <code>openclaw.json</code> (OpenClaw side; not a FleetCom concern).</li>
+                                        <li>On the host, edit <code>BRIDGE_AGENT_NAMES</code> in the agent-bridge <code>.env</code> (comma-separated list).</li>
+                                        <li><code>docker compose up -d agent-bridge</code> — the bridge re-registers each agent with FleetCom. Because the gateway is already paired, FleetCom auto-approves instantly.</li>
+                                        <li>Within ~30 s the new agent appears on the dashboard.</li>
+                                    </ol>
+
+                                    <h4>B. New agent on a new host (first OpenClaw on this box)</h4>
+                                    <p>Onboarding the host is the bulk of the work. Once that's done, adding further agents is A above.</p>
+                                    <ol class="doc-steps">
+                                        <li><strong>Onboard the host</strong> — follow <em>Adding a Host</em> above to deploy bosun + obtain the <code>FLEETCOM_TOKEN</code>.</li>
+                                        <li><strong>Deploy OpenClaw + agent-bridge</strong> on the host. The bridge needs <code>FLEETCOM_TOKEN</code> (same one bosun uses), <code>OPENCLAW_GATEWAY_URL=wss://openclaw-gateway:18789</code>, and <code>BRIDGE_AGENT_NAMES</code>. Sample compose: <code>agent-bridge/docker-compose.sample.yml</code> in the fleetcom repo.</li>
+                                        <li><strong>Pair FleetCom with the gateway</strong> (one-time, per gateway host). FleetCom needs its own Ed25519 keypair + operator token for this gateway, mounted at <code>/run/agenix/fleetcom-openclaw-&lt;host&gt;-{key,tok}</code>. The OpenClaw gateway's entrypoint pre-seeds FleetCom's entry into <code>paired.json</code> from agenix secrets — see FLEET-52 in nixcfg for the template.</li>
+                                        <li>Done. The agent-bridge POSTs its fingerprint to <code>/api/bridges/register</code>, FleetCom's WS client sees the matching <code>device.pair.requested</code> on the gateway, auto-approves, and events start flowing to <code>/api/agent-events</code>.</li>
+                                    </ol>
+
+                                    <div class="doc-note"><strong>Check the Bridges + Gateways tabs.</strong> Settings → Gateways shows each paired OpenClaw gateway with an auto-approve toggle. Settings → Bridges shows each registered agent-bridge with its fingerprint, approval state, and a Revoke button (which also calls <code>device.token.revoke</code> on the gateway).</div>
+
+                                    <div class="doc-note"><strong>Registering manually?</strong> Any host running bosun can POST to <code>/api/bridges/register</code> with its bearer token + an Ed25519 pubkey PEM. FleetCom records the fingerprint; auto-approval fires as soon as the gateway emits a matching pair request. Useful if you're writing a non-standard bridge.</div>
+                                </div>
+                            </details>
+
+                            <details class="doc-section">
                                 <summary>Docker Setup (recommended)</summary>
                                 <div class="doc-body">
                                     <p>Bosun runs as a container, mounts the Docker socket read-only, and watches the event stream for instant container lifecycle notifications. Works on any host with Docker.</p>
