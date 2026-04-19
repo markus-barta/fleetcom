@@ -1190,7 +1190,7 @@
             display: grid;
             grid-template-columns: 1fr;
             gap: 3rem;
-            max-width: 1100px;
+            max-width: 1400px;
             margin: 0 auto;
         }
         /* Detail cards: content on the left, image gets its own clear
@@ -1377,7 +1377,12 @@
         /* ============================================================
            ADMIN PANEL
            ============================================================ */
-        .admin-panel { max-width: 700px; margin: 0 auto; }
+        /* Settings pages — widened from 700 → 1400 so host rows, tabs
+           and tables actually breathe on desktop. Forms inside keep
+           their own narrower max-widths (360–600px). On screens
+           < 1400px the container just fills the available width
+           minus main's 1.5rem (24px) padding. */
+        .admin-panel { max-width: 1400px; margin: 0 auto; }
         .admin-panel h2 {
             font-size: 10px;
             color: var(--ink-dim);
