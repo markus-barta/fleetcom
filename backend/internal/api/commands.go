@@ -58,6 +58,9 @@ func CommandResults(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 		}
 		// Broadcast so the dashboard history view updates live.
 		if cmds, err := store.CommandsForHost(hostname, 50); err == nil {
+			for i := range cmds {
+				cmds[i].Params = redactCommandParams(cmds[i].Kind, cmds[i].Params)
+			}
 			if data, err := json.Marshal(map[string]any{"host": hostname, "commands": cmds}); err == nil {
 				hub.Broadcast("commands", data)
 			}
@@ -85,9 +88,49 @@ func ListCommands(store *db.Store) http.HandlerFunc {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		// Redact sensitive fields from params before surfacing to the
+		// admin UI. Keeps audit info (what kind, what container name,
+		// what agent names) while scrubbing shared secrets like the
+		// operator_token that rides in openclaw.pair params.
+		for i := range cmds {
+			cmds[i].Params = redactCommandParams(cmds[i].Kind, cmds[i].Params)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(cmds)
 	}
+}
+
+// redactCommandParams strips known-sensitive fields per kind so the
+// admin UI can show params for audit without leaking secrets that were
+// only ever meant for bosun. Returns the original payload untouched
+// for unknown kinds (principle: fail safe on surface area, not on
+// payload shape).
+func redactCommandParams(kind string, params json.RawMessage) json.RawMessage {
+	if len(params) == 0 {
+		return params
+	}
+	sensitive := map[string][]string{
+		"openclaw.pair":  {"operator_token"},
+		"bridge.install": {"fleetcom_token"},
+	}
+	fields, ok := sensitive[kind]
+	if !ok {
+		return params
+	}
+	var m map[string]interface{}
+	if err := json.Unmarshal(params, &m); err != nil {
+		return params
+	}
+	for _, f := range fields {
+		if _, present := m[f]; present {
+			m[f] = "***redacted***"
+		}
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		return params
+	}
+	return out
 }
 
 // CancelCommand drops a pending command before bosun picks it up.

@@ -3262,6 +3262,10 @@
                                                     <span class="agent-update-pending" title="Update requested — will run on next heartbeat">upd</span>
                                                 </template>
                                                 <button class="btn" @click="requestHostUpdate(t.hostname)" :disabled="!hostByName(t.hostname)" :title="hostByName(t.hostname) ? 'Force watchtower to pull the latest fleetcom-bosun image on this host now (bypasses the 24h poll).' : 'Host has not reported yet'">Update agent</button>
+                                                <button class="btn btn-ghost" @click="commandsHost === t.hostname ? commandsHost = '' : openHostCommands(t.hostname)" :class="commandsHost === t.hostname ? 'btn-primary' : ''" title="Bosun command history for this host (pair, restart, install, …) — read-only audit trail.">
+                                                    <span x-text="commandsHost === t.hostname ? 'Close' : 'Commands'"></span>
+                                                    <template x-if="hostHasActiveCommand(t.hostname)"><span style="margin-left:4px;color:var(--warn);">●</span></template>
+                                                </button>
                                                 <button class="btn btn-ghost" @click="configHost === t.hostname ? configHost = '' : openHostConfig(t.hostname)" x-text="configHost === t.hostname ? 'Close' : 'Display'" title="Edit how this host appears on the dashboard: icon, label, comment. Does not touch the host itself."></button>
                                                 <button class="btn btn-ghost" @click="regenerateToken(t.hostname)" title="Replace this host's bearer token. The old token stops working immediately — you'll need to update the host's env (agenix on NixOS) and restart bosun.">New token</button>
                                                 <button class="btn btn-danger" @click="removeHost(t.hostname)" title="Delete this host from FleetCom. Invalidates the token permanently and removes all history.">Remove</button>
@@ -3331,6 +3335,37 @@
                                                               style="width:100%;background:var(--bg-0);border:1px solid var(--line-2);color:var(--ink);font-family:inherit;font-size:11px;padding:0.4rem 0.6rem;resize:none;"></textarea>
                                                 </div>
                                                 <button class="btn btn-primary" @click="saveHostConfig()">Save</button>
+                                            </div>
+                                        </template>
+
+                                        <!-- FLEET-60/61/62/63: bosun command history -->
+                                        <template x-if="commandsHost === t.hostname">
+                                            <div style="width:100%;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--line);">
+                                                <div style="font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:var(--ink-ghost);font-weight:600;margin-bottom:0.5rem;">Command History</div>
+                                                <template x-if="(commandsByHost[t.hostname] || []).length === 0">
+                                                    <div style="font-size:10px;color:var(--ink-ghost);font-style:italic;">No commands yet. Pair a gateway, restart a container, or deploy a bridge to see audit entries here.</div>
+                                                </template>
+                                                <template x-for="c in (commandsByHost[t.hostname] || [])" :key="c.id">
+                                                    <div style="padding:0.4rem 0;border-bottom:1px dashed var(--line);font-size:11px;display:grid;grid-template-columns:auto 1fr auto;gap:0.6rem;align-items:start;">
+                                                        <span :style="'color:' + commandStatusColor(c.status) + ';font-weight:600;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;min-width:72px;'" x-text="c.status"></span>
+                                                        <div>
+                                                            <span style="color:var(--ink);font-family:ui-monospace,monospace;" x-text="c.kind"></span>
+                                                            <span style="color:var(--ink-faint);font-size:10px;" x-text="' · #' + c.id"></span>
+                                                            <template x-if="c.error">
+                                                                <div style="color:var(--crit);font-size:10px;margin-top:2px;" x-text="'error: ' + c.error"></div>
+                                                            </template>
+                                                            <template x-if="c.status === 'done' && commandResultSummary(c)">
+                                                                <div style="color:var(--ink-dim);font-size:10px;margin-top:2px;" x-text="commandResultSummary(c)"></div>
+                                                            </template>
+                                                        </div>
+                                                        <div style="text-align:right;color:var(--ink-ghost);font-size:10px;white-space:nowrap;">
+                                                            <div x-text="formatAgo(c.issued_at)"></div>
+                                                            <template x-if="c.status === 'pending'">
+                                                                <button class="btn btn-ghost" style="font-size:8px;padding:0.15rem 0.4rem;margin-top:2px;" @click="cancelCommand(c.id)">cancel</button>
+                                                            </template>
+                                                        </div>
+                                                    </div>
+                                                </template>
                                             </div>
                                         </template>
                                     </li>
@@ -4305,6 +4340,9 @@ WantedBy=multi-user.target</pre>
                 showAddGatewayInline: false,
                 newGatewayHost: '',
                 pairableHosts: [],
+                // Command history panel (FLEET-60/61/62/63)
+                commandsHost: '',
+                commandsByHost: {},
                 // + Add Host ghost tile (FLEET-56)
                 showAddHostInline: false,
                 newHostnameInline: '',
@@ -4793,6 +4831,15 @@ WantedBy=multi-user.target</pre>
                         } catch (err) {
                             console.warn('hosts event parse error', err);
                         }
+                    });
+
+                    this.es.addEventListener('commands', (e) => {
+                        try {
+                            const p = JSON.parse(e.data);
+                            if (p && p.host) {
+                                this.commandsByHost = { ...this.commandsByHost, [p.host]: p.commands || [] };
+                            }
+                        } catch (_) {}
                     });
 
                     this.es.addEventListener('gateways', (e) => {
@@ -5907,6 +5954,64 @@ WantedBy=multi-user.target</pre>
                             this.toast('Restart enqueued for ' + name + ' (cmd ' + body.id + ')');
                         } else {
                             this.toast('Restart failed: ' + (await res.text()).slice(0, 120), 'err');
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                // FLEET-60/…: open the command-history drawer for a host.
+                async openHostCommands(host) {
+                    this.commandsHost = host;
+                    try {
+                        const res = await fetch('/api/hosts/' + encodeURIComponent(host) + '/commands?limit=30');
+                        if (res.ok) {
+                            const cmds = await res.json() || [];
+                            this.commandsByHost = { ...this.commandsByHost, [host]: cmds };
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                // Truthy if this host has an in-flight command (pending
+                // or executing). Shows a warn-coloured dot on the
+                // Commands button as a subtle live indicator.
+                hostHasActiveCommand(host) {
+                    const cmds = this.commandsByHost[host] || [];
+                    return cmds.some(c => c.status === 'pending' || c.status === 'executing');
+                },
+
+                commandStatusColor(status) {
+                    switch (status) {
+                        case 'done':      return 'var(--ok)';
+                        case 'failed':    return 'var(--crit)';
+                        case 'cancelled': return 'var(--ink-ghost)';
+                        case 'executing': return 'var(--warn)';
+                        default:          return 'var(--ink-dim)'; // pending, unknown
+                    }
+                },
+
+                // Extract a one-line summary from a done command's
+                // structured result payload. Different kinds put
+                // different shapes in there — surface the most useful
+                // field without dumping raw JSON.
+                commandResultSummary(c) {
+                    if (!c || !c.result) return '';
+                    try {
+                        const r = typeof c.result === 'string' ? JSON.parse(c.result) : c.result;
+                        if (r.message) return r.message;
+                        if (r.merge) return r.merge;
+                        if (r.container_id) return 'container ' + String(r.container_id).slice(0, 12);
+                        return '';
+                    } catch (_) { return ''; }
+                },
+
+                async cancelCommand(id) {
+                    if (!confirm('Cancel pending command #' + id + '?')) return;
+                    try {
+                        const res = await fetch('/api/commands/' + id + '/cancel', { method: 'POST' });
+                        if (res.ok || res.status === 204) {
+                            // Reload the history so the cancelled state shows.
+                            if (this.commandsHost) this.openHostCommands(this.commandsHost);
+                        } else {
+                            this.toast('Cancel failed: ' + (await res.text()).slice(0, 120), 'err');
                         }
                     } catch (_) { this.toast('Network error', 'err'); }
                 },
