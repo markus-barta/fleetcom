@@ -54,3 +54,17 @@ func (s *Store) DeleteToken(hostname string) error {
 	_, err := s.DB.Exec(`DELETE FROM tokens WHERE hostname = ?`, hostname)
 	return err
 }
+
+// HostTokenExists reports whether a row exists in tokens for the given hostname.
+// Used by RegenerateHostToken to refuse silent host creation via the regen path.
+func (s *Store) HostTokenExists(hostname string) (bool, error) {
+	var n int
+	err := s.DB.QueryRow(`SELECT 1 FROM tokens WHERE hostname = ?`, hostname).Scan(&n)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("query token existence: %w", err)
+	}
+	return true, nil
+}

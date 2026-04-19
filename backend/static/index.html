@@ -3011,6 +3011,9 @@
                                     <div class="label">Agent token for <span x-text="newToken.hostname"></span></div>
                                     <code x-text="newToken.token"></code>
                                     <div class="warning">Copy this token now — it won't be shown again.</div>
+                                    <template x-if="newToken.regen">
+                                        <div class="warning">⚠️ Old token is now invalid. Update agenix <code>secrets/fleetcom-token-<span x-text="newToken.hostname"></span>.age</code> and recreate the bosun container on that host.</div>
+                                    </template>
                                 </div>
                             </template>
 
@@ -3042,6 +3045,7 @@
                                                 </template>
                                                 <button class="btn" @click="requestHostUpdate(t.hostname)" :disabled="!hostByName(t.hostname)" :title="hostByName(t.hostname) ? 'Trigger watchtower pull on this host' : 'Host has not reported yet'">Update</button>
                                                 <button class="btn" @click="configHost === t.hostname ? configHost = '' : openHostConfig(t.hostname)" x-text="configHost === t.hostname ? 'Close' : 'Configure'"></button>
+                                                <button class="btn" @click="regenerateToken(t.hostname)" title="Regenerate this host's bearer token. The old token stops working immediately — you'll need to update agenix and recreate bosun on the host.">Regen</button>
                                                 <button class="btn btn-danger" @click="removeHost(t.hostname)">Remove</button>
                                             </div>
                                         </div>
@@ -4599,6 +4603,25 @@ WantedBy=multi-user.target</pre>
                             this.toast('Host ' + hostname + ' added');
                         } else {
                             this.toast('Failed to add host', 'err');
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                async regenerateToken(hostname) {
+                    if (!confirm('Regenerate token for ' + hostname + '?\n\nThe old token stops working IMMEDIATELY. You will need to update agenix (secrets/fleetcom-token-' + hostname + '.age) and recreate the bosun container on that host before it can heartbeat again.')) {
+                        return;
+                    }
+                    try {
+                        const res = await fetch('/api/hosts/' + encodeURIComponent(hostname) + '/token', { method: 'POST' });
+                        if (res.ok) {
+                            const body = await res.json();
+                            this.newToken = { ...body, regen: true };
+                            this.loadTokens();
+                            this.toast('Token regenerated for ' + hostname);
+                        } else if (res.status === 404) {
+                            this.toast('Host not found', 'err');
+                        } else {
+                            this.toast('Failed to regenerate token', 'err');
                         }
                     } catch (_) { this.toast('Network error', 'err'); }
                 },
