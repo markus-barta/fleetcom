@@ -121,6 +121,10 @@ func Heartbeat(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 		}
 
 		// Return interval + optional command so agents can adapt and act.
+		// Also piggyback any pending host_commands so bosun can dispatch
+		// them without a second round-trip. PendingCommandsForHost flips
+		// them to 'executing' atomically so each command is handed out
+		// exactly once across heartbeats.
 		w.Header().Set("Content-Type", "application/json")
 		resp := map[string]any{
 			"ok":       true,
@@ -128,6 +132,11 @@ func Heartbeat(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 		}
 		if command != "" {
 			resp["command"] = command
+		}
+		if cmds, err := store.PendingCommandsForHost(hostname); err == nil && len(cmds) > 0 {
+			resp["commands"] = cmds
+		} else if err != nil {
+			log.Printf("pending commands for %s: %v", hostname, err)
 		}
 		json.NewEncoder(w).Encode(resp)
 	}

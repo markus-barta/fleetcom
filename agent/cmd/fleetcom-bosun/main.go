@@ -226,11 +226,12 @@ func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []Agent
 		return
 	}
 
-	// Read server-provided interval + optional command
+	// Read server-provided interval + optional command + pending work.
 	var result struct {
-		OK       bool   `json:"ok"`
-		Interval int    `json:"interval"`
-		Command  string `json:"command,omitempty"`
+		OK       bool          `json:"ok"`
+		Interval int           `json:"interval"`
+		Command  string        `json:"command,omitempty"`
+		Commands []hostCommand `json:"commands,omitempty"`
 	}
 	if err := json.Unmarshal(resp, &result); err == nil {
 		if result.Interval >= 10 {
@@ -242,6 +243,9 @@ func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []Agent
 		}
 		if result.Command != "" {
 			handleServerCommand(result.Command)
+		}
+		if len(result.Commands) > 0 {
+			dispatchCommands(result.Commands, serverURL, token)
 		}
 	}
 

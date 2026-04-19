@@ -118,6 +118,24 @@ func main() {
 		}
 	}()
 
+	// FLEET-60: command expiry. A command in 'executing' with picked_at
+	// older than 5m means bosun either crashed mid-execution or its
+	// reply POST got lost. Mark them failed so the UI doesn't show them
+	// as forever-in-progress. Runs separately from the 6h cleanup loop
+	// because 5m latency matters here.
+	go func() {
+		const stuckMaxAge = 5 * time.Minute
+		t := time.NewTicker(2 * time.Minute)
+		defer t.Stop()
+		for range t.C {
+			if n, err := store.ExpireStuckCommands(stuckMaxAge); err != nil {
+				log.Printf("command expiry failed: %v", err)
+			} else if n > 0 {
+				log.Printf("expired %d stuck host commands", n)
+			}
+		}
+	}()
+
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
@@ -135,6 +153,8 @@ func main() {
 	r.Post("/api/agent-events", api.AgentEvents(store, hub))
 	// FLEET-51: bridge registration — bosun-bearer-authenticated, public endpoint.
 	r.Post("/api/bridges/register", api.RegisterBridge(store, hub))
+	// FLEET-60: bosun reports command results here (bosun-bearer auth).
+	r.Post("/api/command-results", api.CommandResults(store, hub))
 
 	// Auth routes (public)
 	r.Get("/login", api.LoginPage)
@@ -176,6 +196,12 @@ func main() {
 		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/auto-approve/{mode}", api.SetGatewayAutoApprove(store, hub))
 		r.With(auth.RequireAdmin).Get("/api/bridges", api.ListBridges(store))
 		r.With(auth.RequireAdmin).Delete("/api/bridges/{host}/{agent}", api.RevokeBridge(store, hub, ocMgr))
+
+		// FLEET-60: bosun command channel — admin issues work, bosun
+		// picks it up via heartbeat response, reports back here.
+		r.With(auth.RequireAdmin).Post("/api/hosts/{host}/commands", api.EnqueueCommand(store))
+		r.With(auth.RequireAdmin).Get("/api/hosts/{host}/commands", api.ListCommands(store))
+		r.With(auth.RequireAdmin).Post("/api/commands/{id}/cancel", api.CancelCommand(store))
 		r.Get("/api/history", api.History(store))
 		r.Get("/api/ignored", api.ListIgnored(store))
 		r.Post("/api/ignore", api.AddIgnore(store))
