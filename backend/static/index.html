@@ -563,7 +563,11 @@
 
         .card-head {
             display: flex;
-            align-items: flex-start;
+            /* align-items: stretch so left+right columns share height —
+               the comment flows in the left column under the hostname,
+               the meta stack lives in the right column, and both extend
+               to the height of the taller. */
+            align-items: stretch;
             justify-content: space-between;
             gap: 1rem;
             margin-bottom: 0.25rem;
@@ -602,6 +606,13 @@
         }
         .card-head-left {
             display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            min-width: 0;
+            flex: 1 1 0;
+        }
+        .card-head-identity {
+            display: flex;
             align-items: center;
             gap: 0.6rem;
             min-width: 0;
@@ -618,21 +629,22 @@
             font-variant-numeric: tabular-nums;
             white-space: nowrap;
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-        }
-        /* Reserve 3 lines of comment space so all cards align */
-        .card-comment-slot {
-            min-height: calc(10px * 1.4 * 3);
-            margin-top: 0.35rem;
+            flex: 0 0 auto;
         }
         .card-comment {
             font-size: 10px;
             line-height: 1.4;
             color: var(--ink-ghost);
             white-space: pre-line;
-            max-height: 3.6em;
+            max-height: 5.6em;
             overflow: hidden;
             letter-spacing: 0.01em;
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+            /* Comment lives in card-head-left now, directly under the
+               hostname row. Previously sat in a separate slot below
+               .card-head with a 3-line height reservation — removed
+               because the slot approach left a big gap between hostname
+               and subtitle when the right column was taller. */
         }
         /* Hostname icon */
         .hostname-icon {
@@ -2715,9 +2727,12 @@
 
                                     <div class="card-head">
                                         <div class="card-head-left">
-                                            <i data-lucide="server" class="hostname-icon"></i>
-                                            <span class="hostname" x-text="host.hostname"></span>
-                                            <span class="state-pill" x-text="stateLabel(hostStatus(host))"></span>
+                                            <div class="card-head-identity">
+                                                <i data-lucide="server" class="hostname-icon"></i>
+                                                <span class="hostname" x-text="host.hostname"></span>
+                                                <span class="state-pill" x-text="stateLabel(hostStatus(host))"></span>
+                                            </div>
+                                            <div class="card-comment" x-show="hostConfigs[host.hostname] && hostConfigs[host.hostname].comment" x-text="(hostConfigs[host.hostname] || {}).comment || ''"></div>
                                         </div>
                                         <div class="card-head-right">
                                             <div>
@@ -2746,9 +2761,6 @@
                                         </div>
                                     </div>
 
-                                    <div class="card-comment-slot">
-                                        <div class="card-comment" x-show="hostConfigs[host.hostname] && hostConfigs[host.hostname].comment" x-text="(hostConfigs[host.hostname] || {}).comment || ''"></div>
-                                    </div>
 
                                     <div class="strip-block host-strip" x-init="mountStrip($el, 'host', host.hostname, { kind: 'host' })"></div>
 
@@ -2880,9 +2892,12 @@
 
                                     <div class="card-head">
                                         <div class="card-head-left">
-                                            <i data-lucide="server" class="hostname-icon"></i>
-                                            <span class="hostname" x-text="host.hostname"></span>
-                                            <span class="state-pill" x-text="stateLabel(hostStatus(host))"></span>
+                                            <div class="card-head-identity">
+                                                <i data-lucide="server" class="hostname-icon"></i>
+                                                <span class="hostname" x-text="host.hostname"></span>
+                                                <span class="state-pill" x-text="stateLabel(hostStatus(host))"></span>
+                                            </div>
+                                            <div class="card-comment" x-show="hostConfigs[host.hostname] && hostConfigs[host.hostname].comment" x-text="(hostConfigs[host.hostname] || {}).comment || ''"></div>
                                         </div>
                                         <div class="card-head-right">
                                             <!-- Meta column: identity → freshness → live stats → version.
@@ -2914,9 +2929,6 @@
                                         </div>
                                     </div>
 
-                                    <div class="card-comment-slot">
-                                        <div class="card-comment" x-show="hostConfigs[host.hostname] && hostConfigs[host.hostname].comment" x-text="(hostConfigs[host.hostname] || {}).comment || ''"></div>
-                                    </div>
 
                                     <!-- Host status history — promoted to right under the header. -->
                                     <div class="strip-block host-strip" x-init="mountStrip($el, 'host', host.hostname, { kind: 'host' })"></div>
