@@ -727,6 +727,38 @@
         .card.state-warn .card-head-right .seen { color: var(--warn); }
         .card.state-crit .card-head-right .seen { color: var(--crit); font-weight: 600; }
 
+        /* Detail view top-right meta column — right-aligned identity → seen →
+           live stats → version. Each row is visually distinct, but the whole
+           block reads as one unit. The version row uses the hover-reveal
+           build-time trick from the Normal view (agent-version-line-compact). */
+        .card-meta {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 0.35rem;
+            font-variant-numeric: tabular-nums;
+        }
+        .card-meta-id {
+            color: var(--ink-dim);
+            font-size: 12px;
+            letter-spacing: 0.02em;
+        }
+        .card-meta-seen {
+            color: var(--ink-ghost);
+            font-size: 10px;
+            letter-spacing: 0.04em;
+        }
+        .card.state-warn .card-meta-seen { color: var(--warn); }
+        .card.state-crit .card-meta-seen { color: var(--crit); font-weight: 600; }
+        .card-meta-stats {
+            display: flex;
+            gap: 5px;
+            margin-top: 0.1rem;
+        }
+        .card-meta .agent-version-line-compact {
+            margin-top: 0.05rem;
+        }
+
         .card-section {
             margin-top: 3rem;
         }
@@ -2853,19 +2885,24 @@
                                             <span class="state-pill" x-text="stateLabel(hostStatus(host))"></span>
                                         </div>
                                         <div class="card-head-right">
-                                            <div>
-                                                <div x-text="(host.os || 'unknown') + (host.uptime_seconds ? ' · up ' + formatUptime(host.uptime_seconds) : '')"></div>
-                                                <div class="seen" x-text="'seen ' + formatAgo(host.last_seen)"></div>
-                                                <div class="hw-chips" x-show="host.hw_live">
+                                            <!-- Meta column: identity → freshness → live stats → version.
+                                                 Right-aligned stack with uniform chip styling so the eye
+                                                 scans it as one block, not four separate bits.  -->
+                                            <div class="card-meta">
+                                                <div class="card-meta-id" x-text="(host.os || 'unknown') + (host.uptime_seconds ? ' · up ' + formatUptime(host.uptime_seconds) : '')"></div>
+                                                <div class="card-meta-seen" x-text="'seen ' + formatAgo(host.last_seen)"></div>
+                                                <div class="card-meta-stats" x-show="host.hw_live">
                                                     <span class="hw-chip" :title="'CPU load 1m: ' + (host.hw_live ? host.hw_live.cpu_load_1.toFixed(2) : '—')"><span class="hw-chip-k">CPU</span><span class="hw-chip-v" x-text="hwCpuPct(host) != null ? hwCpuPct(host) + '%' : '—'"></span></span>
                                                     <span class="hw-chip" :title="'Memory: ' + (host.hw_live && host.hw_live.mem_used_bytes ? formatBytes(host.hw_live.mem_used_bytes) + ' / ' + formatBytes(host.hw_live.mem_total_bytes) : '—')"><span class="hw-chip-k">RAM</span><span class="hw-chip-v" x-text="hwMemPct(host) != null ? hwMemPct(host) + '%' : '—'"></span></span>
                                                     <template x-if="hwCpuTemp(host) != null">
                                                         <span class="hw-chip" :class="hwTempLevel(hwCpuTemp(host))" title="CPU temperature"><span class="hw-chip-k">°C</span><span class="hw-chip-v" x-text="hwCpuTemp(host)"></span></span>
                                                     </template>
                                                 </div>
-                                                <div class="agent-version-line">
+                                                <div class="agent-version-line agent-version-line-compact" :title="agentVersionLabel(host) + (isOutdatedAgent(host) ? ' · expected ' + expectedAgentVersion : '')">
                                                     <template x-if="isOutdatedAgent(host)"><svg class="agent-alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></template>
-                                                    <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionLabel(host)"></span>
+                                                    <svg class="agent-version-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1" fill="currentColor"/></svg>
+                                                    <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionShort(host)"></span>
+                                                    <span class="agent-version-rest" x-show="agentVersionRest(host)" x-text="agentVersionRest(host)"></span>
                                                     <template x-if="isAgentStale(host)">
                                                         <span class="agent-stale-mark" title="Agent has not been updated in over 24h. Docker hosts should auto-update daily via watchtower; legacy hosts need manual rollout.">!</span>
                                                     </template>
