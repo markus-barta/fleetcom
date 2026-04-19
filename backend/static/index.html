@@ -2991,6 +2991,8 @@
                         <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'config' && 'active'" @click="settingsTab = 'config'">Config</button>
                         <button class="settings-tab" :class="settingsTab === 'account' && 'active'" @click="settingsTab = 'account'; loadMySessions()">Account</button>
                         <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'users' && 'active'" @click="settingsTab = 'users'; loadUsers()">Users</button>
+                        <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'gateways' && 'active'" @click="settingsTab = 'gateways'; loadGateways()">Gateways</button>
+                        <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'bridges' && 'active'" @click="settingsTab = 'bridges'; loadBridges()">Bridges</button>
                         <span class="tab-spacer"></span>
                         <button class="settings-tab" :class="settingsTab === 'docs' && 'active'" @click="settingsTab = 'docs'">Docs</button>
                     </div>
@@ -3451,6 +3453,81 @@
                                             </template>
                                         </div>
                                     </div>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- Gateways tab -->
+                    <template x-if="settingsTab === 'gateways'">
+                        <div>
+                            <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em; margin-bottom: 1rem;">
+                                OpenClaw gateways FleetCom has paired with. Auto-approve lets FleetCom approve bridge pairing requests on a gateway without manual UI clicks once the bridge has registered here with a valid host bearer token.
+                            </p>
+
+                            <ul class="token-list">
+                                <template x-for="g in gateways" :key="g.id">
+                                    <li>
+                                        <div>
+                                            <span class="hostname" x-text="g.host"></span>
+                                            <span class="created">
+                                                <span x-text="g.status"></span>
+                                                <template x-if="g.paired_at">
+                                                    <span x-text="' · paired ' + formatTs(g.paired_at)"></span>
+                                                </template>
+                                                <template x-if="g.url">
+                                                    <span x-text="' · ' + g.url"></span>
+                                                </template>
+                                            </span>
+                                        </div>
+                                        <label style="display:flex;align-items:center;gap:0.4rem;font-size:10px;color:var(--ink-dim);cursor:pointer;">
+                                            <input type="checkbox" :checked="g.auto_approve_bridges"
+                                                @change="toggleAutoApprove(g.host, $event.target.checked)">
+                                            auto-approve
+                                        </label>
+                                    </li>
+                                </template>
+                            </ul>
+
+                            <template x-if="gateways.length === 0">
+                                <div class="empty-state" style="padding: 2rem;">
+                                    <p>No OpenClaw gateways registered yet. Gateways appear here once bosun reports one on a host.</p>
+                                </div>
+                            </template>
+                        </div>
+                    </template>
+
+                    <!-- Bridges tab -->
+                    <template x-if="settingsTab === 'bridges'">
+                        <div>
+                            <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em; margin-bottom: 1rem;">
+                                Agent-bridges registered with FleetCom. Pending rows are waiting for gateway approval; approved rows are actively relaying events. Revoking drops the pairing — the bridge will re-register and re-pair on next boot.
+                            </p>
+
+                            <ul class="token-list">
+                                <template x-for="b in bridges" :key="b.id">
+                                    <li>
+                                        <div>
+                                            <span class="hostname" x-text="b.host + ' / ' + b.agent"></span>
+                                            <span class="created">
+                                                <span x-text="b.status"></span>
+                                                <span x-text="' · fp ' + (b.pubkey_fp || '').slice(0, 12)"></span>
+                                                <template x-if="b.approved_at">
+                                                    <span x-text="' · approved ' + formatTs(b.approved_at)"></span>
+                                                </template>
+                                                <template x-if="b.last_seen_at">
+                                                    <span x-text="' · seen ' + formatTs(b.last_seen_at)"></span>
+                                                </template>
+                                            </span>
+                                        </div>
+                                        <button class="btn btn-danger" @click="revokeBridge(b.host, b.agent)">Revoke</button>
+                                    </li>
+                                </template>
+                            </ul>
+
+                            <template x-if="bridges.length === 0">
+                                <div class="empty-state" style="padding: 2rem;">
+                                    <p>No bridges registered yet. Bridges appear here as soon as they POST to <code>/api/bridges/register</code>.</p>
                                 </div>
                             </template>
                         </div>
@@ -3928,6 +4005,9 @@ WantedBy=multi-user.target</pre>
                 // Icon import
                 importFile: null,
                 importOverwrite: false,
+                // Gateways + Bridges (FLEET-51)
+                gateways: [],
+                bridges: [],
 
                 init() {
                     this.viewMode = localStorage.getItem('fleetcom.view') || 'normal';
@@ -4053,7 +4133,7 @@ WantedBy=multi-user.target</pre>
                         if (res.ok) {
                             this.currentUser = await res.json();
                             // Non-admins have no access to the admin-only tabs; land them on Account.
-                            if (this.currentUser && this.currentUser.role !== 'admin' && (this.settingsTab === 'hosts' || this.settingsTab === 'icons' || this.settingsTab === 'sharing' || this.settingsTab === 'config')) {
+                            if (this.currentUser && this.currentUser.role !== 'admin' && (this.settingsTab === 'hosts' || this.settingsTab === 'icons' || this.settingsTab === 'sharing' || this.settingsTab === 'config' || this.settingsTab === 'gateways' || this.settingsTab === 'bridges')) {
                                 this.settingsTab = 'account';
                             }
                         }
@@ -4415,6 +4495,18 @@ WantedBy=multi-user.target</pre>
                         }
                     });
 
+                    this.es.addEventListener('gateways', (e) => {
+                        try {
+                            this.gateways = JSON.parse(e.data) || [];
+                        } catch (_) {}
+                    });
+
+                    this.es.addEventListener('bridges', (e) => {
+                        try {
+                            this.bridges = JSON.parse(e.data) || [];
+                        } catch (_) {}
+                    });
+
                     this.es.addEventListener('agents', (e) => {
                         try {
                             this.agentsObs = JSON.parse(e.data) || [];
@@ -4537,6 +4629,8 @@ WantedBy=multi-user.target</pre>
                     if (this.settingsTab === 'hosts') this.loadTokens();
                     else if (this.settingsTab === 'sharing') this.loadShares();
                     else if (this.settingsTab === 'ignored') this.loadIgnoredList();
+                    else if (this.settingsTab === 'gateways') this.loadGateways();
+                    else if (this.settingsTab === 'bridges') this.loadBridges();
                 },
 
                 // ---------- ignored entities ----------
@@ -5382,6 +5476,41 @@ WantedBy=multi-user.target</pre>
                 async loadShares() {
                     const res = await fetch('/api/shares');
                     if (res.ok) this.shares = await res.json() || [];
+                },
+
+                // ---------- gateways + bridges (FLEET-51) ----------
+                async loadGateways() {
+                    const res = await fetch('/api/gateways');
+                    if (res.ok) this.gateways = await res.json() || [];
+                },
+
+                async loadBridges() {
+                    const res = await fetch('/api/bridges');
+                    if (res.ok) this.bridges = await res.json() || [];
+                },
+
+                async toggleAutoApprove(host, on) {
+                    try {
+                        const res = await fetch('/api/gateways/' + encodeURIComponent(host) + '/auto-approve/' + (on ? 'on' : 'off'), { method: 'POST' });
+                        if (res.ok) {
+                            this.toast('Auto-approve ' + (on ? 'enabled' : 'disabled') + ' for ' + host);
+                        } else {
+                            this.toast('Failed to toggle auto-approve', 'err');
+                            this.loadGateways();
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                async revokeBridge(host, agent) {
+                    if (!confirm('Revoke bridge ' + agent + ' on ' + host + '? The bridge will re-register on next boot.')) return;
+                    try {
+                        const res = await fetch('/api/bridges/' + encodeURIComponent(host) + '/' + encodeURIComponent(agent), { method: 'DELETE' });
+                        if (res.ok || res.status === 204) {
+                            this.toast('Bridge revoked');
+                        } else {
+                            this.toast('Failed to revoke bridge', 'err');
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
                 },
 
                 async createShare() {
