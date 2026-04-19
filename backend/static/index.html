@@ -2369,6 +2369,138 @@
             margin-bottom: 0.4rem;
         }
 
+        /* Host drawer (FLEET-66) — wider than agent drawer, tabs at top */
+        .drawer.drawer-host { width: min(720px, 100vw); }
+        .drawer.drawer-host.drawer-with-agent { right: min(560px, 100vw); }
+        @media (max-width: 720px) {
+            .drawer.drawer-host { width: 100vw; }
+        }
+        .drawer-tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--line);
+            flex-shrink: 0;
+            background: var(--bg-0);
+        }
+        .drawer-tab {
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: var(--ink-ghost);
+            cursor: pointer;
+            padding: 0.55rem 1rem;
+            font-size: 10px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            font-weight: 600;
+            font-family: inherit;
+            transition: color 0.12s, border-color 0.12s;
+        }
+        .drawer-tab:hover { color: var(--ink-dim); }
+        .drawer-tab.is-active {
+            color: var(--ink);
+            border-bottom-color: var(--accent, var(--ink));
+        }
+        .drawer-tab-count {
+            display: inline-block;
+            margin-left: 0.3rem;
+            color: var(--ink-faint);
+            font-weight: 400;
+            font-size: 9px;
+        }
+        .drawer-tab-active-dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--warn);
+            margin-left: 0.35rem;
+            vertical-align: middle;
+            animation: updpulse 1.2s ease-in-out infinite;
+        }
+
+        /* Clickable card-head affordance (FLEET-66) */
+        .card-head-clickable {
+            cursor: pointer;
+            border-radius: 3px;
+            transition: background 0.1s;
+        }
+        .card-head-clickable:hover { background: rgba(255,255,255,0.03); }
+        .card-head-clickable::after {
+            content: '›';
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--ink-faint);
+            font-size: 20px;
+            line-height: 1;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.12s, right 0.12s;
+        }
+        .card-head-clickable:hover::after { opacity: 0.9; right: 8px; }
+        /* Compact-row click affordance */
+        tr.row-clickable { cursor: pointer; }
+        tr.row-clickable:hover { background: rgba(255,255,255,0.03); }
+
+        /* Container chip ellipsis menu button (FLEET-70) */
+        .chip-more {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 18px;
+            height: 18px;
+            padding: 0;
+            border: none;
+            background: transparent;
+            color: var(--ink-ghost);
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            border-radius: 3px;
+            opacity: 0.35;
+            transition: opacity 0.12s, background 0.12s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .chip-container:hover .chip-more,
+        .chip-agent-rich:hover .chip-more { opacity: 0.85; }
+        .chip-more:hover { opacity: 1 !important; background: rgba(255,255,255,0.08); }
+        @media (hover: none) { .chip-more { opacity: 0.7; } }
+        .chip-container, .chip-agent-rich { position: relative; }
+
+        /* Drawer OVERVIEW integrations block */
+        .drawer-integ {
+            display: flex; flex-direction: column;
+            gap: 0.5rem;
+        }
+        .drawer-integ-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            padding: 0.55rem 0.75rem;
+            background: var(--bg-0);
+            border: 1px solid var(--line);
+            border-radius: 3px;
+            font-size: 11px;
+        }
+        .drawer-integ-row .k {
+            color: var(--ink-ghost);
+            font-size: 9px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        .drawer-integ-row .v {
+            color: var(--ink);
+            font-family: ui-monospace, monospace;
+            font-size: 11px;
+            word-break: break-all;
+        }
+
         /* Current turn span visualisation (user → LLM → tool → reply) */
         .turn-span {
             display: flex;
@@ -2717,20 +2849,19 @@
                         <div class="grid">
                             <template x-for="host in hosts" :key="host.hostname">
                                 <div class="card"
-                                     :class="['state-' + hostStatus(host), isIgnored('host', host.hostname) ? 'is-ignored' : '', hostHasStuckAgent(host) ? 'has-stuck-agent' : '']"
-                                     @contextmenu.prevent="showCtxMenu($event, 'host', host.hostname)">
+                                     :class="['state-' + hostStatus(host), isIgnored('host', host.hostname) ? 'is-ignored' : '', hostHasStuckAgent(host) ? 'has-stuck-agent' : '']">
                                     <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].image_preset_id">
                                         <div class="card-bg-img">
                                             <img :src="'/api/image-presets/' + hostConfigs[host.hostname].image_preset_id + '/image'" :alt="host.hostname">
                                         </div>
                                     </template>
 
-                                    <button class="card-gear" @click.stop="openHostConfig(host.hostname)" title="Edit how this host appears on the dashboard (icon, label, comment)">
-                                        <span class="card-gear-label">Display</span>
+                                    <button class="card-gear" @click.stop="openHostDrawer(host.hostname, 'settings')" title="Open host settings (display config, lifecycle, integrations)">
+                                        <span class="card-gear-label">Settings</span>
                                         <i data-lucide="settings"></i>
                                     </button>
 
-                                    <div class="card-head">
+                                    <div class="card-head card-head-clickable" @click="openHostDrawer(host.hostname)" :title="'Open ' + host.hostname + ' drawer'" style="position:relative;">
                                         <div class="card-head-left">
                                             <div class="card-head-identity">
                                                 <i data-lucide="server" class="hostname-icon"></i>
@@ -2779,13 +2910,14 @@
                                                     <div class="chip chip-container"
                                                          :class="['s-' + containerStatus(c), isChipOpen('container', host.hostname + '/' + c.name) ? 'is-open' : '', isIgnored('container', host.hostname + '/' + c.name) ? 'is-ignored' : '', c.crash_loop ? 'crash-loop' : '', c.oom_killed ? 'oom-killed' : '']"
                                                          :title="c.name + ' · ' + c.state + (c.health ? ' · ' + c.health : '') + (containerUptime(c) ? ' · up ' + containerUptime(c) : '') + (c.restart_count ? ' · ' + c.restart_count + '× restarted' : '') + (c.crash_loop ? ' · CRASH LOOP' : '') + (c.oom_killed ? ' · OOM KILLED' : '') + (c.exit_code && c.state !== 'running' ? ' · ' + exitCodeLabel(c.exit_code) : '')"
-                                                         @click="toggleChip('container', host.hostname + '/' + c.name)"
-                                                         @contextmenu.prevent.stop="showCtxMenu($event, 'container', host.hostname + '/' + c.name)">
+                                                         @click="toggleChip('container', host.hostname + '/' + c.name)">
                                                         <svg class="crate" viewBox="0 0 24 24"><use href="#icon-container"/></svg>
                                                         <span class="name" x-text="c.name"></span>
                                                         <template x-if="containerHealthLabel(c)">
                                                             <span class="health-badge" :class="'s-' + containerStatus(c)" x-text="containerHealthLabel(c)"></span>
                                                         </template>
+                                                        <button class="chip-more" title="Actions"
+                                                                @click.stop="showChipMenu($event, 'container', host.hostname + '/' + c.name)">⋯</button>
                                                     </div>
                                                 </template>
                                             </div>
@@ -2808,10 +2940,9 @@
                                                     <div class="agent-chip-slot" style="display:contents">
                                                         <template x-if="agentHasObs(host.hostname, a.name)">
                                                             <div class="chip chip-agent-rich"
-                                                                 :class="'as-' + agentState(host.hostname, a.name).key"
+                                                                 :class="['as-' + agentState(host.hostname, a.name).key, isIgnored('agent', host.hostname + '/' + a.name) ? 'is-ignored' : '']"
                                                                  :title="a.name + ' · ' + a.status + ' · click for detail'"
-                                                                 @click="openAgentDrawer(host.hostname, a.name)"
-                                                                 @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
+                                                                 @click="openAgentDrawer(host.hostname, a.name)">
                                                                 <span class="ar-dot"></span>
                                                                 <span class="ar-name" x-text="a.name"></span>
                                                                 <span class="ar-sep">·</span>
@@ -2828,8 +2959,7 @@
                                                             <div class="chip chip-agent"
                                                                  :class="['s-' + agentStatus(a), isChipOpen('agent', host.hostname + '/' + a.name) ? 'is-open' : '', isIgnored('agent', host.hostname + '/' + a.name) ? 'is-ignored' : '']"
                                                                  :title="a.name + ' · ' + a.status"
-                                                                 @click="toggleChip('agent', host.hostname + '/' + a.name)"
-                                                                 @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
+                                                                 @click="toggleChip('agent', host.hostname + '/' + a.name)">
                                                                 <i data-lucide="sparkles" class="spark"></i>
                                                                 <span class="name" x-text="a.name"></span>
                                                             </div>
@@ -2882,20 +3012,19 @@
                         <div class="grid-detail">
                             <template x-for="host in hosts" :key="host.hostname">
                                 <div class="card"
-                                     :class="['state-' + hostStatus(host), isIgnored('host', host.hostname) ? 'is-ignored' : '', hostHasStuckAgent(host) ? 'has-stuck-agent' : '']"
-                                     @contextmenu.prevent="showCtxMenu($event, 'host', host.hostname)">
+                                     :class="['state-' + hostStatus(host), isIgnored('host', host.hostname) ? 'is-ignored' : '', hostHasStuckAgent(host) ? 'has-stuck-agent' : '']">
                                     <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].image_preset_id">
                                         <div class="card-bg-img">
                                             <img :src="'/api/image-presets/' + hostConfigs[host.hostname].image_preset_id + '/image'" :alt="host.hostname">
                                         </div>
                                     </template>
 
-                                    <button class="card-gear" @click.stop="openHostConfig(host.hostname)" title="Edit how this host appears on the dashboard (icon, label, comment)">
-                                        <span class="card-gear-label">Display</span>
+                                    <button class="card-gear" @click.stop="openHostDrawer(host.hostname, 'settings')" title="Open host settings (display config, lifecycle, integrations)">
+                                        <span class="card-gear-label">Settings</span>
                                         <i data-lucide="settings"></i>
                                     </button>
 
-                                    <div class="card-head">
+                                    <div class="card-head card-head-clickable" @click="openHostDrawer(host.hostname)" :title="'Open ' + host.hostname + ' drawer'" style="position:relative;">
                                         <div class="card-head-left">
                                             <div class="card-head-identity">
                                                 <i data-lucide="server" class="hostname-icon"></i>
@@ -2949,10 +3078,9 @@
                                                     <div class="agent-chip-slot" style="display:contents">
                                                         <template x-if="agentHasObs(host.hostname, a.name)">
                                                             <div class="chip chip-agent-rich"
-                                                                 :class="'as-' + agentState(host.hostname, a.name).key"
+                                                                 :class="['as-' + agentState(host.hostname, a.name).key, isIgnored('agent', host.hostname + '/' + a.name) ? 'is-ignored' : '']"
                                                                  :title="a.name + ' · ' + a.status + ' · click for detail'"
-                                                                 @click="openAgentDrawer(host.hostname, a.name)"
-                                                                 @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
+                                                                 @click="openAgentDrawer(host.hostname, a.name)">
                                                                 <span class="ar-dot"></span>
                                                                 <span class="ar-name" x-text="a.name"></span>
                                                                 <span class="ar-sep">·</span>
@@ -2969,8 +3097,7 @@
                                                             <div class="chip chip-agent"
                                                                  :class="['s-' + agentStatus(a), isChipOpen('agent', host.hostname + '/' + a.name) ? 'is-open' : '', isIgnored('agent', host.hostname + '/' + a.name) ? 'is-ignored' : '']"
                                                                  :title="a.name + ' · ' + a.status + ' · ' + (a.agent_type || '')"
-                                                                 @click="toggleChip('agent', host.hostname + '/' + a.name)"
-                                                                 @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
+                                                                 @click="toggleChip('agent', host.hostname + '/' + a.name)">
                                                                 <i data-lucide="sparkles" class="spark"></i>
                                                                 <span class="name" x-text="a.name"></span>
                                                             </div>
@@ -2996,8 +3123,7 @@
                                                     <div class="chip chip-container"
                                                          :class="['s-' + containerStatus(c), isChipOpen('container', host.hostname + '/' + c.name) ? 'is-open' : '', isIgnored('container', host.hostname + '/' + c.name) ? 'is-ignored' : '', c.crash_loop ? 'crash-loop' : '', c.oom_killed ? 'oom-killed' : '']"
                                                          :title="c.name + ' · ' + c.state + (c.health ? ' · ' + c.health : '') + ' · ' + (c.image || '') + (containerUptime(c) ? ' · up ' + containerUptime(c) : '') + (c.restart_count ? ' · ' + c.restart_count + '× restarted' : '') + (c.crash_loop ? ' · CRASH LOOP' : '') + (c.oom_killed ? ' · OOM KILLED' : '') + (c.exit_code && c.state !== 'running' ? ' · ' + exitCodeLabel(c.exit_code) : '')"
-                                                         @click="toggleChip('container', host.hostname + '/' + c.name)"
-                                                         @contextmenu.prevent.stop="showCtxMenu($event, 'container', host.hostname + '/' + c.name)">
+                                                         @click="toggleChip('container', host.hostname + '/' + c.name)">
                                                         <svg class="crate" viewBox="0 0 24 24"><use href="#icon-container"/></svg>
                                                         <span class="name" x-text="c.name"></span>
                                                         <template x-if="containerHealthLabel(c)">
@@ -3006,6 +3132,8 @@
                                                         <template x-if="containerUptime(c) && !containerHealthLabel(c)">
                                                             <span class="uptime-badge" x-text="containerUptime(c)"></span>
                                                         </template>
+                                                        <button class="chip-more" title="Actions"
+                                                                @click.stop="showChipMenu($event, 'container', host.hostname + '/' + c.name)">⋯</button>
                                                     </div>
                                                 </template>
                                             </div>
@@ -3147,7 +3275,7 @@
                             </thead>
                             <tbody>
                                 <template x-for="host in hosts" :key="host.hostname">
-                                    <tr :class="'row-' + hostStatus(host)">
+                                    <tr :class="['row-' + hostStatus(host), 'row-clickable']" @click="openHostDrawer(host.hostname)">
                                         <td class="col-state"><span class="dot"></span></td>
                                         <td class="col-host" x-text="host.hostname"></td>
                                         <td x-text="stateLabel(hostStatus(host))"></td>
@@ -4022,10 +4150,10 @@ WantedBy=multi-user.target</pre>
                 </div>
             </template>
 
-            <!-- Context menu -->
+            <!-- Legacy right-click context menu (kept for non-container entities still using it;
+                 container chips now use the ellipsis menu below — FLEET-70). -->
             <template x-if="ctxMenu">
                 <div class="ctx-menu" :style="'left:' + ctxMenu.x + 'px;top:' + ctxMenu.y + 'px'" @click.outside="ctxMenu = null">
-                    <!-- FLEET-62: container actions (admin only). ctxMenu.key is "host/name". -->
                     <template x-if="ctxMenu.type === 'container' && currentUser && currentUser.role === 'admin'">
                         <button @click="restartContainer(ctxMenu.key); ctxMenu = null">
                             Restart container
@@ -4036,6 +4164,26 @@ WantedBy=multi-user.target</pre>
                     </button>
                     <button x-show="ctxMenu.ignored" @click="unignoreEntity(ctxMenu.type, ctxMenu.key); ctxMenu = null">
                         Unignore <span x-text="ctxMenu.type"></span>
+                    </button>
+                </div>
+            </template>
+
+            <!-- FLEET-70 — ellipsis (⋯) dropdown. Click-triggered, positioned
+                 under the chip's ⋯ button. Same button layout as the legacy
+                 ctx-menu so users see the same actions via a discoverable,
+                 touch-friendly affordance. -->
+            <template x-if="chipMenu">
+                <div class="ctx-menu" :style="'left:' + chipMenu.x + 'px;top:' + chipMenu.y + 'px'" @click.outside="chipMenu = null">
+                    <template x-if="chipMenu.type === 'container' && currentUser && currentUser.role === 'admin'">
+                        <button @click="restartContainer(chipMenu.key); chipMenu = null">
+                            Restart container
+                        </button>
+                    </template>
+                    <button x-show="!chipMenu.ignored" @click="ignoreEntity(chipMenu.type, chipMenu.key); chipMenu = null">
+                        Ignore <span x-text="chipMenu.type"></span>
+                    </button>
+                    <button x-show="chipMenu.ignored" @click="unignoreEntity(chipMenu.type, chipMenu.key); chipMenu = null">
+                        Unignore <span x-text="chipMenu.type"></span>
                     </button>
                 </div>
             </template>
@@ -4068,8 +4216,8 @@ WantedBy=multi-user.target</pre>
              x-show / x-for / @click bindings resolve.
         ===================================================================== -->
         <div class="drawer-backdrop"
-             :class="(agentDrawerKey || activityOpen) ? 'is-open' : ''"
-             @click="closeAgentDrawer(); activityOpen = false"></div>
+             :class="(agentDrawerKey || activityOpen || hostDrawerKey) ? 'is-open' : ''"
+             @click="closeAgentDrawer(); activityOpen = false; closeHostDrawer()"></div>
 
         <!-- Agent detail drawer -->
         <aside class="drawer drawer-agent"
@@ -4083,6 +4231,13 @@ WantedBy=multi-user.target</pre>
                 </div>
                 <template x-if="agentDrawerData && agentDrawerData.snapshot">
                     <span class="state-pill" x-text="agentDrawerData.snapshot.status.toUpperCase()"></span>
+                </template>
+                <!-- FLEET-70 — Ignore action moved here from the right-click menu -->
+                <template x-if="agentDrawerKey && !isIgnored('agent', agentDrawerKey)">
+                    <button class="btn btn-ghost" style="font-size:9px;padding:0.2rem 0.55rem;" @click="ignoreEntity('agent', agentDrawerKey)" title="Hide this agent from the dashboard and fleet counts.">Ignore</button>
+                </template>
+                <template x-if="agentDrawerKey && isIgnored('agent', agentDrawerKey)">
+                    <button class="btn btn-ghost" style="font-size:9px;padding:0.2rem 0.55rem;" @click="unignoreEntity('agent', agentDrawerKey)">Unignore</button>
                 </template>
                 <button class="drawer-close" @click="closeAgentDrawer()" title="Close (Esc)">&times;</button>
             </div>
@@ -4191,6 +4346,417 @@ WantedBy=multi-user.target</pre>
                             <span>excerpts</span>
                             <span x-text="agentDrawerData.snapshot.config.emit_excerpts ? 'enabled' : 'off (metadata-only)'"></span>
                         </div>
+                    </div>
+                </template>
+            </div>
+        </aside>
+
+        <!-- ====================================================================
+             Host drawer (FLEET-66/67/68/69) — drawer-first UX. Whole card-head
+             click opens this drawer on the OVERVIEW tab; pairGateway /
+             deployBridge callers can request COMMANDS tab to jump straight to
+             the live command history. Tabs switch without reloads; SSE events
+             ('gateways', 'bridges', 'commands', 'hosts') drive live updates
+             via existing Alpine reactivity.
+        ===================================================================== -->
+        <aside class="drawer drawer-host"
+               :class="[hostDrawerKey ? 'is-open' : '', agentDrawerKey ? 'drawer-with-agent' : '']"
+               @keydown.escape.window="closeHostDrawer()"
+               x-show="hostDrawerKey" style="display:none">
+            <!-- Header: hostname + state pill + OS/uptime/seen line + close -->
+            <template x-if="hostDrawerKey && hostByName(hostDrawerKey)">
+                <div class="drawer-head">
+                    <div style="min-width:0;">
+                        <div class="subtitle">Host</div>
+                        <div class="title" style="display:flex;align-items:center;gap:0.5rem;">
+                            <span x-text="hostDrawerKey"></span>
+                            <span class="state-pill" :class="'state-' + hostStatus(hostByName(hostDrawerKey))" x-text="stateLabel(hostStatus(hostByName(hostDrawerKey)))"></span>
+                        </div>
+                        <div style="color:var(--ink-ghost);font-size:10px;margin-top:2px;">
+                            <span x-text="(hostByName(hostDrawerKey).os || 'unknown')"></span>
+                            <template x-if="hostByName(hostDrawerKey).uptime_seconds">
+                                <span x-text="' · up ' + formatUptime(hostByName(hostDrawerKey).uptime_seconds)"></span>
+                            </template>
+                            <span x-text="' · seen ' + formatAgo(hostByName(hostDrawerKey).last_seen)"></span>
+                        </div>
+                    </div>
+                    <button class="drawer-close" @click="closeHostDrawer()" title="Close (Esc)" style="margin-left:auto">&times;</button>
+                </div>
+            </template>
+
+            <!-- Tab bar -->
+            <div class="drawer-tabs">
+                <button class="drawer-tab" :class="hostDrawerTab === 'overview' && 'is-active'" @click="hostDrawerTab = 'overview'">Overview</button>
+                <button class="drawer-tab" :class="hostDrawerTab === 'commands' && 'is-active'" @click="hostDrawerTab = 'commands'; openHostCommands(hostDrawerKey)">
+                    Commands
+                    <template x-if="hostDrawerCommandsPending(hostDrawerKey) > 0">
+                        <span class="drawer-tab-active-dot" :title="hostDrawerCommandsPending(hostDrawerKey) + ' in flight'"></span>
+                    </template>
+                </button>
+                <button class="drawer-tab" x-show="currentUser && currentUser.role === 'admin'" :class="hostDrawerTab === 'settings' && 'is-active'" @click="hostDrawerTab = 'settings'; seedHostConfigForm(hostDrawerKey); loadImagePresets()">Settings</button>
+            </div>
+
+            <!-- Tab body -->
+            <div class="drawer-body">
+                <!-- ============================================================ OVERVIEW -->
+                <template x-if="hostDrawerTab === 'overview' && hostByName(hostDrawerKey)">
+                    <div style="display:flex;flex-direction:column;gap:1.1rem" @keydown.escape.window="closeHostDrawer()">
+
+                        <!-- Comment (if any) -->
+                        <template x-if="hostConfigs[hostDrawerKey] && (hostConfigs[hostDrawerKey].comment || '').trim()">
+                            <div class="card-comment" x-text="hostConfigs[hostDrawerKey].comment"></div>
+                        </template>
+
+                        <!-- 15-min availability strip -->
+                        <div>
+                            <div class="drawer-section-label">Status · last 15 min</div>
+                            <div class="strip-block host-strip" x-init="mountStrip($el, 'host', hostDrawerKey, { kind: 'host' })"></div>
+                        </div>
+
+                        <!-- Agents (rich chips with live state) -->
+                        <template x-if="hostByName(hostDrawerKey).agents && hostByName(hostDrawerKey).agents.length > 0">
+                            <div>
+                                <div class="drawer-section-label">
+                                    Agents · <span x-text="countOnlineAgents(hostByName(hostDrawerKey).agents) + '/' + hostByName(hostDrawerKey).agents.length"></span>
+                                </div>
+                                <div class="chips">
+                                    <template x-for="a in hostByName(hostDrawerKey).agents" :key="a.name">
+                                        <div class="agent-chip-slot" style="display:contents">
+                                            <template x-if="agentHasObs(hostDrawerKey, a.name)">
+                                                <div class="chip chip-agent-rich"
+                                                     :class="['as-' + agentState(hostDrawerKey, a.name).key, isIgnored('agent', hostDrawerKey + '/' + a.name) ? 'is-ignored' : '']"
+                                                     :title="a.name + ' · ' + a.status + ' · click for detail'"
+                                                     @click="openAgentDrawer(hostDrawerKey, a.name)">
+                                                    <span class="ar-dot"></span>
+                                                    <span class="ar-name" x-text="a.name"></span>
+                                                    <span class="ar-sep">·</span>
+                                                    <span class="ar-state" x-text="agentState(hostDrawerKey, a.name).label"></span>
+                                                    <template x-if="agentState(hostDrawerKey, a.name).detail">
+                                                        <span class="ar-sep">·</span>
+                                                    </template>
+                                                    <template x-if="agentState(hostDrawerKey, a.name).detail">
+                                                        <span class="ar-detail" x-text="agentState(hostDrawerKey, a.name).detail"></span>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                            <template x-if="!agentHasObs(hostDrawerKey, a.name)">
+                                                <div class="chip chip-agent"
+                                                     :class="['s-' + agentStatus(a), isIgnored('agent', hostDrawerKey + '/' + a.name) ? 'is-ignored' : '']"
+                                                     :title="a.name + ' · ' + a.status">
+                                                    <i data-lucide="sparkles" class="spark"></i>
+                                                    <span class="name" x-text="a.name"></span>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- Containers (with ⋯ menu for restart/ignore — FLEET-70) -->
+                        <template x-if="hostByName(hostDrawerKey).containers && hostByName(hostDrawerKey).containers.length > 0">
+                            <div>
+                                <div class="drawer-section-label">
+                                    Containers · <span x-text="countRunning(hostByName(hostDrawerKey).containers) + '/' + hostByName(hostDrawerKey).containers.length"></span>
+                                </div>
+                                <div class="chips" :class="hostByName(hostDrawerKey).containers.length > 8 ? 'dense' : ''">
+                                    <template x-for="c in hostByName(hostDrawerKey).containers" :key="c.name">
+                                        <div class="chip chip-container"
+                                             :class="['s-' + containerStatus(c), isIgnored('container', hostDrawerKey + '/' + c.name) ? 'is-ignored' : '', c.crash_loop ? 'crash-loop' : '', c.oom_killed ? 'oom-killed' : '']"
+                                             :title="c.name + ' · ' + c.state + (c.health ? ' · ' + c.health : '') + (containerUptime(c) ? ' · up ' + containerUptime(c) : '') + (c.restart_count ? ' · ' + c.restart_count + '× restarted' : '')">
+                                            <svg class="crate" viewBox="0 0 24 24"><use href="#icon-container"/></svg>
+                                            <span class="name" x-text="c.name"></span>
+                                            <template x-if="containerHealthLabel(c)">
+                                                <span class="health-badge" :class="'s-' + containerStatus(c)" x-text="containerHealthLabel(c)"></span>
+                                            </template>
+                                            <template x-if="containerUptime(c) && !containerHealthLabel(c)">
+                                                <span class="uptime-badge" x-text="containerUptime(c)"></span>
+                                            </template>
+                                            <button class="chip-more" title="Actions"
+                                                    @click="showChipMenu($event, 'container', hostDrawerKey + '/' + c.name)">⋯</button>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- Integrations row (paired gateway + bridges) -->
+                        <template x-if="gatewayForHost(hostDrawerKey) || bridgesForHost(hostDrawerKey).length > 0">
+                            <div>
+                                <div class="drawer-section-label">Integrations</div>
+                                <div class="drawer-integ">
+                                    <template x-if="gatewayForHost(hostDrawerKey)">
+                                        <div class="drawer-integ-row">
+                                            <div style="min-width:0;">
+                                                <div class="k">Gateway</div>
+                                                <div class="v" x-text="(gatewayForHost(hostDrawerKey) || {}).url"></div>
+                                            </div>
+                                            <div style="display:flex;align-items:center;gap:0.5rem;">
+                                                <span class="state-pill" :class="(gatewayForHost(hostDrawerKey).state || 'pending') === 'online' ? 'state-ok' : 'state-warn'" x-text="((gatewayForHost(hostDrawerKey).state || 'pending')).toUpperCase()"></span>
+                                            </div>
+                                        </div>
+                                    </template>
+                                    <template x-for="b in bridgesForHost(hostDrawerKey)" :key="b.agent + '@' + b.host">
+                                        <div class="drawer-integ-row">
+                                            <div style="min-width:0;">
+                                                <div class="k">Bridge</div>
+                                                <div class="v" x-text="b.agent"></div>
+                                            </div>
+                                            <span class="state-pill" :class="b.state === 'online' ? 'state-ok' : 'state-warn'" x-text="(b.state || 'pending').toUpperCase()"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+
+                        <!-- Hardware -->
+                        <div>
+                            <div class="drawer-section-label">Hardware</div>
+                            <div class="hw-panel" style="border:1px solid var(--line);border-radius:3px;padding:0.65rem 0.8rem;background:var(--bg-0);">
+                                <template x-if="hardwareCache[hostDrawerKey] && hardwareCache[hostDrawerKey].static">
+                                    <div>
+                                        <div class="hw-section-label">System</div>
+                                        <dl class="hw-specs">
+                                            <dt>CPU</dt><dd x-text="(hardwareCache[hostDrawerKey].static.cpu_model || '—') + (hardwareCache[hostDrawerKey].static.cpu_cores ? ' · ' + hardwareCache[hostDrawerKey].static.cpu_cores + ' cores' : '')"></dd>
+                                            <dt>RAM total</dt><dd x-text="formatBytes(hardwareCache[hostDrawerKey].static.mem_total_bytes)"></dd>
+                                            <dt>OS</dt><dd x-text="hardwareCache[hostDrawerKey].static.os_pretty || '—'"></dd>
+                                            <dt>Kernel</dt><dd x-text="hardwareCache[hostDrawerKey].static.kernel_version || '—'"></dd>
+                                        </dl>
+                                    </div>
+                                </template>
+                                <template x-if="hardwareCache[hostDrawerKey] && hardwareCache[hostDrawerKey].metrics && hardwareCache[hostDrawerKey].metrics.length > 1">
+                                    <div style="margin-top:0.6rem;">
+                                        <div class="hw-section-label">Last hour</div>
+                                        <div class="hw-sparks">
+                                            <div class="hw-spark">
+                                                <div class="hw-spark-head"><span>CPU load 1m</span><span class="v" x-text="hostByName(hostDrawerKey).hw_live ? hostByName(hostDrawerKey).hw_live.cpu_load_1.toFixed(2) : '—'"></span></div>
+                                                <div x-html="renderSparkline(hardwareCache[hostDrawerKey].metrics, 'cpu_load')"></div>
+                                            </div>
+                                            <div class="hw-spark">
+                                                <div class="hw-spark-head"><span>Memory used</span><span class="v" x-text="hostByName(hostDrawerKey).hw_live && hostByName(hostDrawerKey).hw_live.mem_used_pct ? hostByName(hostDrawerKey).hw_live.mem_used_pct.toFixed(0) + '%' : '—'"></span></div>
+                                                <div x-html="renderSparkline(hardwareCache[hostDrawerKey].metrics, 'mem_used_pct')"></div>
+                                            </div>
+                                            <template x-if="hwCpuTemp(hostByName(hostDrawerKey)) != null">
+                                                <div class="hw-spark">
+                                                    <div class="hw-spark-head"><span>CPU °C</span><span class="v" x-text="hwCpuTemp(hostByName(hostDrawerKey))"></span></div>
+                                                    <div x-html="renderSparkline(hardwareCache[hostDrawerKey].metrics, 'cpu_temp_c')"></div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                                <template x-if="hardwareCache[hostDrawerKey] && hardwareCache[hostDrawerKey].static && hardwareCache[hostDrawerKey].static.mounts && hardwareCache[hostDrawerKey].static.mounts.length > 0">
+                                    <div style="margin-top:0.6rem;">
+                                        <div class="hw-section-label">Mounts</div>
+                                        <table class="hw-mounts">
+                                            <thead><tr><th>Mountpoint</th><th>Type</th><th>Device</th></tr></thead>
+                                            <tbody>
+                                                <template x-for="m in hardwareCache[hostDrawerKey].static.mounts" :key="m.mountpoint">
+                                                    <tr>
+                                                        <td x-text="m.mountpoint"></td>
+                                                        <td x-text="m.fstype"></td>
+                                                        <td x-text="m.device || '—'"></td>
+                                                    </tr>
+                                                </template>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </template>
+                                <template x-if="hardwareCache[hostDrawerKey] && hardwareCache[hostDrawerKey].fastfetch">
+                                    <div style="margin-top:0.6rem;">
+                                        <div class="hw-section-label">Fastfetch<span x-show="hardwareCache[hostDrawerKey].fastfetch_at" x-text="' · ' + formatAgo(hardwareCache[hostDrawerKey].fastfetch_at)" style="font-weight:normal;letter-spacing:0.04em;text-transform:none;color:var(--ink-ghost);"></span></div>
+                                        <dl class="hw-fastfetch-pretty">
+                                            <template x-for="e in hwFastfetchEntries(hostDrawerKey)" :key="e.label">
+                                                <div class="ffx-row">
+                                                    <dt x-text="e.label"></dt>
+                                                    <dd x-text="e.value"></dd>
+                                                </div>
+                                            </template>
+                                        </dl>
+                                    </div>
+                                </template>
+                                <template x-if="!hardwareCache[hostDrawerKey]">
+                                    <div class="hw-empty">loading…</div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- ============================================================ COMMANDS -->
+                <template x-if="hostDrawerTab === 'commands'">
+                    <div>
+                        <div class="drawer-section-label" style="display:flex;align-items:center;justify-content:space-between;gap:0.5rem;">
+                            <span>Command history</span>
+                            <button class="btn btn-ghost" style="font-size:9px;padding:0.15rem 0.5rem;" @click="openHostCommands(hostDrawerKey)">Refresh</button>
+                        </div>
+                        <template x-if="(commandsByHost[hostDrawerKey] || []).length === 0">
+                            <div style="font-size:11px;color:var(--ink-ghost);font-style:italic;">No commands yet. Pair a gateway, restart a container, or deploy a bridge to see audit entries here.</div>
+                        </template>
+                        <template x-for="c in (commandsByHost[hostDrawerKey] || [])" :key="c.id">
+                            <div style="padding:0.5rem 0;border-bottom:1px dashed var(--line);font-size:11px;display:grid;grid-template-columns:auto 1fr auto;gap:0.6rem;align-items:start;">
+                                <span :style="'color:' + commandStatusColor(c.status) + ';font-weight:600;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;min-width:72px;'" x-text="c.status"></span>
+                                <div>
+                                    <span style="color:var(--ink);font-family:ui-monospace,monospace;" x-text="c.kind"></span>
+                                    <span style="color:var(--ink-faint);font-size:10px;" x-text="' · #' + c.id"></span>
+                                    <template x-if="c.error">
+                                        <div style="color:var(--crit);font-size:10px;margin-top:2px;" x-text="'error: ' + c.error"></div>
+                                    </template>
+                                    <template x-if="c.status === 'done' && commandResultSummary(c)">
+                                        <div style="color:var(--ink-dim);font-size:10px;margin-top:2px;" x-text="commandResultSummary(c)"></div>
+                                    </template>
+                                </div>
+                                <div style="text-align:right;color:var(--ink-ghost);font-size:10px;white-space:nowrap;">
+                                    <div x-text="formatAgo(c.issued_at)"></div>
+                                    <template x-if="c.status === 'pending' || c.status === 'executing'">
+                                        <button class="btn btn-ghost" style="font-size:8px;padding:0.15rem 0.4rem;margin-top:2px;" @click="cancelCommand(c.id)" :title="c.status === 'executing' ? 'Force-cancel an in-flight command. Use when bosun is stuck / offline / running an old version that can\u0027t dispatch.' : 'Drop a pending command before bosun picks it up.'" x-text="c.status === 'executing' ? 'force cancel' : 'cancel'"></button>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
+                <!-- ============================================================ SETTINGS -->
+                <template x-if="hostDrawerTab === 'settings' && currentUser && currentUser.role === 'admin'">
+                    <div style="display:flex;flex-direction:column;gap:1.25rem;">
+
+                        <!-- DISPLAY: icon + comment (reuses configHost / configComment / configImageId state) -->
+                        <div>
+                            <div class="drawer-section-label">Display</div>
+                            <div style="display:flex;gap:1rem;margin-bottom:0.6rem;align-items:center;flex-wrap:wrap;">
+                                <label style="font-size:10px;color:var(--ink-ghost);letter-spacing:0.12em;text-transform:uppercase;font-weight:600;">Icon</label>
+                                <div class="imgpick"
+                                     :class="{ 'is-open': imgPickOpen }"
+                                     @keydown.escape.prevent="imgPickOpen = false"
+                                     @keydown.arrow-down.prevent="imgPickNav(1)"
+                                     @keydown.arrow-up.prevent="imgPickNav(-1)"
+                                     @keydown.enter.prevent="imgPickCommit()"
+                                     @click.outside="imgPickOpen = false">
+                                    <button type="button" class="imgpick-trigger" @click="imgPickToggle()">
+                                        <template x-if="configImageId">
+                                            <span class="imgpick-thumb"><img :src="'/api/image-presets/' + configImageId + '/image'" alt=""></span>
+                                        </template>
+                                        <template x-if="!configImageId">
+                                            <span class="imgpick-thumb is-empty">Ø</span>
+                                        </template>
+                                        <span class="imgpick-name" :class="{ 'is-empty': !configImageId }" x-text="configImageId ? (imagePresetName(configImageId) || 'unknown') : 'none — no icon'"></span>
+                                        <span class="imgpick-chev"></span>
+                                    </button>
+                                    <template x-if="imgPickOpen">
+                                        <div class="imgpick-panel" @mouseleave="imgPickFocus = -1">
+                                            <div class="imgpick-option"
+                                                 :class="{ 'is-selected': configImageId === null, 'is-active': imgPickFocus === 0 }"
+                                                 @click="imgPickSelect(null)" @mouseenter="imgPickFocus = 0">
+                                                <span class="imgpick-thumb is-empty">Ø</span>
+                                                <span class="imgpick-option-name">none — no icon</span>
+                                                <span class="check">✓</span>
+                                            </div>
+                                            <template x-for="(p, idx) in imagePresets" :key="p.id">
+                                                <div class="imgpick-option"
+                                                     :class="{ 'is-selected': configImageId === p.id, 'is-active': imgPickFocus === idx + 1 }"
+                                                     @click="imgPickSelect(p.id)" @mouseenter="imgPickFocus = idx + 1">
+                                                    <span class="imgpick-thumb"><img :src="'/api/image-presets/' + p.id + '/image'" :alt="p.name"></span>
+                                                    <span class="imgpick-option-name" x-text="p.name"></span>
+                                                    <span class="check">✓</span>
+                                                </div>
+                                            </template>
+                                            <template x-if="imagePresets.length === 0">
+                                                <div class="imgpick-option" style="cursor:default;color:var(--ink-ghost);font-style:italic;">
+                                                    <span class="imgpick-option-name">no icons uploaded — use the Icons tab</span>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                            <div style="margin-bottom:0.6rem;">
+                                <label style="font-size:10px;color:var(--ink-ghost);letter-spacing:0.12em;text-transform:uppercase;font-weight:600;display:block;margin-bottom:0.3rem;">Comment</label>
+                                <textarea x-model="configComment" rows="3" maxlength="200" placeholder="Short description (3 lines max)"
+                                          style="width:100%;background:var(--bg-0);border:1px solid var(--line-2);color:var(--ink);font-family:inherit;font-size:11px;padding:0.4rem 0.6rem;resize:none;"></textarea>
+                            </div>
+                            <button class="btn btn-primary" @click="saveHostConfig()">Save display</button>
+                        </div>
+
+                        <!-- LIFECYCLE: agent update / token / remove / ignore -->
+                        <div>
+                            <div class="drawer-section-label">Agent & host</div>
+                            <div style="display:flex;flex-wrap:wrap;gap:0.4rem;align-items:center;">
+                                <button class="btn" @click="requestHostUpdate(hostDrawerKey)" :title="'Force watchtower to pull the latest fleetcom-bosun image now (bypasses the 24h poll).'">Update agent</button>
+                                <template x-if="hostByName(hostDrawerKey) && hasPendingUpdate(hostByName(hostDrawerKey))">
+                                    <span class="agent-update-pending" title="Update requested — will run on next heartbeat">upd</span>
+                                </template>
+                                <button class="btn btn-ghost" @click="regenerateToken(hostDrawerKey)" title="Replace this host's bearer token. Old token stops working immediately.">New token</button>
+                                <template x-if="!isIgnored('host', hostDrawerKey)">
+                                    <button class="btn btn-ghost" @click="ignoreEntity('host', hostDrawerKey)">Ignore host</button>
+                                </template>
+                                <template x-if="isIgnored('host', hostDrawerKey)">
+                                    <button class="btn btn-ghost" @click="unignoreEntity('host', hostDrawerKey)">Unignore host</button>
+                                </template>
+                                <button class="btn btn-danger" @click="removeHost(hostDrawerKey); closeHostDrawer()" style="margin-left:auto;">Remove host</button>
+                            </div>
+                            <template x-if="newToken && newToken.hostname === hostDrawerKey">
+                                <div class="token-reveal" style="margin-top:0.6rem;">
+                                    <div class="label">Agent token for <span x-text="newToken.hostname"></span></div>
+                                    <code x-text="newToken.token"></code>
+                                    <div class="warning">Copy this token now — it won't be shown again.</div>
+                                    <template x-if="newToken.regen">
+                                        <div class="warning">⚠️ Old token is now invalid. Update the host's env + restart bosun.</div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- INTEGRATIONS: gateway + bridge -->
+                        <div>
+                            <div class="drawer-section-label">Integrations</div>
+                            <div style="display:flex;flex-direction:column;gap:0.6rem;">
+                                <!-- Gateway row -->
+                                <div class="drawer-integ-row">
+                                    <div style="min-width:0;">
+                                        <div class="k">OpenClaw gateway</div>
+                                        <template x-if="gatewayForHost(hostDrawerKey)">
+                                            <div class="v" x-text="gatewayForHost(hostDrawerKey).url + ' · ' + (gatewayForHost(hostDrawerKey).state || 'pending')"></div>
+                                        </template>
+                                        <template x-if="!gatewayForHost(hostDrawerKey)">
+                                            <div class="v" style="color:var(--ink-ghost);font-style:italic;">not paired</div>
+                                        </template>
+                                    </div>
+                                    <div style="display:flex;gap:0.3rem;align-items:center;">
+                                        <template x-if="!gatewayForHost(hostDrawerKey)">
+                                            <button class="btn btn-primary" @click="openPairGatewayFromDrawer(hostDrawerKey)" title="Generate FleetCom keys + enqueue openclaw.pair on this host. Jumps to the Commands tab so you can watch it.">+ Pair gateway</button>
+                                        </template>
+                                        <template x-if="gatewayForHost(hostDrawerKey)">
+                                            <button class="btn btn-danger" @click="unpairGateway(hostDrawerKey)">Unpair</button>
+                                        </template>
+                                    </div>
+                                </div>
+                                <!-- Bridge row -->
+                                <div class="drawer-integ-row">
+                                    <div style="min-width:0;">
+                                        <div class="k">Agent-bridges</div>
+                                        <template x-if="bridgesForHost(hostDrawerKey).length > 0">
+                                            <div class="v">
+                                                <template x-for="b in bridgesForHost(hostDrawerKey)" :key="b.agent">
+                                                    <span style="display:inline-block;margin-right:0.5rem;">
+                                                        <span x-text="b.agent"></span>
+                                                        <span style="color:var(--ink-ghost)" x-text="' · ' + (b.state || 'pending')"></span>
+                                                        <button class="btn btn-ghost" style="font-size:8px;padding:0.1rem 0.35rem;margin-left:0.3rem;" @click="revokeBridge(hostDrawerKey, b.agent)">revoke</button>
+                                                    </span>
+                                                </template>
+                                            </div>
+                                        </template>
+                                        <template x-if="bridgesForHost(hostDrawerKey).length === 0">
+                                            <div class="v" style="color:var(--ink-ghost);font-style:italic;">none deployed</div>
+                                        </template>
+                                    </div>
+                                    <div>
+                                        <button class="btn btn-primary" @click="deployBridge(hostDrawerKey)" title="Deploy the agent-bridge container on this host. Uses docker run with host network + bosun's own token. Idempotent — safe to click twice.">+ Deploy bridge</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
                 </template>
             </div>
@@ -4325,6 +4891,13 @@ WantedBy=multi-user.target</pre>
                 agentsObs: [],                     // AgentSummary[] from SSE 'agents'
                 agentDrawerKey: null,              // "host/name" of open drawer, or null
                 agentDrawerData: null,             // AgentDetail from /api/agents/{host}/{name}
+                // Host drawer (FLEET-66 — drawer-first UX redesign)
+                hostDrawerKey: '',                 // hostname of open drawer, '' if closed
+                hostDrawerTab: 'overview',         // 'overview' | 'commands' | 'settings'
+                // Chip ellipsis menu (FLEET-70) — replaces right-click context menu.
+                // Shape: { type, key, x, y, ignored } — same fields as legacy ctxMenu
+                // so the existing menu template can render from either source.
+                chipMenu: null,
                 activityOpen: false,               // global activity drawer
                 activityPaused: false,
                 activityEvents: [],                // rolling, newest first (max 500)
@@ -5096,6 +5669,64 @@ WantedBy=multi-user.target</pre>
                         key: entityKey,
                         ignored: this.isIgnored(entityType, entityKey)
                     };
+                },
+
+                // FLEET-70 — ellipsis dropdown trigger (click-based, discoverable,
+                // touch-friendly). Same data shape as ctxMenu so the rendered
+                // menu template handles either source.
+                showChipMenu(event, entityType, entityKey) {
+                    event.stopPropagation();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    // Anchor below the button, shifted left so the menu is
+                    // visible on right-edge chips.
+                    const x = Math.min(rect.left, window.innerWidth - 190);
+                    const y = Math.min(rect.bottom + 4, window.innerHeight - 100);
+                    this.chipMenu = {
+                        x, y,
+                        type: entityType,
+                        key: entityKey,
+                        ignored: this.isIgnored(entityType, entityKey)
+                    };
+                },
+
+                // FLEET-66 — host drawer open/close. Whole-card click opens
+                // the drawer on the OVERVIEW tab by default. Callers can
+                // pass a preferred tab (used by pairGateway / deployBridge
+                // to jump straight to COMMANDS after enqueueing an action).
+                openHostDrawer(hostname, tab) {
+                    if (!hostname) return;
+                    this.hostDrawerKey = hostname;
+                    this.hostDrawerTab = tab || 'overview';
+                    // Warm the per-host data the tabs need.
+                    if (!this.hardwareCache[hostname]) this.loadHardware(hostname);
+                    if (this.tokens.length === 0) this.loadTokens();
+                    // COMMANDS tab reuses commandsByHost; warm it so the
+                    // pending→executing→done transitions stream live from
+                    // the existing SSE 'commands' handler.
+                    this.openHostCommands(hostname);
+                    // SETTINGS tab reuses configComment / configImageId; seed them
+                    // so the form shows the current saved values on first open.
+                    this.seedHostConfigForm(hostname);
+                },
+                closeHostDrawer() {
+                    this.hostDrawerKey = '';
+                },
+                seedHostConfigForm(hostname) {
+                    const cfg = this.hostConfigs[hostname] || {};
+                    this.configHost = hostname;
+                    this.configComment = cfg.comment || '';
+                    this.configImageId = cfg.image_preset_id || null;
+                },
+                // Convenience: host drawer count badges.
+                hostDrawerCommandsPending(host) {
+                    const cmds = this.commandsByHost[host] || [];
+                    return cmds.filter(c => c.status === 'pending' || c.status === 'executing').length;
+                },
+                gatewayForHost(host) {
+                    return (this.gateways || []).find(g => g.host === host) || null;
+                },
+                bridgesForHost(host) {
+                    return (this.bridges || []).filter(b => b.host === host);
                 },
 
                 // ---------- agent observability (FLEET-36) ----------
@@ -5987,17 +6618,38 @@ WantedBy=multi-user.target</pre>
                             this.newGatewayContainer = '';
                             this.newGatewayContainerCustom = '';
                             this.loadGateways();
-                            // Auto-jump to the host's command drawer so the
-                            // admin sees live status instead of having to
-                            // navigate around looking for it.
-                            this.settingsTab = 'hosts';
-                            if (this.tokens.length === 0) await this.loadTokens();
-                            this.openHostCommands(host);
+                            // FLEET-67/68: jump into the host drawer's COMMANDS
+                            // tab so the admin watches the openclaw.pair
+                            // result live without navigating.
+                            this.openHostDrawer(host, 'commands');
                         } else {
                             const msg = await res.text();
                             this.toast('Pair failed: ' + msg.slice(0, 160), 'err');
                         }
                     } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                // FLEET-69 — drawer-initiated "+ Pair gateway". Picks a container
+                // name via the same auto-detect + prompt dance as the Settings
+                // wizard, then hands off to pairGateway().
+                async openPairGatewayFromDrawer(host) {
+                    const cands = this.gatewayContainerCandidates(host);
+                    let container;
+                    if (cands.length === 0) {
+                        container = prompt('Gateway container name on ' + host + ':', 'openclaw-gateway');
+                        if (container === null) return;
+                    } else if (cands.length === 1) {
+                        container = cands[0];
+                    } else {
+                        container = prompt('Which container runs the OpenClaw gateway on ' + host + '?\nCandidates (best guess first):\n\n' + cands.join('\n'), cands[0]);
+                        if (container === null) return;
+                    }
+                    container = (container || '').trim();
+                    if (!container) return;
+                    this.newGatewayHost = host;
+                    this.newGatewayContainer = container;
+                    this.newGatewayContainerCustom = '';
+                    await this.pairGateway();
                 },
 
                 // FLEET-62: restart a container via the bosun command
@@ -6102,9 +6754,10 @@ WantedBy=multi-user.target</pre>
                         if (res.ok) {
                             const body = await res.json();
                             this.toast('Bridge install enqueued — watching command #' + body.id);
-                            this.settingsTab = 'hosts';
-                            if (this.tokens.length === 0) await this.loadTokens();
-                            this.openHostCommands(host);
+                            // FLEET-68: jump into the host drawer's COMMANDS
+                            // tab so the admin watches the bridge.install
+                            // result live without navigating to Settings.
+                            this.openHostDrawer(host, 'commands');
                         } else {
                             this.toast('Deploy failed: ' + (await res.text()).slice(0, 120), 'err');
                         }
