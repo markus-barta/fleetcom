@@ -91,6 +91,7 @@ type commandHandler func(params json.RawMessage) (json.RawMessage, error)
 var commandAllowlist = map[string]commandHandler{
 	"openclaw.pair":     handleOpenclawPair,     // FLEET-61
 	"container.restart": handleContainerRestart, // FLEET-62
+	"bridge.install":    handleBridgeInstall,    // FLEET-63
 }
 
 // dispatchCommands is called once per heartbeat with the commands the

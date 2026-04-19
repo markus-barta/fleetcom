@@ -3708,6 +3708,10 @@
                                                     @change="toggleAutoApprove(g.host, $event.target.checked)">
                                                 auto-approve
                                             </label>
+                                            <!-- FLEET-63: deploy bridge when this gateway has no bridge yet. -->
+                                            <template x-if="!hasBridgeForHost(g.host)">
+                                                <button class="btn btn-primary" @click="deployBridge(g.host)" title="Deploy the agent-bridge container on this host. Uses docker run with host network + bosun's own token. Idempotent — safe to click twice.">+ Bridge</button>
+                                            </template>
                                             <button class="btn btn-danger" @click="unpairGateway(g.host)">Unpair</button>
                                         </div>
                                     </li>
@@ -5903,6 +5907,33 @@ WantedBy=multi-user.target</pre>
                             this.toast('Restart enqueued for ' + name + ' (cmd ' + body.id + ')');
                         } else {
                             this.toast('Restart failed: ' + (await res.text()).slice(0, 120), 'err');
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                // FLEET-63: truthy if any bridge row belongs to this host.
+                hasBridgeForHost(host) {
+                    return (this.bridges || []).some(b => b.host === host);
+                },
+
+                // FLEET-63: enqueue bridge.install for a host. Bosun
+                // reuses its own FLEETCOM_TOKEN + FLEETCOM_URL env, so
+                // params only carry agent names (reasonable defaults).
+                async deployBridge(host) {
+                    const names = prompt('Agent names to relay (comma-separated):', 'merlin,nimue');
+                    if (names === null) return; // cancelled
+                    const clean = (names || '').trim() || 'merlin,nimue';
+                    try {
+                        const res = await fetch('/api/hosts/' + encodeURIComponent(host) + '/commands', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ kind: 'bridge.install', params: { agent_names: clean } })
+                        });
+                        if (res.ok) {
+                            const body = await res.json();
+                            this.toast('Bridge install enqueued for ' + host + ' (cmd ' + body.id + ')');
+                        } else {
+                            this.toast('Deploy failed: ' + (await res.text()).slice(0, 120), 'err');
                         }
                     } catch (_) { this.toast('Network error', 'err'); }
                 },
