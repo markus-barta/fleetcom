@@ -1,6 +1,11 @@
 # Sample compose snippet for hsb0 (or any host running openclaw-gateway).
 # Drop this into your host's docker-compose.yml alongside the existing
 # openclaw-gateway service and fleetcom-bosun.
+#
+# Bridge v0.3 and up talks WebSocket directly to the gateway (no more
+# docker socket mount, no more log-tail regex). It needs network access
+# to wss://<gateway>:18789 and a persistent volume for its Ed25519
+# identity.
 
 services:
   agent-bridge:
@@ -10,16 +15,16 @@ services:
     depends_on:
       - openclaw-gateway
     volumes:
-      # Needs docker daemon access to tail sibling container's logs.
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Persistent Ed25519 keypair + cached operator token. Required.
+      - agent-bridge-keys:/var/lib/fleetcom-agent-bridge
     environment:
-      # Same FleetCom URL + token Bosun uses.
+      # Same FleetCom URL + token Bosun uses on this host.
       - FLEETCOM_URL=${FLEETCOM_URL:-https://fleet.barta.cm}
       - FLEETCOM_TOKEN=${FLEETCOM_TOKEN}
       - FLEETCOM_HOSTNAME=${FLEETCOM_HOSTNAME:-hsb0}
-      # Which container to tail for agent-event log lines.
-      - BRIDGE_LOG_CONTAINER=openclaw-gateway
-      # Which agents this bridge is responsible for.
+      # Gateway WebSocket URL — usually the sibling container.
+      - OPENCLAW_GATEWAY_URL=${OPENCLAW_GATEWAY_URL:-wss://openclaw-gateway:18789}
+      # Agents this host runs (informational, shown in /v1/agent-state).
       - BRIDGE_AGENT_NAMES=merlin,nimue
       - BRIDGE_AGENT_TYPE=openclaw
     ports:
@@ -29,9 +34,12 @@ services:
     labels:
       - com.centurylinklabs.watchtower.enable=true
 
-  # Bosun picks up agent-bridge's state endpoint via OPENCLAW_STATE_URL.
-  # Add this env to your fleetcom-bosun service:
-  #
-  # fleetcom-bosun:
-  #   environment:
-  #     - OPENCLAW_STATE_URL=http://agent-bridge:9180/v1/agent-state
+volumes:
+  agent-bridge-keys:
+
+# Bosun picks up agent-bridge's state endpoint via OPENCLAW_STATE_URL.
+# Add this env to your fleetcom-bosun service:
+#
+# fleetcom-bosun:
+#   environment:
+#     - OPENCLAW_STATE_URL=http://agent-bridge:9180/v1/agent-state
