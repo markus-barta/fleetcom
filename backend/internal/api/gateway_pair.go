@@ -111,14 +111,27 @@ func PairGateway(store *db.Store, keyRoot string) http.HandlerFunc {
 			return
 		}
 
+		// Optional container name override from the UI picker — lets
+		// admins target hosts where the gateway container is named
+		// differently (miniserver-bp's openclaw-percaival, etc.).
+		containerName := "openclaw-gateway"
+		if r.Body != nil && r.ContentLength != 0 {
+			var body struct {
+				ContainerName string `json:"container_name"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+				if c := strings.TrimSpace(body.ContainerName); c != "" {
+					containerName = c
+				}
+			}
+		}
+
 		// Enqueue the bosun-side command. Params carry exactly what
 		// bosun needs; keys never leave this server otherwise.
 		params := map[string]any{
 			"public_key_pem": string(pubPEM),
 			"operator_token": opToken,
-			// Allow override from admin UI later; default matches the
-			// naming convention in nixcfg + BP infracore.
-			"container_name": "openclaw-gateway",
+			"container_name": containerName,
 		}
 		user := auth.GetUser(r)
 		var uid *int64

@@ -93,6 +93,13 @@ func handleOpenclawPair(params json.RawMessage) (json.RawMessage, error) {
 }
 
 func ensureContainerRunning(container string) error {
+	// First verify the docker CLI itself is available. Without it, we
+	// get a misleading exec "not found" that shows up as "container X
+	// not found" to the admin. Pre-checking lets us point at the real
+	// issue (rebuild bosun image).
+	if _, err := exec.LookPath("docker"); err != nil {
+		return fmt.Errorf("docker CLI not available in bosun container — rebuild/update the bosun image (needs `docker-cli` package)")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "docker", "inspect", "-f", "{{.State.Running}}", container).CombinedOutput()

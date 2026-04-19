@@ -3762,21 +3762,40 @@
                                     </div>
                                 </template>
                                 <template x-if="showAddGatewayInline">
-                                    <div class="card-ghost-body" @click.stop>
+                                    <div class="card-ghost-body" @click.stop style="max-width:520px;">
                                         <template x-if="pairableHosts.length === 0">
                                             <div style="color:var(--ink-dim); font-size:11px;">No hosts available — all registered hosts are already paired, or no hosts are registered.</div>
                                         </template>
                                         <template x-if="pairableHosts.length > 0">
-                                            <select x-model="newGatewayHost" class="card-ghost-input" style="cursor:pointer;">
-                                                <option value="" disabled>Pick a host…</option>
-                                                <template x-for="h in pairableHosts" :key="h">
-                                                    <option :value="h" x-text="h"></option>
+                                            <div style="display:flex;flex-direction:column;gap:0.4rem;width:100%;">
+                                                <select x-model="newGatewayHost" @change="onNewGatewayHostChange()" class="card-ghost-input" style="cursor:pointer;">
+                                                    <option value="" disabled>Pick a host…</option>
+                                                    <template x-for="h in pairableHosts" :key="h">
+                                                        <option :value="h" x-text="h"></option>
+                                                    </template>
+                                                </select>
+                                                <!-- Container name — pre-filled by picker when a host is chosen. -->
+                                                <template x-if="newGatewayHost">
+                                                    <div style="display:flex;flex-direction:column;gap:0.25rem;">
+                                                        <label style="font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink-ghost);">Gateway container</label>
+                                                        <template x-if="gatewayContainerCandidates(newGatewayHost).length > 0">
+                                                            <select x-model="newGatewayContainer" class="card-ghost-input" style="cursor:pointer;">
+                                                                <template x-for="c in gatewayContainerCandidates(newGatewayHost)" :key="c">
+                                                                    <option :value="c" x-text="c"></option>
+                                                                </template>
+                                                                <option value="__custom__">(custom…)</option>
+                                                            </select>
+                                                        </template>
+                                                        <template x-if="gatewayContainerCandidates(newGatewayHost).length === 0 || newGatewayContainer === '__custom__'">
+                                                            <input type="text" x-model="newGatewayContainerCustom" class="card-ghost-input" placeholder="container name on that host">
+                                                        </template>
+                                                    </div>
                                                 </template>
-                                            </select>
+                                            </div>
                                         </template>
                                         <div class="card-ghost-actions">
-                                            <button class="btn btn-primary" @click.stop="pairGateway()" :disabled="!newGatewayHost || pairableHosts.length === 0">Pair</button>
-                                            <button class="btn btn-ghost" @click.stop="showAddGatewayInline = false; newGatewayHost = ''">Cancel</button>
+                                            <button class="btn btn-primary" @click.stop="pairGateway()" :disabled="!newGatewayHost || pairableHosts.length === 0 || !resolvedGatewayContainer()">Pair</button>
+                                            <button class="btn btn-ghost" @click.stop="showAddGatewayInline = false; newGatewayHost = ''; newGatewayContainer = ''; newGatewayContainerCustom = '';">Cancel</button>
                                         </div>
                                     </div>
                                 </template>
@@ -4339,6 +4358,8 @@ WantedBy=multi-user.target</pre>
                 // + Add Gateway wizard (FLEET-61)
                 showAddGatewayInline: false,
                 newGatewayHost: '',
+                newGatewayContainer: '',
+                newGatewayContainerCustom: '',
                 pairableHosts: [],
                 // Command history panel (FLEET-60/61/62/63)
                 commandsHost: '',
@@ -5917,16 +5938,54 @@ WantedBy=multi-user.target</pre>
                     } catch (_) { this.toast('Network error', 'err'); }
                 },
 
+                // List likely gateway-container names on a host, ranked
+                // openclaw-ish first. Sourced from the host's current
+                // containers so admin doesn't have to guess naming.
+                gatewayContainerCandidates(host) {
+                    const h = (this.hosts || []).find(x => x.hostname === host);
+                    if (!h || !Array.isArray(h.containers)) return [];
+                    const names = h.containers.map(c => c.name).filter(Boolean);
+                    const rank = n => {
+                        const lc = n.toLowerCase();
+                        if (lc === 'openclaw-gateway') return 0;
+                        if (lc.startsWith('openclaw')) return 1;
+                        if (lc.includes('gateway')) return 2;
+                        return 3;
+                    };
+                    return [...names].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+                },
+
+                // Fired when the host dropdown changes — seed the
+                // container name with the best guess so the admin only
+                // has to edit when auto-detection is wrong.
+                onNewGatewayHostChange() {
+                    const cands = this.gatewayContainerCandidates(this.newGatewayHost);
+                    this.newGatewayContainer = cands.length > 0 ? cands[0] : '__custom__';
+                    this.newGatewayContainerCustom = cands.length === 0 ? 'openclaw-gateway' : '';
+                },
+
+                resolvedGatewayContainer() {
+                    if (this.newGatewayContainer && this.newGatewayContainer !== '__custom__') return this.newGatewayContainer;
+                    return (this.newGatewayContainerCustom || '').trim();
+                },
+
                 async pairGateway() {
                     const host = (this.newGatewayHost || '').trim();
-                    if (!host) return;
+                    const container = this.resolvedGatewayContainer();
+                    if (!host || !container) return;
                     try {
-                        const res = await fetch('/api/gateways/' + encodeURIComponent(host) + '/pair', { method: 'POST' });
+                        const res = await fetch('/api/gateways/' + encodeURIComponent(host) + '/pair', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ container_name: container })
+                        });
                         if (res.ok) {
                             const body = await res.json();
                             this.toast('Gateway pairing enqueued for ' + host + ' (cmd ' + body.command_id + ')');
                             this.showAddGatewayInline = false;
                             this.newGatewayHost = '';
+                            this.newGatewayContainer = '';
+                            this.newGatewayContainerCustom = '';
                             this.loadGateways();
                         } else {
                             const msg = await res.text();
