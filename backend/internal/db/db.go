@@ -321,6 +321,35 @@ CREATE TABLE IF NOT EXISTS user_host_access (
 	PRIMARY KEY (user_id, host_id)
 );
 
+-- OpenClaw gateway pairing + bridge registry (FLEET-51) —
+-- see docs/AGENT-BRIDGE-PAIRING.md.
+CREATE TABLE IF NOT EXISTS openclaw_gateways (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	host TEXT NOT NULL UNIQUE,
+	url TEXT NOT NULL,
+	fc_pubkey_b64 TEXT NOT NULL DEFAULT '',
+	fc_device_token_hash TEXT NOT NULL DEFAULT '',
+	paired_at TEXT NOT NULL DEFAULT '',
+	status TEXT NOT NULL DEFAULT 'unpaired',
+	auto_approve_bridges INTEGER NOT NULL DEFAULT 1,
+	created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS bridge_pairings (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	host TEXT NOT NULL,
+	agent TEXT NOT NULL,
+	pubkey_fp TEXT NOT NULL,
+	pubkey_pem TEXT NOT NULL DEFAULT '',
+	status TEXT NOT NULL DEFAULT 'pending',
+	approved_at TEXT NOT NULL DEFAULT '',
+	request_id TEXT NOT NULL DEFAULT '',
+	last_seen_at TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL DEFAULT (datetime('now')),
+	UNIQUE(host, agent)
+);
+CREATE INDEX IF NOT EXISTS idx_bridge_pairings_fp ON bridge_pairings(pubkey_fp);
+
 -- Agent observability (FLEET-36) — see docs/AGENT-OBSERVABILITY.md.
 CREATE TABLE IF NOT EXISTS agents_obs (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
