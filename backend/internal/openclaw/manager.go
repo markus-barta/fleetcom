@@ -40,10 +40,13 @@ type clientHandle struct {
 	cancel context.CancelFunc
 }
 
-// NewManager builds a manager. keyDir is where per-gateway keypairs and
-// operator tokens are expected to live (production: `/run/agenix`; dev:
-// whatever the operator configures). version is included in the
-// handshake client metadata.
+// NewManager builds a manager. keyDir is a colon-separated list of
+// directories where per-gateway keypairs + operator tokens live. Both
+// directories are scanned and merged (app-data takes precedence on
+// name conflict, though that shouldn't happen in practice). Typical
+// value: `/run/agenix:/app/data/openclaw-keys` — agenix for
+// nixcfg-managed pairings, /app/data for the in-UI wizard (FLEET-61).
+// version is included in the handshake client metadata.
 func NewManager(store *db.Store, hub *sse.Hub, keyDir, version string) *Manager {
 	return &Manager{
 		store:   store,
@@ -52,6 +55,19 @@ func NewManager(store *db.Store, hub *sse.Hub, keyDir, version string) *Manager 
 		version: version,
 		clients: make(map[string]*clientHandle),
 	}
+}
+
+// keyDirs returns the list of directories to scan, split from the
+// colon-separated keyDir string. Blank entries are dropped.
+func (m *Manager) keyDirs() []string {
+	var out []string
+	for _, d := range strings.Split(m.keyDir, ":") {
+		d = strings.TrimSpace(d)
+		if d != "" {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // Start kicks off the reconcile loop. Caller owns the context — cancel
@@ -167,36 +183,71 @@ func (m *Manager) reconcile(ctx context.Context) {
 	}
 }
 
-// scanKeyDir returns the hostnames for which a FleetCom↔gateway keypair
-// exists on disk. Naming convention: `fleetcom-openclaw-<host>-key`.
+// scanKeyDir walks every configured keyDir and returns a deduped set of
+// hostnames that have usable on-disk credentials. Recognises both the
+// flat (agenix) layout and the nested (app-data wizard) layout; see
+// loadGatewayCreds for shapes.
 func (m *Manager) scanKeyDir() []string {
-	entries, err := os.ReadDir(m.keyDir)
-	if err != nil {
-		return nil
+	seen := map[string]struct{}{}
+	for _, dir := range m.keyDirs() {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			name := e.Name()
+			// Layout 1 (flat): fleetcom-openclaw-<host>-key
+			if !e.IsDir() && strings.HasPrefix(name, "fleetcom-openclaw-") && strings.HasSuffix(name, "-key") {
+				host := strings.TrimSuffix(strings.TrimPrefix(name, "fleetcom-openclaw-"), "-key")
+				if host != "" {
+					seen[host] = struct{}{}
+				}
+				continue
+			}
+			// Layout 2 (nested): <host>/private.pem inside a per-host dir.
+			if e.IsDir() {
+				if _, err := os.Stat(filepath.Join(dir, name, "private.pem")); err == nil {
+					seen[name] = struct{}{}
+				}
+			}
+		}
 	}
-	var out []string
-	for _, e := range entries {
-		name := e.Name()
-		if !strings.HasPrefix(name, "fleetcom-openclaw-") || !strings.HasSuffix(name, "-key") {
-			continue
-		}
-		host := strings.TrimSuffix(strings.TrimPrefix(name, "fleetcom-openclaw-"), "-key")
-		if host == "" {
-			continue
-		}
-		out = append(out, host)
+	out := make([]string, 0, len(seen))
+	for h := range seen {
+		out = append(out, h)
 	}
 	return out
 }
 
-// loadGatewayCreds reads the Ed25519 private key and operator token for
-// one gateway from keyDir. Conventional filenames:
+// loadGatewayCreds walks the configured keyDirs and returns the first
+// match for a given host. Supports two on-disk layouts:
 //
-//	fleetcom-openclaw-<host>-key     (PKCS#8 Ed25519 PEM)
-//	fleetcom-openclaw-<host>-tok     (operator token, one line)
+//  1. Flat (agenix): <dir>/fleetcom-openclaw-<host>-{key,tok}
+//     Typical for /run/agenix, where agenix flattens secret filenames.
+//
+//  2. Nested (app-data wizard): <dir>/<host>/{private.pem, operator-token}
+//     Typical for /app/data/openclaw-keys, written by the POST /pair
+//     endpoint in FLEET-61 where the fleetcom container can own its
+//     own keypair directory.
 func (m *Manager) loadGatewayCreds(host string) (*Identity, string, error) {
-	privPath := filepath.Join(m.keyDir, "fleetcom-openclaw-"+host+"-key")
-	tokPath := filepath.Join(m.keyDir, "fleetcom-openclaw-"+host+"-tok")
+	for _, dir := range m.keyDirs() {
+		// Try layout 1 (flat).
+		privPath := filepath.Join(dir, "fleetcom-openclaw-"+host+"-key")
+		tokPath := filepath.Join(dir, "fleetcom-openclaw-"+host+"-tok")
+		if id, tok, err := tryLoadCreds(privPath, tokPath); err == nil {
+			return id, tok, nil
+		}
+		// Try layout 2 (nested under host dir).
+		privPath = filepath.Join(dir, host, "private.pem")
+		tokPath = filepath.Join(dir, host, "operator-token")
+		if id, tok, err := tryLoadCreds(privPath, tokPath); err == nil {
+			return id, tok, nil
+		}
+	}
+	return nil, "", os.ErrNotExist
+}
+
+func tryLoadCreds(privPath, tokPath string) (*Identity, string, error) {
 	id, err := LoadIdentity(privPath, "")
 	if err != nil {
 		return nil, "", err
