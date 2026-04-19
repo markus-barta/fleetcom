@@ -116,6 +116,21 @@ func (s *Store) RegisterBridge(host, agent, pubkeyFP, pubkeyPEM string) error {
 	return err
 }
 
+// BridgeByHostAgent looks up a bridge by its (host, agent) primary
+// key. Returns (nil, nil) when no row matches.
+func (s *Store) BridgeByHostAgent(host, agent string) (*BridgePairing, error) {
+	row := s.DB.QueryRow(`
+		SELECT id, host, agent, pubkey_fp, pubkey_pem, status, approved_at, request_id, last_seen_at
+		FROM bridge_pairings WHERE host = ? AND agent = ?
+	`, host, agent)
+	var b BridgePairing
+	err := row.Scan(&b.ID, &b.Host, &b.Agent, &b.PubkeyFP, &b.PubkeyPEM, &b.Status, &b.ApprovedAt, &b.RequestID, &b.LastSeenAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	return &b, err
+}
+
 // BridgeByFingerprint looks up a registered bridge by its fingerprint,
 // scoped to one host. Returns nil when no match.
 func (s *Store) BridgeByFingerprint(host, fp string) (*BridgePairing, error) {

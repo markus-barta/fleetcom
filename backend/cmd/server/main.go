@@ -14,7 +14,9 @@ import (
 	"github.com/markus-barta/fleetcom/internal/api"
 	"github.com/markus-barta/fleetcom/internal/auth"
 	"github.com/markus-barta/fleetcom/internal/db"
+	"github.com/markus-barta/fleetcom/internal/openclaw"
 	"github.com/markus-barta/fleetcom/internal/sse"
+	"github.com/markus-barta/fleetcom/internal/version"
 )
 
 func main() {
@@ -42,6 +44,18 @@ func main() {
 	hub := sse.NewHub()
 	a := auth.New(store)
 	resetHandlers := auth.NewResetHandlers(store)
+
+	// OpenClaw WS manager — one WebSocket connection per paired gateway
+	// for pairing events + auto-approval. Skips gateways without on-disk
+	// keypairs (FLEET-52 pre-seed) so boot is quiet until secrets exist.
+	ocKeyDir := os.Getenv("FLEETCOM_OPENCLAW_KEY_DIR")
+	if ocKeyDir == "" {
+		ocKeyDir = "/run/agenix"
+	}
+	ocMgr := openclaw.NewManager(store, hub, ocKeyDir, version.Version)
+	ocCtx, ocCancel := context.WithCancel(context.Background())
+	defer ocCancel()
+	ocMgr.Start(ocCtx)
 
 	// Purge samples older than 400 days (covers the 1Y history scale).
 	const sampleRetention = 400 * 24 * time.Hour
@@ -161,7 +175,7 @@ func main() {
 		r.With(auth.RequireAdmin).Get("/api/gateways", api.ListGateways(store))
 		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/auto-approve/{mode}", api.SetGatewayAutoApprove(store, hub))
 		r.With(auth.RequireAdmin).Get("/api/bridges", api.ListBridges(store))
-		r.With(auth.RequireAdmin).Delete("/api/bridges/{host}/{agent}", api.RevokeBridge(store, hub))
+		r.With(auth.RequireAdmin).Delete("/api/bridges/{host}/{agent}", api.RevokeBridge(store, hub, ocMgr))
 		r.Get("/api/history", api.History(store))
 		r.Get("/api/ignored", api.ListIgnored(store))
 		r.Post("/api/ignore", api.AddIgnore(store))

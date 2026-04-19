@@ -1,18 +1,25 @@
 package api
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/markus-barta/fleetcom/internal/auth"
 	"github.com/markus-barta/fleetcom/internal/db"
+	"github.com/markus-barta/fleetcom/internal/openclaw"
 	"github.com/markus-barta/fleetcom/internal/sse"
 )
+
+// GatewayRevoker is the subset of the OpenClaw manager the revoke path
+// needs — an interface so api tests can substitute a no-op.
+type GatewayRevoker interface {
+	RevokeBridgeOnGateway(ctx context.Context, host, deviceID string) error
+}
 
 // RegisterBridgeRequest is the body of POST /api/bridges/register.
 // Authentication is the host's bosun bearer token (shared with the
@@ -52,12 +59,14 @@ func RegisterBridge(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			return
 		}
 
-		// Fingerprint = first 16 bytes of sha256(pubkey_pem), hex. This
-		// is what the gateway's paired.json keys the device by (modulo
-		// exact algorithm — to be reconciled with OpenClaw's deviceId
-		// scheme when the WS client lands).
-		h := sha256.Sum256([]byte(body.PubkeyPEM))
-		fp := hex.EncodeToString(h[:16])
+		// Fingerprint = sha256(raw Ed25519 pubkey bytes) hex — matches
+		// OpenClaw's deviceId format, so the auto-approver can directly
+		// equality-match pair.requested events against this row.
+		fp, err := openclaw.FingerprintFromPubkeyPEM(body.PubkeyPEM)
+		if err != nil {
+			http.Error(w, "invalid pubkey_pem: "+err.Error(), http.StatusBadRequest)
+			return
+		}
 
 		if err := store.RegisterBridge(hostname, body.Agent, fp, body.PubkeyPEM); err != nil {
 			log.Printf("register bridge error: %v", err)
@@ -111,11 +120,13 @@ func ListBridges(store *db.Store) http.HandlerFunc {
 	}
 }
 
-// RevokeBridge drops the pairing row. The actual gateway-side
-// `device.token.revoke` call happens in the OpenClaw WS client — not
-// wired yet, tracked in FLEET-51 task list. Removing the row prevents
-// future auto-approvals of the same fingerprint.
-func RevokeBridge(store *db.Store, hub *sse.Hub) http.HandlerFunc {
+// RevokeBridge drops the pairing row AND asks the gateway to revoke
+// the operator token for that deviceId (via the OpenClaw WS client).
+// Both steps are best-effort; the DB drop is what prevents future
+// auto-approvals, the gateway revoke closes any active session. If the
+// revoker isn't connected (gateway offline, FLEET-52 not deployed), the
+// DB drop still takes effect.
+func RevokeBridge(store *db.Store, hub *sse.Hub, revoker GatewayRevoker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host := chi.URLParam(r, "host")
 		agent := chi.URLParam(r, "agent")
@@ -123,9 +134,17 @@ func RevokeBridge(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			http.Error(w, "host and agent required", http.StatusBadRequest)
 			return
 		}
+		bridge, _ := store.BridgeByHostAgent(host, agent)
 		if err := store.DeleteBridgePairing(host, agent); err != nil {
 			http.Error(w, "not found", http.StatusNotFound)
 			return
+		}
+		if revoker != nil && bridge != nil && bridge.PubkeyFP != "" {
+			ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+			defer cancel()
+			if err := revoker.RevokeBridgeOnGateway(ctx, host, bridge.PubkeyFP); err != nil {
+				log.Printf("gateway revoke failed for %s/%s: %v", host, agent, err)
+			}
 		}
 		if bs, err := store.AllBridgePairings(); err == nil {
 			if data, err := json.Marshal(bs); err == nil {
