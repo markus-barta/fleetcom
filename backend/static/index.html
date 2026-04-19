@@ -1176,35 +1176,9 @@
         .grid-detail .card-head-right {
             font-size: 11px;
         }
-        .card-detail-meta {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-            gap: 0.5rem;
-            margin-top: 0.65rem;
-            padding: 0.6rem 0.8rem;
-            background: var(--card-overlay);
-            border: 1px solid var(--line);
-            font-size: 10px;
-        }
-        .detail-field {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-        .detail-field .df-label {
-            font-size: 7px;
-            letter-spacing: 0.2em;
-            text-transform: uppercase;
-            color: var(--ink-ghost);
-            font-weight: 700;
-        }
-        .detail-field .df-value {
-            color: var(--ink-dim);
-            font-variant-numeric: tabular-nums;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
+        /* .card-detail-meta was removed in FLEET-58 — information that
+           lived here (agent/kernel/uptime/last-seen/containers/agents)
+           is already in the header or per-section counts. */
         .grid-detail .strip-canvas {
             height: 18px;
         }
@@ -2105,14 +2079,51 @@
             padding: 0.5rem;
             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
             font-size: 10px;
-            /* Preserve newlines, but wrap long lines so JSON blobs don't
-               blow the card width out to 10k px. overflow-wrap: anywhere
-               allows breaking inside JSON tokens when nothing else works. */
             white-space: pre-wrap;
             overflow-wrap: anywhere;
             word-break: break-word;
             color: var(--ink-dim);
             margin: 0;
+        }
+
+        /* Prettified fastfetch — key/value rows in a dim grid. Dropped the
+           raw-JSON <pre> in favour of picker-based entries (hwFastfetchEntries)
+           so admins can scan the host summary like a nameplate. */
+        .hw-fastfetch-pretty {
+            margin: 0;
+            background: var(--bg-0);
+            border: 1px solid var(--line);
+            padding: 0.65rem 0.8rem;
+            display: grid;
+            gap: 0.4rem;
+        }
+        .hw-fastfetch-pretty .ffx-row {
+            display: grid;
+            grid-template-columns: 110px 1fr;
+            gap: 0.8rem;
+            align-items: baseline;
+            font-size: 11px;
+        }
+        .hw-fastfetch-pretty dt {
+            color: var(--ink-ghost);
+            font-size: 9px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        .hw-fastfetch-pretty dd {
+            margin: 0;
+            color: var(--ink);
+            font-variant-numeric: tabular-nums;
+            overflow-wrap: anywhere;
+        }
+
+        /* Detail-view breathing room: give the Hardware section its own
+           visual separator from the busier containers/agents above. */
+        .card-section.card-section-hw {
+            margin-top: 3.5rem;
+            padding-top: 1.2rem;
+            border-top: 1px dashed var(--line);
         }
         .hw-empty {
             color: var(--ink-ghost);
@@ -2870,118 +2881,56 @@
                                         <div class="card-comment" x-show="hostConfigs[host.hostname] && hostConfigs[host.hostname].comment" x-text="(hostConfigs[host.hostname] || {}).comment || ''"></div>
                                     </div>
 
-                                    <div class="card-detail-meta">
-                                        <div class="detail-field">
-                                            <span class="df-label">Agent</span>
-                                            <span class="df-value">
-                                                <template x-if="isOutdatedAgent(host)"><svg class="agent-alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></template>
-                                                <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionLabel(host)"></span>
-                                                <template x-if="isAgentStale(host)">
-                                                    <span class="agent-stale-mark" title="Agent has not been updated in over 24h. Docker hosts should auto-update daily via watchtower; legacy hosts need manual rollout.">!</span>
-                                                </template>
-                                                <template x-if="hasPendingUpdate(host)">
-                                                    <span class="agent-update-pending" title="Update requested — will run on next heartbeat">upd</span>
-                                                </template>
-                                                <template x-if="isOutdatedAgent(host)"><span class="agent-expected"> (expected: <span x-text="expectedAgentVersion"></span>)</span></template>
-                                            </span>
-                                        </div>
-                                        <div class="detail-field">
-                                            <span class="df-label">Kernel</span>
-                                            <span class="df-value" x-text="host.kernel || '—'"></span>
-                                        </div>
-                                        <div class="detail-field">
-                                            <span class="df-label">Uptime</span>
-                                            <span class="df-value" x-text="formatUptime(host.uptime_seconds) || '—'"></span>
-                                        </div>
-                                        <div class="detail-field">
-                                            <span class="df-label">Last seen</span>
-                                            <span class="df-value" x-text="formatAgo(host.last_seen)"></span>
-                                        </div>
-                                        <div class="detail-field">
-                                            <span class="df-label">Containers</span>
-                                            <span class="df-value" x-text="countRunning(host.containers) + '/' + (host.containers ? host.containers.length : 0) + ' running'"></span>
-                                        </div>
-                                        <div class="detail-field">
-                                            <span class="df-label">Agents</span>
-                                            <span class="df-value" x-text="countOnlineAgents(host.agents) + '/' + (host.agents ? host.agents.length : 0) + ' online'"></span>
-                                        </div>
-                                    </div>
+                                    <!-- Host status history — promoted to right under the header. -->
+                                    <div class="strip-block host-strip" x-init="mountStrip($el, 'host', host.hostname, { kind: 'host' })"></div>
 
-                                    <button class="hw-toggle" :class="hwOpen[host.hostname] ? 'is-open' : ''" @click="toggleHardware(host.hostname)">
-                                        Hardware <span class="chev">▸</span>
-                                    </button>
-                                    <template x-if="hwOpen[host.hostname]">
-                                        <div class="hw-panel">
-                                            <template x-if="hardwareCache[host.hostname] && hardwareCache[host.hostname].static">
-                                                <div>
-                                                    <div class="hw-section-label">System</div>
-                                                    <dl class="hw-specs">
-                                                        <dt>CPU</dt><dd x-text="(hardwareCache[host.hostname].static.cpu_model || '—') + (hardwareCache[host.hostname].static.cpu_cores ? ' · ' + hardwareCache[host.hostname].static.cpu_cores + ' cores' : '')"></dd>
-                                                        <dt>RAM total</dt><dd x-text="formatBytes(hardwareCache[host.hostname].static.mem_total_bytes)"></dd>
-                                                        <dt>OS</dt><dd x-text="hardwareCache[host.hostname].static.os_pretty || '—'"></dd>
-                                                        <dt>Kernel</dt><dd x-text="hardwareCache[host.hostname].static.kernel_version || '—'"></dd>
-                                                    </dl>
-                                                </div>
-                                            </template>
-
-                                            <template x-if="hardwareCache[host.hostname] && hardwareCache[host.hostname].metrics && hardwareCache[host.hostname].metrics.length > 1">
-                                                <div>
-                                                    <div class="hw-section-label">Last hour</div>
-                                                    <div class="hw-sparks">
-                                                        <div class="hw-spark">
-                                                            <div class="hw-spark-head"><span>CPU load 1m</span><span class="v" x-text="host.hw_live ? host.hw_live.cpu_load_1.toFixed(2) : '—'"></span></div>
-                                                            <div x-html="renderSparkline(hardwareCache[host.hostname].metrics, 'cpu_load')"></div>
-                                                        </div>
-                                                        <div class="hw-spark">
-                                                            <div class="hw-spark-head"><span>Memory used</span><span class="v" x-text="host.hw_live && host.hw_live.mem_used_pct ? host.hw_live.mem_used_pct.toFixed(0) + '%' : '—'"></span></div>
-                                                            <div x-html="renderSparkline(hardwareCache[host.hostname].metrics, 'mem_used_pct')"></div>
-                                                        </div>
-                                                        <template x-if="hwCpuTemp(host) != null">
-                                                            <div class="hw-spark">
-                                                                <div class="hw-spark-head"><span>CPU °C</span><span class="v" x-text="hwCpuTemp(host)"></span></div>
-                                                                <div x-html="renderSparkline(hardwareCache[host.hostname].metrics, 'cpu_temp_c')"></div>
+                                    <!-- Agents first — the observability info is the main event in Detail. -->
+                                    <template x-if="host.agents && host.agents.length > 0">
+                                        <div class="card-section">
+                                            <div class="card-section-label">
+                                                <span>Agents</span><span class="count" x-text="'· ' + countOnlineAgents(host.agents) + '/' + host.agents.length"></span>
+                                            </div>
+                                            <div class="chips">
+                                                <template x-for="a in host.agents" :key="a.name">
+                                                    <div class="agent-chip-slot" style="display:contents">
+                                                        <template x-if="agentHasObs(host.hostname, a.name)">
+                                                            <div class="chip chip-agent-rich"
+                                                                 :class="'as-' + agentState(host.hostname, a.name).key"
+                                                                 :title="a.name + ' · ' + a.status + ' · click for detail'"
+                                                                 @click="openAgentDrawer(host.hostname, a.name)"
+                                                                 @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
+                                                                <span class="ar-dot"></span>
+                                                                <span class="ar-name" x-text="a.name"></span>
+                                                                <span class="ar-sep">·</span>
+                                                                <span class="ar-state" x-text="agentState(host.hostname, a.name).label"></span>
+                                                                <template x-if="agentState(host.hostname, a.name).detail">
+                                                                    <span class="ar-sep">·</span>
+                                                                </template>
+                                                                <template x-if="agentState(host.hostname, a.name).detail">
+                                                                    <span class="ar-detail" x-text="agentState(host.hostname, a.name).detail"></span>
+                                                                </template>
+                                                            </div>
+                                                        </template>
+                                                        <template x-if="!agentHasObs(host.hostname, a.name)">
+                                                            <div class="chip chip-agent"
+                                                                 :class="['s-' + agentStatus(a), isChipOpen('agent', host.hostname + '/' + a.name) ? 'is-open' : '', isIgnored('agent', host.hostname + '/' + a.name) ? 'is-ignored' : '']"
+                                                                 :title="a.name + ' · ' + a.status + ' · ' + (a.agent_type || '')"
+                                                                 @click="toggleChip('agent', host.hostname + '/' + a.name)"
+                                                                 @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
+                                                                <i data-lucide="sparkles" class="spark"></i>
+                                                                <span class="name" x-text="a.name"></span>
                                                             </div>
                                                         </template>
                                                     </div>
-                                                </div>
-                                            </template>
-
-                                            <template x-if="hardwareCache[host.hostname] && hardwareCache[host.hostname].static && hardwareCache[host.hostname].static.mounts && hardwareCache[host.hostname].static.mounts.length > 0">
-                                                <div>
-                                                    <div class="hw-section-label">Mounts</div>
-                                                    <table class="hw-mounts">
-                                                        <thead><tr><th>Mountpoint</th><th>Type</th><th>Device</th></tr></thead>
-                                                        <tbody>
-                                                            <template x-for="m in hardwareCache[host.hostname].static.mounts" :key="m.mountpoint">
-                                                                <tr>
-                                                                    <td x-text="m.mountpoint"></td>
-                                                                    <td x-text="m.fstype"></td>
-                                                                    <td x-text="m.device || '—'"></td>
-                                                                </tr>
-                                                            </template>
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </template>
-
-                                            <template x-if="hardwareCache[host.hostname] && hardwareCache[host.hostname].fastfetch">
-                                                <div>
-                                                    <div class="hw-section-label">Fastfetch<span x-show="hardwareCache[host.hostname].fastfetch_at" x-text="' · ' + formatAgo(hardwareCache[host.hostname].fastfetch_at)" style="font-weight:normal;letter-spacing:0.04em;text-transform:none;color:var(--ink-ghost);"></span></div>
-                                                    <pre class="hw-fastfetch" x-text="hwFastfetchText(host.hostname)"></pre>
-                                                </div>
-                                            </template>
-
-                                            <template x-if="!hardwareCache[host.hostname]">
-                                                <div class="hw-empty">loading…</div>
-                                            </template>
-
-                                            <template x-if="hardwareCache[host.hostname] && !hardwareCache[host.hostname].static && !hardwareCache[host.hostname].live && !hardwareCache[host.hostname].fastfetch">
-                                                <div class="hw-empty">No hardware data reported yet. Bosun will populate this on its next heartbeat.</div>
+                                                </template>
+                                            </div>
+                                            <template x-for="a in host.agents" :key="'hist-' + a.name">
+                                                <template x-if="isChipOpen('agent', host.hostname + '/' + a.name)">
+                                                    <div class="strip-block" x-init="mountStrip($el, 'agent', host.hostname + '/' + a.name, { kind: 'entity', label: a.name, status: agentStatus(a) })"></div>
+                                                </template>
                                             </template>
                                         </div>
                                     </template>
-
-                                    <div class="strip-block host-strip" x-init="mountStrip($el, 'host', host.hostname, { kind: 'host' })"></div>
 
                                     <template x-if="host.containers && host.containers.length > 0">
                                         <div class="card-section">
@@ -3014,30 +2963,89 @@
                                         </div>
                                     </template>
 
-                                    <template x-if="host.agents && host.agents.length > 0">
-                                        <div class="card-section">
-                                            <div class="card-section-label">
-                                                <span>Agents</span><span class="count" x-text="'· ' + countOnlineAgents(host.agents) + '/' + host.agents.length"></span>
-                                            </div>
-                                            <div class="chips">
-                                                <template x-for="a in host.agents" :key="a.name">
-                                                    <div class="chip chip-agent"
-                                                         :class="['s-' + agentStatus(a), isChipOpen('agent', host.hostname + '/' + a.name) ? 'is-open' : '', isIgnored('agent', host.hostname + '/' + a.name) ? 'is-ignored' : '']"
-                                                         :title="a.name + ' · ' + a.status + ' · ' + (a.agent_type || '')"
-                                                         @click="toggleChip('agent', host.hostname + '/' + a.name)"
-                                                         @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
-                                                        <i data-lucide="sparkles" class="spark"></i>
-                                                        <span class="name" x-text="a.name"></span>
+                                    <!-- Hardware — collapsible, the deepest info, lives at the bottom. -->
+                                    <div class="card-section card-section-hw">
+                                        <button class="hw-toggle" :class="hwOpen[host.hostname] ? 'is-open' : ''" @click="toggleHardware(host.hostname)">
+                                            Hardware <span class="chev">▸</span>
+                                        </button>
+                                        <template x-if="hwOpen[host.hostname]">
+                                            <div class="hw-panel">
+                                                <template x-if="hardwareCache[host.hostname] && hardwareCache[host.hostname].static">
+                                                    <div>
+                                                        <div class="hw-section-label">System</div>
+                                                        <dl class="hw-specs">
+                                                            <dt>CPU</dt><dd x-text="(hardwareCache[host.hostname].static.cpu_model || '—') + (hardwareCache[host.hostname].static.cpu_cores ? ' · ' + hardwareCache[host.hostname].static.cpu_cores + ' cores' : '')"></dd>
+                                                            <dt>RAM total</dt><dd x-text="formatBytes(hardwareCache[host.hostname].static.mem_total_bytes)"></dd>
+                                                            <dt>OS</dt><dd x-text="hardwareCache[host.hostname].static.os_pretty || '—'"></dd>
+                                                            <dt>Kernel</dt><dd x-text="hardwareCache[host.hostname].static.kernel_version || '—'"></dd>
+                                                        </dl>
                                                     </div>
                                                 </template>
-                                            </div>
-                                            <template x-for="a in host.agents" :key="'hist-' + a.name">
-                                                <template x-if="isChipOpen('agent', host.hostname + '/' + a.name)">
-                                                    <div class="strip-block" x-init="mountStrip($el, 'agent', host.hostname + '/' + a.name, { kind: 'entity', label: a.name, status: agentStatus(a) })"></div>
+
+                                                <template x-if="hardwareCache[host.hostname] && hardwareCache[host.hostname].metrics && hardwareCache[host.hostname].metrics.length > 1">
+                                                    <div>
+                                                        <div class="hw-section-label">Last hour</div>
+                                                        <div class="hw-sparks">
+                                                            <div class="hw-spark">
+                                                                <div class="hw-spark-head"><span>CPU load 1m</span><span class="v" x-text="host.hw_live ? host.hw_live.cpu_load_1.toFixed(2) : '—'"></span></div>
+                                                                <div x-html="renderSparkline(hardwareCache[host.hostname].metrics, 'cpu_load')"></div>
+                                                            </div>
+                                                            <div class="hw-spark">
+                                                                <div class="hw-spark-head"><span>Memory used</span><span class="v" x-text="host.hw_live && host.hw_live.mem_used_pct ? host.hw_live.mem_used_pct.toFixed(0) + '%' : '—'"></span></div>
+                                                                <div x-html="renderSparkline(hardwareCache[host.hostname].metrics, 'mem_used_pct')"></div>
+                                                            </div>
+                                                            <template x-if="hwCpuTemp(host) != null">
+                                                                <div class="hw-spark">
+                                                                    <div class="hw-spark-head"><span>CPU °C</span><span class="v" x-text="hwCpuTemp(host)"></span></div>
+                                                                    <div x-html="renderSparkline(hardwareCache[host.hostname].metrics, 'cpu_temp_c')"></div>
+                                                                </div>
+                                                            </template>
+                                                        </div>
+                                                    </div>
                                                 </template>
-                                            </template>
-                                        </div>
-                                    </template>
+
+                                                <template x-if="hardwareCache[host.hostname] && hardwareCache[host.hostname].static && hardwareCache[host.hostname].static.mounts && hardwareCache[host.hostname].static.mounts.length > 0">
+                                                    <div>
+                                                        <div class="hw-section-label">Mounts</div>
+                                                        <table class="hw-mounts">
+                                                            <thead><tr><th>Mountpoint</th><th>Type</th><th>Device</th></tr></thead>
+                                                            <tbody>
+                                                                <template x-for="m in hardwareCache[host.hostname].static.mounts" :key="m.mountpoint">
+                                                                    <tr>
+                                                                        <td x-text="m.mountpoint"></td>
+                                                                        <td x-text="m.fstype"></td>
+                                                                        <td x-text="m.device || '—'"></td>
+                                                                    </tr>
+                                                                </template>
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </template>
+
+                                                <template x-if="hardwareCache[host.hostname] && hardwareCache[host.hostname].fastfetch">
+                                                    <div>
+                                                        <div class="hw-section-label">Fastfetch<span x-show="hardwareCache[host.hostname].fastfetch_at" x-text="' · ' + formatAgo(hardwareCache[host.hostname].fastfetch_at)" style="font-weight:normal;letter-spacing:0.04em;text-transform:none;color:var(--ink-ghost);"></span></div>
+                                                        <dl class="hw-fastfetch-pretty">
+                                                            <template x-for="e in hwFastfetchEntries(host.hostname)" :key="e.label">
+                                                                <div class="ffx-row">
+                                                                    <dt x-text="e.label"></dt>
+                                                                    <dd x-text="e.value"></dd>
+                                                                </div>
+                                                            </template>
+                                                        </dl>
+                                                    </div>
+                                                </template>
+
+                                                <template x-if="!hardwareCache[host.hostname]">
+                                                    <div class="hw-empty">loading…</div>
+                                                </template>
+
+                                                <template x-if="hardwareCache[host.hostname] && !hardwareCache[host.hostname].static && !hardwareCache[host.hostname].live && !hardwareCache[host.hostname].fastfetch">
+                                                    <div class="hw-empty">No hardware data reported yet. Bosun will populate this on its next heartbeat.</div>
+                                                </template>
+                                            </div>
+                                        </template>
+                                    </div>
                                 </div>
                             </template>
                             <!-- Admin-only + Add Host ghost tile (FLEET-56) -->
@@ -5165,26 +5173,49 @@ WantedBy=multi-user.target</pre>
                     return '';
                 },
                 hwFastfetchText(hostname) {
+                    // Legacy plain-text form — retained for copy/paste.
+                    const entries = this.hwFastfetchEntries(hostname);
+                    return entries.map(e => e.label + ': ' + e.value).join('\n');
+                },
+                // Prettified fastfetch rendering: pulls the meaningful field
+                // out of each type's result object instead of JSON-stringifying
+                // the whole thing. Unknown shapes fall back to JSON.
+                hwFastfetchEntries(hostname) {
                     const hw = this.hardwareCache[hostname];
-                    if (!hw || !hw.fastfetch) return '';
-                    try {
-                        const arr = hw.fastfetch;
-                        if (!Array.isArray(arr)) return JSON.stringify(arr, null, 2);
-                        const lines = [];
-                        for (const m of arr) {
-                            if (!m) continue;
-                            const t = m.type || 'Item';
-                            const r = m.result;
-                            let v;
-                            if (r == null) v = '(null)';
-                            else if (typeof r === 'string' || typeof r === 'number') v = String(r);
-                            else v = JSON.stringify(r);
-                            lines.push(t + ': ' + v);
+                    if (!hw || !hw.fastfetch || !Array.isArray(hw.fastfetch)) return [];
+                    const pickers = {
+                        OS:        r => r.prettyName || r.name || r.id,
+                        Host:      r => [r.vendor, r.name, r.version].filter(Boolean).join(' '),
+                        Kernel:    r => r.release || r.version,
+                        CPU:       r => r.cpu || (r.name ? r.name + (r.cores ? ' · ' + r.cores.online + ' cores' : '') : null),
+                        GPU:       r => Array.isArray(r) ? r.map(g => g.name || g.vendor).filter(Boolean).join(', ') : (r.name || null),
+                        Memory:    r => r.used && r.total ? this.formatBytes(r.used) + ' / ' + this.formatBytes(r.total) : null,
+                        Swap:      r => r.used != null && r.total != null ? this.formatBytes(r.used) + ' / ' + this.formatBytes(r.total) : null,
+                        Disk:      r => Array.isArray(r) ? r.map(d => (d.mountpoint || '') + ' ' + this.formatBytes(d.bytes && d.bytes.used) + '/' + this.formatBytes(d.bytes && d.bytes.total)).join(' · ') : null,
+                        Uptime:    r => r.uptime ? this.formatUptime(Math.floor(r.uptime / 1000)) : null,
+                        Packages:  r => Object.entries(r || {}).filter(([k, v]) => typeof v === 'number' && v > 0).map(([k, v]) => v + ' ' + k).join(' · '),
+                        Shell:     r => r.prettyName || r.name || r.exe,
+                        Terminal:  r => r.prettyName || r.name || r.exe,
+                        Locale:    r => typeof r === 'string' ? r : (r.locale || r.language),
+                    };
+                    const entries = [];
+                    for (const m of hw.fastfetch) {
+                        if (!m || !m.type) continue;
+                        const t = m.type;
+                        const r = m.result;
+                        if (r == null) continue;
+                        let v = null;
+                        const picker = pickers[t];
+                        if (picker) {
+                            try { v = picker(r); } catch (_) { v = null; }
                         }
-                        return lines.join('\n');
-                    } catch (_) {
-                        return JSON.stringify(hw.fastfetch, null, 2);
+                        if (v == null) {
+                            if (typeof r === 'string' || typeof r === 'number') v = String(r);
+                            else continue; // skip noisy fields we don't have a picker for
+                        }
+                        if (typeof v === 'string' && v.trim()) entries.push({ label: t, value: v.trim() });
                     }
+                    return entries;
                 },
                 renderSparkline(points, valueKey) {
                     if (!points || points.length === 0) return '';
