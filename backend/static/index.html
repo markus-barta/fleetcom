@@ -2645,34 +2645,37 @@
                                             </div>
                                             <div class="chips">
                                                 <template x-for="a in host.agents" :key="a.name">
-                                                    <template x-if="agentHasObs(host.hostname, a.name)">
-                                                        <div class="chip chip-agent-rich"
-                                                             :class="'as-' + agentState(host.hostname, a.name).key"
-                                                             :title="a.name + ' · ' + a.status + ' · click for detail'"
-                                                             @click="openAgentDrawer(host.hostname, a.name)"
-                                                             @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
-                                                            <span class="ar-dot"></span>
-                                                            <span class="ar-name" x-text="a.name"></span>
-                                                            <span class="ar-sep">·</span>
-                                                            <span class="ar-state" x-text="agentState(host.hostname, a.name).label"></span>
-                                                            <template x-if="agentState(host.hostname, a.name).detail">
+                                                    <!-- Alpine x-for requires ONE root; this wrapper lets us swap chip style by data without breaking the iteration. -->
+                                                    <div class="agent-chip-slot" style="display:contents">
+                                                        <template x-if="agentHasObs(host.hostname, a.name)">
+                                                            <div class="chip chip-agent-rich"
+                                                                 :class="'as-' + agentState(host.hostname, a.name).key"
+                                                                 :title="a.name + ' · ' + a.status + ' · click for detail'"
+                                                                 @click="openAgentDrawer(host.hostname, a.name)"
+                                                                 @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
+                                                                <span class="ar-dot"></span>
+                                                                <span class="ar-name" x-text="a.name"></span>
                                                                 <span class="ar-sep">·</span>
-                                                            </template>
-                                                            <template x-if="agentState(host.hostname, a.name).detail">
-                                                                <span class="ar-detail" x-text="agentState(host.hostname, a.name).detail"></span>
-                                                            </template>
-                                                        </div>
-                                                    </template>
-                                                    <template x-if="!agentHasObs(host.hostname, a.name)">
-                                                        <div class="chip chip-agent"
-                                                             :class="['s-' + agentStatus(a), isChipOpen('agent', host.hostname + '/' + a.name) ? 'is-open' : '', isIgnored('agent', host.hostname + '/' + a.name) ? 'is-ignored' : '']"
-                                                             :title="a.name + ' · ' + a.status"
-                                                             @click="toggleChip('agent', host.hostname + '/' + a.name)"
-                                                             @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
-                                                            <i data-lucide="sparkles" class="spark"></i>
-                                                            <span class="name" x-text="a.name"></span>
-                                                        </div>
-                                                    </template>
+                                                                <span class="ar-state" x-text="agentState(host.hostname, a.name).label"></span>
+                                                                <template x-if="agentState(host.hostname, a.name).detail">
+                                                                    <span class="ar-sep">·</span>
+                                                                </template>
+                                                                <template x-if="agentState(host.hostname, a.name).detail">
+                                                                    <span class="ar-detail" x-text="agentState(host.hostname, a.name).detail"></span>
+                                                                </template>
+                                                            </div>
+                                                        </template>
+                                                        <template x-if="!agentHasObs(host.hostname, a.name)">
+                                                            <div class="chip chip-agent"
+                                                                 :class="['s-' + agentStatus(a), isChipOpen('agent', host.hostname + '/' + a.name) ? 'is-open' : '', isIgnored('agent', host.hostname + '/' + a.name) ? 'is-ignored' : '']"
+                                                                 :title="a.name + ' · ' + a.status"
+                                                                 @click="toggleChip('agent', host.hostname + '/' + a.name)"
+                                                                 @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
+                                                                <i data-lucide="sparkles" class="spark"></i>
+                                                                <span class="name" x-text="a.name"></span>
+                                                            </div>
+                                                        </template>
+                                                    </div>
                                                 </template>
                                             </div>
                                             <template x-for="a in host.agents" :key="'hist-' + a.name">
