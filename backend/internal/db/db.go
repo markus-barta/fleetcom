@@ -403,4 +403,24 @@ CREATE TABLE IF NOT EXISTS agent_events (
 );
 CREATE INDEX IF NOT EXISTS idx_agent_events_agent_ts ON agent_events(agent_id, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_agent_events_ts ON agent_events(ts);
+
+-- Bosun command channel (FLEET-59/60). Admins enqueue work for a host;
+-- bosun picks it up via the heartbeat response and POSTs the result to
+-- /api/command-results. kind is validated against bosun's compiled-in
+-- allowlist — unknown kinds fail fast with status='failed'.
+CREATE TABLE IF NOT EXISTS host_commands (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	host TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	params TEXT NOT NULL DEFAULT '{}',
+	status TEXT NOT NULL DEFAULT 'pending',
+	issued_by_user_id INTEGER,
+	issued_at TEXT NOT NULL DEFAULT (datetime('now')),
+	picked_at TEXT,
+	completed_at TEXT,
+	result TEXT,
+	error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_host_commands_host_status ON host_commands(host, status);
+CREATE INDEX IF NOT EXISTS idx_host_commands_issued_at ON host_commands(issued_at DESC);
 `
