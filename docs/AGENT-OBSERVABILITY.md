@@ -348,6 +348,27 @@ knows how to parse; unknown versions return 400.
 
 ---
 
+## Reference exporter — `agent-bridge`
+
+See [`agent-bridge/`](../agent-bridge/) for a reference exporter that
+tails docker logs, maintains in-memory state, serves
+`GET /v1/agent-state`, and pushes events. It's the path OpenClaw on
+hsb0 uses today.
+
+When an agent runtime gains native event emitters, the bridge
+becomes optional — swap it for direct push and drop the sidecar.
+
+## Troubleshooting
+
+| symptom | where to look |
+|---|---|
+| Dashboard shows no agent chip | (1) is the host's Bosun on v0.2.0+? (2) does `GET /v1/agent-state` respond? (3) is `OPENCLAW_STATE_URL` set on the bosun service? |
+| Chip shows but state is frozen | (1) event push path broken — check bridge logs for "event dropped after 3 retries"; (2) `FLEETCOM_TOKEN` empty in bridge env; (3) server-side: tail `fleetcom` container logs for `agent-event insert error` |
+| `STUCK` trips on a real long-running task | tool isn't emitting `turn.tool-invoked` log lines — either adjust the regex in `patterns.go` or have the agent runtime emit a `typing.refreshed` at least once per `stuck_silence_sec` |
+| "Host mismatch" rejection | event's `agent.host` doesn't match the bearer token's hostname. Make sure `FLEETCOM_HOSTNAME` is set consistently across Bosun and the bridge |
+| Excerpts missing even with `emitExcerpts: true` | exporter emitted an event without the `excerpt` field. Server accepts both with/without — nothing to fix on server side. |
+| `agents` SSE event never fires | no agent has reported a snapshot yet. Wait for first Bosun scrape (up to 60s) |
+
 ## Minimal exporter checklist
 
 To add a new agent exporter:
