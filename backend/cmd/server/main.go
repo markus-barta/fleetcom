@@ -50,6 +50,8 @@ func main() {
 	// Keep host hardware metrics for 24h (sparklines are a rolling 1h window;
 	// 24h gives headroom and is still tiny — ~1440 rows/host).
 	const hostMetricsRetention = 24 * time.Hour
+	// Agent observability: match status samples (400d rolling).
+	const agentObsRetention = sampleRetention
 	if n, err := store.PurgeOldSamples(sampleRetention); err != nil {
 		log.Printf("initial sample purge failed: %v", err)
 	} else if n > 0 {
@@ -64,6 +66,11 @@ func main() {
 		log.Printf("initial host_metrics purge failed: %v", err)
 	} else if n > 0 {
 		log.Printf("purged %d old host metrics", n)
+	}
+	if n, err := store.PruneOldAgentObs(agentObsRetention); err != nil {
+		log.Printf("initial agent_obs purge failed: %v", err)
+	} else if n > 0 {
+		log.Printf("purged %d old agent rows", n)
 	}
 	store.CleanExpiredSessions()
 	store.CleanExpiredTOTPPending()
@@ -87,6 +94,11 @@ func main() {
 			} else if n > 0 {
 				log.Printf("purged %d old host metrics", n)
 			}
+			if n, err := store.PruneOldAgentObs(agentObsRetention); err != nil {
+				log.Printf("agent_obs purge failed: %v", err)
+			} else if n > 0 {
+				log.Printf("purged %d old agent rows", n)
+			}
 			store.CleanExpiredSessions()
 			store.CleanExpiredTOTPPending()
 		}
@@ -106,6 +118,7 @@ func main() {
 	r.Get("/LICENSE", api.License)
 	r.Post("/api/heartbeat", api.Heartbeat(store, hub))
 	r.Post("/api/container-events", api.ContainerEvents(store, hub))
+	r.Post("/api/agent-events", api.AgentEvents(store, hub))
 
 	// Auth routes (public)
 	r.Get("/login", api.LoginPage)
@@ -140,6 +153,8 @@ func main() {
 		r.Get("/api/events", api.Events(store, hub))
 		r.Get("/api/hosts", api.ListHosts(store))
 		r.Get("/api/hosts/{hostname}/hardware", api.HostHardware(store))
+		r.Get("/api/agents", api.ListAgents(store))
+		r.Get("/api/agents/{host}/{name}", api.AgentDetail(store))
 		r.Get("/api/history", api.History(store))
 		r.Get("/api/ignored", api.ListIgnored(store))
 		r.Post("/api/ignore", api.AddIgnore(store))

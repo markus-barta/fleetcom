@@ -70,6 +70,18 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			data, _ := json.Marshal(hosts)
 			fmt.Fprintf(w, "event: hosts\ndata: %s\n\n", data)
 		}
+
+		// Send initial agents list (filtered by host access)
+		{
+			hostIDs := make([]int64, 0, len(hosts))
+			for _, h := range hosts {
+				hostIDs = append(hostIDs, h.ID)
+			}
+			if summaries, err := store.ListAgentsForHosts(hostIDs); err == nil {
+				data, _ := json.Marshal(summaries)
+				fmt.Fprintf(w, "event: agents\ndata: %s\n\n", data)
+			}
+		}
 		flusher.Flush()
 
 		// Subscribe to updates
@@ -90,7 +102,7 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 				}
 				extendDeadline()
 				// Filter host-related broadcasts for non-admin users
-				if !isAdmin && (evt.Name == "hosts" || evt.Name == "host-configs") {
+				if !isAdmin && (evt.Name == "hosts" || evt.Name == "host-configs" || evt.Name == "agents" || evt.Name == "agent-event") {
 					filtered := filterSSEEvent(store, u, evt)
 					fmt.Fprintf(w, "event: %s\ndata: %s\n\n", filtered.Name, filtered.Data)
 				} else {
@@ -131,6 +143,41 @@ func filterSSEEvent(store *db.Store, u *db.User, evt sse.Event) sse.Event {
 		filtered := filterHostConfigs(cfgs, hosts)
 		data, _ := json.Marshal(filtered)
 		return sse.Event{Name: "host-configs", Data: data}
+
+	case "agents":
+		// Re-query filtered agents list for this user.
+		hosts, err := store.HostsForUser(u.ID)
+		if err != nil {
+			return evt
+		}
+		hostIDs := make([]int64, 0, len(hosts))
+		for _, h := range hosts {
+			hostIDs = append(hostIDs, h.ID)
+		}
+		summaries, err := store.ListAgentsForHosts(hostIDs)
+		if err != nil {
+			return evt
+		}
+		data, _ := json.Marshal(summaries)
+		return sse.Event{Name: "agents", Data: data}
+
+	case "agent-event":
+		// Drop events for hosts the user can't see.
+		var ev db.AgentEvent
+		if err := json.Unmarshal(evt.Data, &ev); err != nil {
+			return evt
+		}
+		hosts, _ := store.HostsForUser(u.ID)
+		allowed := false
+		for _, h := range hosts {
+			if h.Hostname == ev.Agent.Host {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return sse.Event{Name: "agent-event", Data: []byte("null")}
+		}
 	}
 
 	return evt
