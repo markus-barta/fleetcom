@@ -3967,6 +3967,12 @@ WantedBy=multi-user.target</pre>
             <!-- Context menu -->
             <template x-if="ctxMenu">
                 <div class="ctx-menu" :style="'left:' + ctxMenu.x + 'px;top:' + ctxMenu.y + 'px'" @click.outside="ctxMenu = null">
+                    <!-- FLEET-62: container actions (admin only). ctxMenu.key is "host/name". -->
+                    <template x-if="ctxMenu.type === 'container' && currentUser && currentUser.role === 'admin'">
+                        <button @click="restartContainer(ctxMenu.key); ctxMenu = null">
+                            Restart container
+                        </button>
+                    </template>
                     <button x-show="!ctxMenu.ignored" @click="ignoreEntity(ctxMenu.type, ctxMenu.key); ctxMenu = null">
                         Ignore <span x-text="ctxMenu.type"></span>
                     </button>
@@ -5874,6 +5880,29 @@ WantedBy=multi-user.target</pre>
                         } else {
                             const msg = await res.text();
                             this.toast('Pair failed: ' + msg.slice(0, 160), 'err');
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                // FLEET-62: restart a container via the bosun command
+                // channel. key format is "host/container_name".
+                async restartContainer(key) {
+                    const sep = key.indexOf('/');
+                    if (sep === -1) return;
+                    const host = key.slice(0, sep);
+                    const name = key.slice(sep + 1);
+                    if (!confirm('Restart container "' + name + '" on ' + host + '?\n\nBosun will call `docker restart` on its next heartbeat. The container will be unavailable for a few seconds while it restarts.')) return;
+                    try {
+                        const res = await fetch('/api/hosts/' + encodeURIComponent(host) + '/commands', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ kind: 'container.restart', params: { name } })
+                        });
+                        if (res.ok) {
+                            const body = await res.json();
+                            this.toast('Restart enqueued for ' + name + ' (cmd ' + body.id + ')');
+                        } else {
+                            this.toast('Restart failed: ' + (await res.text()).slice(0, 120), 'err');
                         }
                     } catch (_) { this.toast('Network error', 'err'); }
                 },
