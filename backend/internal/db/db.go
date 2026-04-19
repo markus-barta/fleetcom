@@ -56,6 +56,9 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE hosts ADD COLUMN fastfetch_at TEXT NOT NULL DEFAULT ''`,
 		// Auto-update / server-triggered update request:
 		`ALTER TABLE hosts ADD COLUMN update_requested_at TEXT NOT NULL DEFAULT ''`,
+		// Agent observability (FLEET-36) — see docs/AGENT-OBSERVABILITY.md.
+		// New tables are created by the schema const; nothing to ALTER here
+		// unless we evolve existing tables later.
 	}
 	for _, stmt := range alterStmts {
 		db.Exec(stmt) // ignore "duplicate column" errors
@@ -317,4 +320,58 @@ CREATE TABLE IF NOT EXISTS user_host_access (
 	host_id INTEGER NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,
 	PRIMARY KEY (user_id, host_id)
 );
+
+-- Agent observability (FLEET-36) — see docs/AGENT-OBSERVABILITY.md.
+CREATE TABLE IF NOT EXISTS agents_obs (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	host_id INTEGER NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,
+	name TEXT NOT NULL,
+	agent_type TEXT NOT NULL DEFAULT '',
+	snapshot_json TEXT NOT NULL DEFAULT '',
+	snapshot_at TEXT NOT NULL DEFAULT '',
+	UNIQUE(host_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_agents_obs_host ON agents_obs(host_id);
+
+CREATE TABLE IF NOT EXISTS agent_turns (
+	id TEXT PRIMARY KEY,
+	agent_id INTEGER NOT NULL REFERENCES agents_obs(id) ON DELETE CASCADE,
+	chat_id TEXT NOT NULL DEFAULT '',
+	chat_name TEXT NOT NULL DEFAULT '',
+	started_at TEXT NOT NULL,
+	first_token_at TEXT,
+	replied_at TEXT,
+	status TEXT NOT NULL DEFAULT '',
+	model TEXT NOT NULL DEFAULT '',
+	tokens_prompt INTEGER,
+	tokens_completion INTEGER,
+	duration_ms INTEGER,
+	error_class TEXT,
+	excerpt TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_agent_turns_agent_started ON agent_turns(agent_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_turns_chat ON agent_turns(agent_id, chat_id, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS agent_tools (
+	id TEXT PRIMARY KEY,
+	turn_id TEXT NOT NULL REFERENCES agent_turns(id) ON DELETE CASCADE,
+	name TEXT NOT NULL,
+	target TEXT NOT NULL DEFAULT '',
+	started_at TEXT NOT NULL,
+	completed_at TEXT,
+	exit_code INTEGER,
+	duration_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_agent_tools_turn ON agent_tools(turn_id);
+
+CREATE TABLE IF NOT EXISTS agent_events (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	agent_id INTEGER NOT NULL REFERENCES agents_obs(id) ON DELETE CASCADE,
+	ts TEXT NOT NULL,
+	kind TEXT NOT NULL,
+	turn_id TEXT,
+	payload_json TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_agent_events_agent_ts ON agent_events(agent_id, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_events_ts ON agent_events(ts);
 `

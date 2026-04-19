@@ -2082,6 +2082,365 @@
             animation: updpulse 1.2s ease-in-out infinite;
         }
         @keyframes updpulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+        /* --- Agent observability (FLEET-36) ------------------------------- */
+
+        /* Rich state-aware agent chip. Replaces the plain sparkle+name chip
+           when observability data is available. Shows state pill + primary
+           detail (current tool or idle/stuck reason). */
+        .chip.chip-agent-rich {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            cursor: pointer;
+            padding: 3px 8px;
+            border: 1px solid var(--line);
+            background: var(--card-overlay);
+            border-radius: 3px;
+            font-size: 11px;
+            font-variant-numeric: tabular-nums;
+            max-width: 100%;
+        }
+        .chip.chip-agent-rich:hover {
+            border-color: var(--accent, var(--ink-dim));
+        }
+        .chip.chip-agent-rich .ar-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .chip.chip-agent-rich .ar-name {
+            font-weight: 600;
+            color: var(--ink);
+        }
+        .chip.chip-agent-rich .ar-sep { color: var(--ink-faint); }
+        .chip.chip-agent-rich .ar-state {
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 9px;
+            color: var(--ink-dim);
+        }
+        .chip.chip-agent-rich .ar-detail {
+            color: var(--ink-ghost);
+            font-size: 10px;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        /* Colour-by-state */
+        .chip.chip-agent-rich.as-idle     .ar-dot  { background: var(--ok, #3ddc97); }
+        .chip.chip-agent-rich.as-busy     .ar-dot  { background: var(--ok, #3ddc97); }
+        .chip.chip-agent-rich.as-busy-long .ar-dot { background: var(--warn, #ffb84d); }
+        .chip.chip-agent-rich.as-error    .ar-dot  { background: var(--crit, #ff4d6d); }
+        .chip.chip-agent-rich.as-stuck    .ar-dot  {
+            background: var(--crit, #ff4d6d);
+            animation: stuckpulse 1s ease-in-out infinite;
+        }
+        .chip.chip-agent-rich.as-busy-long .ar-state { color: var(--warn); }
+        .chip.chip-agent-rich.as-error    .ar-state { color: var(--crit); }
+        .chip.chip-agent-rich.as-stuck    { border-color: var(--crit); }
+        .chip.chip-agent-rich.as-stuck    .ar-state { color: var(--crit); font-weight: 700; }
+
+        @keyframes stuckpulse { 0%,100% { opacity: 0.4; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.1); } }
+
+        /* Card pulses red when any agent is stuck on this host */
+        .card.has-stuck-agent {
+            animation: cardpulse 2s ease-in-out infinite;
+            border-left-color: var(--crit) !important;
+        }
+        @keyframes cardpulse {
+            0%,100% { box-shadow: 0 0 0 0 rgba(255,77,109,0.0); }
+            50%     { box-shadow: 0 0 0 4px rgba(255,77,109,0.35); }
+        }
+
+        /* --- Slide-over drawers -------------------------------------------- */
+        .drawer-backdrop {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.35);
+            z-index: 40;
+            opacity: 0; pointer-events: none;
+            transition: opacity 0.15s ease;
+        }
+        .drawer-backdrop.is-open { opacity: 1; pointer-events: auto; }
+
+        .drawer {
+            position: fixed;
+            top: 0; right: 0; bottom: 0;
+            width: min(560px, 100vw);
+            background: var(--bg-1, #1a1f2a);
+            border-left: 1px solid var(--line);
+            box-shadow: -8px 0 32px rgba(0,0,0,0.4);
+            z-index: 50;
+            transform: translateX(100%);
+            transition: transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .drawer.is-open { transform: translateX(0); }
+        .drawer.drawer-activity { width: min(480px, 100vw); right: 0; }
+        .drawer.drawer-agent.drawer-with-activity { right: min(480px, 100vw); }
+
+        .drawer-head {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--line);
+            flex-shrink: 0;
+        }
+        .drawer-head .title {
+            font-weight: 700;
+            font-size: 13px;
+            letter-spacing: 0.04em;
+        }
+        .drawer-head .subtitle {
+            color: var(--ink-ghost);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+        }
+        .drawer-head .state-pill {
+            margin-left: auto;
+        }
+        .drawer-close {
+            background: transparent;
+            border: 1px solid var(--line);
+            color: var(--ink-dim);
+            cursor: pointer;
+            width: 26px; height: 26px;
+            border-radius: 3px;
+            font-size: 14px;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .drawer-close:hover { color: var(--ink); background: var(--bg-2); }
+
+        .drawer-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.75rem 1rem 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.1rem;
+        }
+        .drawer-section-label {
+            font-size: 9px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--ink-ghost);
+            font-weight: 600;
+            margin-bottom: 0.4rem;
+        }
+
+        /* Current turn span visualisation (user → LLM → tool → reply) */
+        .turn-span {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+        .turn-span .ts-rail {
+            position: relative;
+            height: 22px;
+            background: var(--bg-0);
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .turn-span .ts-event {
+            position: absolute;
+            top: 0; bottom: 0;
+            width: 2px;
+            background: var(--accent, var(--ink-dim));
+        }
+        .turn-span .ts-event.e-tool {
+            background: var(--warn, #ffb84d);
+        }
+        .turn-span .ts-event.e-reply {
+            background: var(--ok, #3ddc97);
+        }
+        .turn-span .ts-event.e-error {
+            background: var(--crit, #ff4d6d);
+        }
+        .turn-span .ts-head {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: var(--ink-ghost);
+            font-variant-numeric: tabular-nums;
+        }
+        .turn-span .ts-head .active-ind {
+            display: inline-flex; align-items: center; gap: 0.25rem;
+            color: var(--accent, var(--ink-dim));
+        }
+        .turn-span .ts-head .active-ind::before {
+            content: ''; width: 6px; height: 6px; border-radius: 50%;
+            background: var(--accent, var(--ink-dim));
+            animation: updpulse 1s ease-in-out infinite;
+        }
+
+        /* Recent turns list */
+        .turns-list {
+            display: flex; flex-direction: column; gap: 0.3rem;
+            font-size: 11px;
+        }
+        .turn-row {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 0.5rem;
+            padding: 0.45rem 0.5rem;
+            border: 1px solid var(--line);
+            background: var(--bg-0);
+            border-radius: 2px;
+            align-items: center;
+        }
+        .turn-row .t-status {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--ink-faint);
+            flex-shrink: 0;
+        }
+        .turn-row.ts-replied  .t-status { background: var(--ok, #3ddc97); }
+        .turn-row.ts-tool-running .t-status,
+        .turn-row.ts-thinking .t-status { background: var(--warn, #ffb84d); }
+        .turn-row.ts-error .t-status { background: var(--crit, #ff4d6d); }
+        .turn-row.ts-abandoned .t-status { background: var(--ink-faint); }
+        .turn-row .t-chat {
+            color: var(--ink);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .turn-row .t-meta {
+            color: var(--ink-ghost);
+            font-size: 10px;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+        }
+        .turn-row .t-excerpt {
+            grid-column: 2 / -1;
+            color: var(--ink-dim);
+            font-size: 10px;
+            font-style: italic;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Per-chat table */
+        .chat-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 11px;
+        }
+        .chat-table th, .chat-table td {
+            padding: 0.3rem 0.5rem;
+            text-align: left;
+            border-bottom: 1px solid var(--line);
+            font-variant-numeric: tabular-nums;
+        }
+        .chat-table th {
+            font-size: 9px;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--ink-ghost);
+        }
+        .chat-table tr.stale-chat td { color: var(--warn); }
+
+        /* Activity drawer row */
+        .activity-list {
+            display: flex; flex-direction: column; gap: 2px;
+            font-size: 11px;
+            padding: 0.5rem 0;
+        }
+        .activity-row {
+            display: grid;
+            grid-template-columns: 48px 80px 1fr;
+            gap: 0.5rem;
+            padding: 3px 0.75rem;
+            border-left: 2px solid transparent;
+            align-items: baseline;
+        }
+        .activity-row:hover { background: var(--bg-2); }
+        .activity-row.same-turn { border-left-color: var(--accent, var(--ink-dim)); }
+        .activity-row .a-ts {
+            color: var(--ink-faint);
+            font-size: 10px;
+            font-variant-numeric: tabular-nums;
+        }
+        .activity-row .a-agent {
+            color: var(--ink-dim);
+            font-weight: 600;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .activity-row .a-kind { color: var(--accent, var(--ink-dim)); }
+        .activity-row.severity-error .a-kind { color: var(--crit); }
+        .activity-row.severity-warn  .a-kind { color: var(--warn); }
+        .activity-row .a-body {
+            color: var(--ink);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .activity-filters {
+            display: flex; gap: 0.4rem; padding: 0.5rem 1rem; border-bottom: 1px solid var(--line);
+            flex-wrap: wrap; align-items: center;
+        }
+        .activity-filters .filter-chip {
+            padding: 2px 6px;
+            font-size: 10px;
+            border: 1px solid var(--line);
+            border-radius: 2px;
+            cursor: pointer;
+            background: transparent;
+            color: var(--ink-dim);
+        }
+        .activity-filters .filter-chip.active {
+            background: var(--accent, #3ddc97);
+            color: var(--bg-0);
+            border-color: var(--accent, #3ddc97);
+        }
+        .activity-filters .pause-btn {
+            margin-left: auto;
+        }
+
+        /* Agent-button on the dashboard header */
+        .btn-activity {
+            position: relative;
+        }
+        .btn-activity .unread-dot {
+            position: absolute;
+            top: 2px; right: 2px;
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--accent, #3ddc97);
+        }
+
+        /* Sticky STUCK toasts */
+        .stuck-toast {
+            position: fixed;
+            left: 50%;
+            transform: translateX(-50%);
+            bottom: 1rem;
+            padding: 0.6rem 1rem;
+            background: var(--bg-1);
+            border: 1px solid var(--crit);
+            color: var(--crit);
+            border-radius: 3px;
+            font-size: 12px;
+            z-index: 60;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            display: flex; align-items: center; gap: 0.75rem;
+        }
+        .stuck-toast .dismiss {
+            background: transparent; border: 1px solid var(--crit);
+            color: var(--crit); cursor: pointer;
+            padding: 2px 6px; font-size: 10px;
+        }
     </style>
 </head>
 <body>
@@ -2121,6 +2480,10 @@
                 <div class="clock">
                     <span x-text="clockDate"></span><span class="sep">·</span><span x-text="clockTime"></span><span class="tz" @click="toggleTimezone()" style="cursor:pointer;" :title="'Click to switch to ' + (useUTC ? 'local' : 'UTC') + ' time'" x-text="tzLabel"></span>
                 </div>
+                <button class="theme-toggle btn-activity" @click="toggleActivityDrawer()" title="Global agent activity" style="background:none;border:1px solid var(--ink-faint);border-radius:4px;padding:2px 8px;cursor:pointer;color:var(--ink-dim);font-size:11px;font-family:inherit" x-show="agentsObs.length > 0">
+                    <span style="font-family:inherit;letter-spacing:0.05em">ACTIVITY</span>
+                    <template x-if="activityUnread > 0"><span class="unread-dot"></span></template>
+                </button>
                 <button class="theme-toggle" @click="cycleTheme()" :title="'Theme: ' + theme" style="background:none;border:1px solid var(--ink-faint);border-radius:4px;padding:2px 6px;cursor:pointer;color:var(--ink-dim);font-size:11px;font-family:inherit">
                     <span x-text="theme === 'dark' ? '&#9790;' : theme === 'light' ? '&#9788;' : '&#9681;'"></span>
                 </button>
@@ -2195,7 +2558,7 @@
                         <div class="grid">
                             <template x-for="host in hosts" :key="host.hostname">
                                 <div class="card"
-                                     :class="['state-' + hostStatus(host), isIgnored('host', host.hostname) ? 'is-ignored' : '']"
+                                     :class="['state-' + hostStatus(host), isIgnored('host', host.hostname) ? 'is-ignored' : '', hostHasStuckAgent(host) ? 'has-stuck-agent' : '']"
                                      @contextmenu.prevent="showCtxMenu($event, 'host', host.hostname)">
                                     <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].image_preset_id">
                                         <div class="card-bg-img">
@@ -2282,14 +2645,34 @@
                                             </div>
                                             <div class="chips">
                                                 <template x-for="a in host.agents" :key="a.name">
-                                                    <div class="chip chip-agent"
-                                                         :class="['s-' + agentStatus(a), isChipOpen('agent', host.hostname + '/' + a.name) ? 'is-open' : '', isIgnored('agent', host.hostname + '/' + a.name) ? 'is-ignored' : '']"
-                                                         :title="a.name + ' · ' + a.status"
-                                                         @click="toggleChip('agent', host.hostname + '/' + a.name)"
-                                                         @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
-                                                        <i data-lucide="sparkles" class="spark"></i>
-                                                        <span class="name" x-text="a.name"></span>
-                                                    </div>
+                                                    <template x-if="agentHasObs(host.hostname, a.name)">
+                                                        <div class="chip chip-agent-rich"
+                                                             :class="'as-' + agentState(host.hostname, a.name).key"
+                                                             :title="a.name + ' · ' + a.status + ' · click for detail'"
+                                                             @click="openAgentDrawer(host.hostname, a.name)"
+                                                             @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
+                                                            <span class="ar-dot"></span>
+                                                            <span class="ar-name" x-text="a.name"></span>
+                                                            <span class="ar-sep">·</span>
+                                                            <span class="ar-state" x-text="agentState(host.hostname, a.name).label"></span>
+                                                            <template x-if="agentState(host.hostname, a.name).detail">
+                                                                <span class="ar-sep">·</span>
+                                                            </template>
+                                                            <template x-if="agentState(host.hostname, a.name).detail">
+                                                                <span class="ar-detail" x-text="agentState(host.hostname, a.name).detail"></span>
+                                                            </template>
+                                                        </div>
+                                                    </template>
+                                                    <template x-if="!agentHasObs(host.hostname, a.name)">
+                                                        <div class="chip chip-agent"
+                                                             :class="['s-' + agentStatus(a), isChipOpen('agent', host.hostname + '/' + a.name) ? 'is-open' : '', isIgnored('agent', host.hostname + '/' + a.name) ? 'is-ignored' : '']"
+                                                             :title="a.name + ' · ' + a.status"
+                                                             @click="toggleChip('agent', host.hostname + '/' + a.name)"
+                                                             @contextmenu.prevent.stop="showCtxMenu($event, 'agent', host.hostname + '/' + a.name)">
+                                                            <i data-lucide="sparkles" class="spark"></i>
+                                                            <span class="name" x-text="a.name"></span>
+                                                        </div>
+                                                    </template>
                                                 </template>
                                             </div>
                                             <template x-for="a in host.agents" :key="'hist-' + a.name">
@@ -2313,7 +2696,7 @@
                         <div class="grid-detail">
                             <template x-for="host in hosts" :key="host.hostname">
                                 <div class="card"
-                                     :class="['state-' + hostStatus(host), isIgnored('host', host.hostname) ? 'is-ignored' : '']"
+                                     :class="['state-' + hostStatus(host), isIgnored('host', host.hostname) ? 'is-ignored' : '', hostHasStuckAgent(host) ? 'has-stuck-agent' : '']"
                                      @contextmenu.prevent="showCtxMenu($event, 'host', host.hostname)">
                                     <template x-if="hostConfigs[host.hostname] && hostConfigs[host.hostname].image_preset_id">
                                         <div class="card-bg-img">
@@ -3255,6 +3638,202 @@ WantedBy=multi-user.target</pre>
                 </a>
             </div>
         </footer>
+
+        <!-- ====================================================================
+             Agent observability drawers (FLEET-36) — inside Alpine root so
+             x-show / x-for / @click bindings resolve.
+        ===================================================================== -->
+        <div class="drawer-backdrop"
+             :class="(agentDrawerKey || activityOpen) ? 'is-open' : ''"
+             @click="closeAgentDrawer(); activityOpen = false"></div>
+
+        <!-- Agent detail drawer -->
+        <aside class="drawer drawer-agent"
+               :class="[agentDrawerKey ? 'is-open' : '', activityOpen ? 'drawer-with-activity' : '']"
+               @keydown.escape.window="closeAgentDrawer()"
+               x-show="agentDrawerKey" style="display:none">
+            <div class="drawer-head" x-show="agentDrawerKey">
+                <div>
+                    <div class="subtitle">Agent</div>
+                    <div class="title" x-text="agentDrawerKey || ''"></div>
+                </div>
+                <template x-if="agentDrawerData && agentDrawerData.snapshot">
+                    <span class="state-pill" x-text="agentDrawerData.snapshot.status.toUpperCase()"></span>
+                </template>
+                <button class="drawer-close" @click="closeAgentDrawer()" title="Close (Esc)">&times;</button>
+            </div>
+            <div class="drawer-body">
+                <template x-if="!agentDrawerData">
+                    <div style="color:var(--ink-ghost);font-style:italic;font-size:11px;">loading…</div>
+                </template>
+
+                <template x-if="agentDrawerData && agentDrawerData.snapshot">
+                    <div>
+                        <div class="drawer-section-label">Status</div>
+                        <div style="font-size:11px;display:flex;flex-wrap:wrap;gap:0.8rem;">
+                            <div><span style="color:var(--ink-ghost)">since:</span> <span x-text="agentDrawerData.snapshot.status_since ? formatAgo(agentDrawerData.snapshot.status_since) : '—'"></span></div>
+                            <template x-if="agentDrawerData.snapshot.current_turn_id">
+                                <div><span style="color:var(--ink-ghost)">turn:</span> <span style="font-family:monospace" x-text="agentDrawerData.snapshot.current_turn_id.slice(-8)"></span></div>
+                            </template>
+                            <template x-if="agentDrawerData.snapshot.typing && agentDrawerData.snapshot.typing.active">
+                                <div style="color:var(--warn)">typing exp <span x-text="formatAgo(agentDrawerData.snapshot.typing.expires_at)"></span></div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Current turn span -->
+                <template x-if="agentDrawerData && agentDrawerData.snapshot && agentDrawerData.snapshot.current_turn_id">
+                    <div>
+                        <div class="drawer-section-label">Current Turn</div>
+                        <div class="turn-span">
+                            <div class="ts-head">
+                                <span x-text="'started ' + formatAgo(agentDrawerData.snapshot.status_since)"></span>
+                                <span class="active-ind">LIVE</span>
+                            </div>
+                            <div class="ts-rail" style="position:relative">
+                                <template x-for="tool in (agentDrawerData.recent_tools || []).filter(t => t.turn_id === agentDrawerData.snapshot.current_turn_id)" :key="tool.id">
+                                    <div class="ts-event e-tool" :style="'left: calc(' + Math.min(98, 100 * secsSince(tool.started_at) / Math.max(1, secsSince(agentDrawerData.snapshot.status_since))) + '%)'" :title="tool.name"></div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Recent turns -->
+                <template x-if="agentDrawerData && agentDrawerData.recent_turns && agentDrawerData.recent_turns.length > 0">
+                    <div>
+                        <div class="drawer-section-label">Recent Turns</div>
+                        <div class="turns-list">
+                            <template x-for="t in agentDrawerData.recent_turns" :key="t.id">
+                                <div class="turn-row" :class="'ts-' + t.status">
+                                    <span class="t-status"></span>
+                                    <div class="t-chat" x-text="t.chat_name || t.chat_id || '—'"></div>
+                                    <div class="t-meta">
+                                        <span x-text="formatAgo(t.started_at)"></span>
+                                        <template x-if="t.duration_ms"><span> · <span x-text="Math.round(t.duration_ms/100)/10 + 's'"></span></span></template>
+                                        <template x-if="t.error_class"><span style="color:var(--crit)"> · <span x-text="t.error_class"></span></span></template>
+                                    </div>
+                                    <template x-if="t.excerpt">
+                                        <div class="t-excerpt" x-text="'&#8220;' + t.excerpt + '&#8221;'"></div>
+                                    </template>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Per-chat activity -->
+                <template x-if="agentDrawerData && agentDrawerData.snapshot && agentDrawerData.snapshot.last_reply_per_chat && Object.keys(agentDrawerData.snapshot.last_reply_per_chat).length > 0">
+                    <div>
+                        <div class="drawer-section-label">Per-chat · last reply</div>
+                        <table class="chat-table">
+                            <thead><tr><th>Chat</th><th>Last reply</th></tr></thead>
+                            <tbody>
+                                <template x-for="(ts, chatId) in agentDrawerData.snapshot.last_reply_per_chat" :key="chatId">
+                                    <tr :class="secsSince(ts) > 3600 ? 'stale-chat' : ''">
+                                        <td x-text="chatId"></td>
+                                        <td x-text="formatAgo(ts)"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+
+                <!-- Last error -->
+                <template x-if="agentDrawerData && agentDrawerData.snapshot && agentDrawerData.snapshot.last_error">
+                    <div>
+                        <div class="drawer-section-label">Last error</div>
+                        <div style="font-size:11px;color:var(--crit)">
+                            <strong x-text="agentDrawerData.snapshot.last_error.class"></strong>
+                            · <span x-text="formatAgo(agentDrawerData.snapshot.last_error.ts)"></span>
+                            <template x-if="agentDrawerData.snapshot.last_error.message">
+                                <div style="color:var(--ink-dim);margin-top:0.2rem;font-style:italic" x-text="agentDrawerData.snapshot.last_error.message"></div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- Config -->
+                <template x-if="agentDrawerData && agentDrawerData.snapshot && agentDrawerData.snapshot.config">
+                    <div>
+                        <div class="drawer-section-label">Config</div>
+                        <div style="font-size:11px;display:grid;grid-template-columns:auto 1fr;gap:0.2rem 0.6rem;color:var(--ink-dim)">
+                            <template x-if="agentDrawerData.snapshot.config.model"><span>model</span></template>
+                            <template x-if="agentDrawerData.snapshot.config.model"><span x-text="agentDrawerData.snapshot.config.model"></span></template>
+                            <template x-if="agentDrawerData.snapshot.config.prompt_version"><span>prompt</span></template>
+                            <template x-if="agentDrawerData.snapshot.config.prompt_version"><span x-text="agentDrawerData.snapshot.config.prompt_version"></span></template>
+                            <span>excerpts</span>
+                            <span x-text="agentDrawerData.snapshot.config.emit_excerpts ? 'enabled' : 'off (metadata-only)'"></span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </aside>
+
+        <!-- Global activity drawer -->
+        <aside class="drawer drawer-activity"
+               :class="activityOpen ? 'is-open' : ''"
+               @keydown.escape.window="activityOpen = false"
+               x-show="activityOpen" style="display:none">
+            <div class="drawer-head">
+                <div>
+                    <div class="subtitle">Fleet · live</div>
+                    <div class="title">Activity</div>
+                </div>
+                <button class="drawer-close" @click="activityOpen = false" title="Close (Esc)">&times;</button>
+            </div>
+            <div class="activity-filters">
+                <select x-model="activityFilter.agent" style="background:var(--bg-0);color:var(--ink-dim);border:1px solid var(--line);padding:2px 6px;font-size:10px">
+                    <option value="">all agents</option>
+                    <template x-for="a in agentsObs" :key="agentKey(a.host, a.name)">
+                        <option :value="agentKey(a.host, a.name)" x-text="agentKey(a.host, a.name)"></option>
+                    </template>
+                </select>
+                <select x-model="activityFilter.kind" style="background:var(--bg-0);color:var(--ink-dim);border:1px solid var(--line);padding:2px 6px;font-size:10px">
+                    <option value="">all kinds</option>
+                    <option value="turn">turn.*</option>
+                    <option value="typing">typing.*</option>
+                    <option value="config">config.*</option>
+                </select>
+                <select x-model="activityFilter.severity" style="background:var(--bg-0);color:var(--ink-dim);border:1px solid var(--line);padding:2px 6px;font-size:10px">
+                    <option value="">all severities</option>
+                    <option value="info">info</option>
+                    <option value="warn">warn</option>
+                    <option value="error">error</option>
+                </select>
+                <button class="filter-chip pause-btn" @click="toggleActivityPause()" :class="activityPaused ? 'active' : ''" x-text="activityPaused ? 'PAUSED · ' + activityQueue.length : 'PAUSE'"></button>
+            </div>
+            <div class="drawer-body" style="padding:0">
+                <div class="activity-list">
+                    <template x-if="filteredActivity().length === 0">
+                        <div style="color:var(--ink-ghost);padding:1rem;font-style:italic;font-size:11px">No events yet. Start interacting with an agent…</div>
+                    </template>
+                    <template x-for="(ev, i) in filteredActivity()" :key="i + (ev.ts||'') + (ev.turn_id||'') + ev.kind">
+                        <div class="activity-row"
+                             :class="['severity-' + activitySeverity(ev), (i > 0 && filteredActivity()[i-1] && filteredActivity()[i-1].turn_id === ev.turn_id) ? 'same-turn' : '']">
+                            <div class="a-ts" x-text="formatAgo(ev.ts)"></div>
+                            <div class="a-agent" x-text="ev.agent ? ev.agent.name : '—'"></div>
+                            <div>
+                                <span class="a-kind" x-text="ev.kind"></span>
+                                <span style="color:var(--ink-ghost)"> · </span>
+                                <span class="a-body" x-text="activityBody(ev)"></span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </aside>
+
+        <!-- STUCK toasts -->
+        <template x-for="(s, i) in stuckAgents()" :key="s.key">
+            <div class="stuck-toast" :style="'bottom: ' + (1 + i*3.5) + 'rem'">
+                <strong x-text="s.name + ' on ' + s.host"></strong>
+                <span>STUCK <span x-text="humanDurShort(secsSince(s.since))"></span></span>
+                <button class="dismiss" @click="dismissStuck(s.key)">dismiss</button>
+            </div>
+        </template>
     </div>
 
     <div class="toast-container" id="toasts"></div>
@@ -3318,6 +3897,18 @@ WantedBy=multi-user.target</pre>
                 hwOpen: {},
                 hardwareCache: {},
                 hardwareLoading: {},
+                // Agent observability (FLEET-36)
+                agentsObs: [],                     // AgentSummary[] from SSE 'agents'
+                agentDrawerKey: null,              // "host/name" of open drawer, or null
+                agentDrawerData: null,             // AgentDetail from /api/agents/{host}/{name}
+                activityOpen: false,               // global activity drawer
+                activityPaused: false,
+                activityEvents: [],                // rolling, newest first (max 500)
+                activityQueue: [],                 // queued while paused
+                activityFilter: { agent: '', chat: '', kind: '', severity: '' },
+                activityUnread: 0,
+                stuckTripped: {},                  // "host/name" → { since, reason }
+                stuckDismissed: {},
                 scaleList: ['1min', '15min', '1h', '1d', '14d', '1MO', '1Y'],
                 scaleWindow: { '1min': 60, '15min': 900, '1h': 3600, '1d': 86400, '14d': 1209600, '1MO': 2592000, '1Y': 31536000 },
                 globalScale: '1h',
@@ -3824,6 +4415,32 @@ WantedBy=multi-user.target</pre>
                         }
                     });
 
+                    this.es.addEventListener('agents', (e) => {
+                        try {
+                            this.agentsObs = JSON.parse(e.data) || [];
+                            // Refresh drawer detail if open
+                            if (this.agentDrawerKey) {
+                                const [h, n] = this.agentDrawerKey.split('/');
+                                this.loadAgentDetail(h, n);
+                            }
+                        } catch (err) {
+                            console.warn('agents event parse error', err);
+                        }
+                    });
+
+                    this.es.addEventListener('agent-event', (e) => {
+                        try {
+                            const ev = JSON.parse(e.data);
+                            if (ev) this.pushActivityEvent(ev);
+                            // If the drawer for this agent is open, refresh its turns
+                            if (ev && ev.agent && this.agentDrawerKey === this.agentKey(ev.agent.host, ev.agent.name)) {
+                                this.loadAgentDetail(ev.agent.host, ev.agent.name);
+                            }
+                        } catch (err) {
+                            console.warn('agent-event parse error', err);
+                        }
+                    });
+
                     this.es.onopen = () => {
                         this.lastOkAt = Date.now();
                         this.connState = 'live';
@@ -3982,6 +4599,195 @@ WantedBy=multi-user.target</pre>
                         ignored: this.isIgnored(entityType, entityKey)
                     };
                 },
+
+                // ---------- agent observability (FLEET-36) ----------
+                agentKey(host, name) { return host + '/' + name; },
+                agentSnapshotFor(hostname, name) {
+                    const key = this.agentKey(hostname, name);
+                    const s = this.agentsObs.find(a => this.agentKey(a.host, a.name) === key);
+                    return s && s.snapshot ? s.snapshot : null;
+                },
+                agentHasObs(hostname, name) {
+                    return !!this.agentSnapshotFor(hostname, name);
+                },
+                // Duration helpers
+                secsSince(ts) {
+                    if (!ts) return 0;
+                    const t = Date.parse(ts);
+                    if (!Number.isFinite(t)) return 0;
+                    return Math.max(0, Math.round((Date.now() - t) / 1000));
+                },
+                humanDurShort(sec) {
+                    if (sec < 60) return sec + 's';
+                    if (sec < 3600) return Math.round(sec / 60) + 'm';
+                    if (sec < 86400) return Math.round(sec / 3600) + 'h';
+                    return Math.round(sec / 86400) + 'd';
+                },
+                // Determine the display state for the chip
+                agentState(hostname, name) {
+                    const snap = this.agentSnapshotFor(hostname, name);
+                    if (!snap) return { key: 'unknown', label: 'NO DATA', detail: '' };
+
+                    if (this.isAgentStuck(hostname, name)) {
+                        const since = this.secsSince(snap.status_since);
+                        return { key: 'stuck', label: 'STUCK ' + this.humanDurShort(since), detail: 'no events' };
+                    }
+
+                    const s = snap.status || 'idle';
+                    const since = this.secsSince(snap.status_since);
+
+                    if (s === 'idle' || s === 'receiving') {
+                        return { key: 'idle', label: 'IDLE ' + this.humanDurShort(since), detail: '' };
+                    }
+                    if (s === 'error') {
+                        const cls = snap.last_error && snap.last_error.class ? snap.last_error.class : 'error';
+                        return { key: 'error', label: 'ERROR', detail: cls };
+                    }
+                    if (s === 'tool-running') {
+                        const toolDetail = snap.current_turn_id ? this.agentCurrentToolDetail(hostname, name) : '';
+                        return {
+                            key: since >= 300 ? 'busy-long' : 'busy',
+                            label: 'BUSY ' + this.humanDurShort(since),
+                            detail: toolDetail || 'tool running',
+                        };
+                    }
+                    if (s === 'thinking' || s === 'replying') {
+                        return {
+                            key: since >= 300 ? 'busy-long' : 'busy',
+                            label: 'BUSY ' + this.humanDurShort(since),
+                            detail: s,
+                        };
+                    }
+                    return { key: 'idle', label: s.toUpperCase(), detail: '' };
+                },
+                agentCurrentToolDetail(hostname, name) {
+                    // Use drawer data if open for this agent (richest); else leave empty.
+                    if (!this.agentDrawerData || this.agentDrawerKey !== this.agentKey(hostname, name)) return '';
+                    const turnID = this.agentSnapshotFor(hostname, name)?.current_turn_id;
+                    const tools = this.agentDrawerData.recent_tools || [];
+                    const running = tools.find(t => t.turn_id === turnID && !t.completed_at);
+                    if (!running) return '';
+                    return running.name + (running.target ? ' → ' + running.target : '');
+                },
+                // STUCK detection (client-side, see docs/AGENT-OBSERVABILITY.md)
+                isAgentStuck(hostname, name) {
+                    const snap = this.agentSnapshotFor(hostname, name);
+                    if (!snap || !snap.status) return false;
+                    if (!['thinking', 'tool-running', 'replying'].includes(snap.status)) return false;
+                    const since = this.secsSince(snap.status_since);
+                    const threshold = (snap.config && snap.config.stuck_threshold_sec) || 120;
+                    const silenceBudget = (snap.config && snap.config.stuck_silence_sec) || 120;
+                    if (since < threshold) return false;
+                    // "No events" check: scan activityEvents for this agent+turn.
+                    const key = this.agentKey(hostname, name);
+                    const turnID = snap.current_turn_id;
+                    if (!turnID) return since >= threshold;
+                    let mostRecent = 0;
+                    for (const ev of this.activityEvents) {
+                        if (ev && ev.agent && this.agentKey(ev.agent.host, ev.agent.name) === key && ev.turn_id === turnID) {
+                            const t = Date.parse(ev.ts);
+                            if (t > mostRecent) mostRecent = t;
+                            break; // list is newest-first
+                        }
+                    }
+                    const silenceSec = mostRecent ? (Date.now() - mostRecent) / 1000 : since;
+                    return silenceSec >= silenceBudget;
+                },
+                hostHasStuckAgent(host) {
+                    if (!host || !host.agents) return false;
+                    return host.agents.some(a => this.isAgentStuck(host.hostname, a.name));
+                },
+                // Drawer open/close
+                async openAgentDrawer(hostname, name) {
+                    this.agentDrawerKey = this.agentKey(hostname, name);
+                    this.agentDrawerData = null;
+                    await this.loadAgentDetail(hostname, name);
+                },
+                closeAgentDrawer() {
+                    this.agentDrawerKey = null;
+                    this.agentDrawerData = null;
+                },
+                async loadAgentDetail(hostname, name) {
+                    try {
+                        const res = await fetch('/api/agents/' + encodeURIComponent(hostname) + '/' + encodeURIComponent(name));
+                        if (res.ok) this.agentDrawerData = await res.json();
+                    } catch (_) { /* silent — drawer shows loading */ }
+                },
+                // Activity drawer
+                toggleActivityDrawer() {
+                    this.activityOpen = !this.activityOpen;
+                    if (this.activityOpen) {
+                        this.activityUnread = 0;
+                        this.flushActivityQueue();
+                    }
+                },
+                pushActivityEvent(ev) {
+                    if (!ev || !ev.kind) return;
+                    if (this.activityPaused) {
+                        this.activityQueue.unshift(ev);
+                        if (this.activityQueue.length > 500) this.activityQueue.length = 500;
+                        return;
+                    }
+                    this.activityEvents.unshift(ev);
+                    if (this.activityEvents.length > 500) this.activityEvents.length = 500;
+                    if (!this.activityOpen) this.activityUnread++;
+                },
+                flushActivityQueue() {
+                    if (this.activityQueue.length === 0) return;
+                    this.activityEvents = this.activityQueue.concat(this.activityEvents).slice(0, 500);
+                    this.activityQueue = [];
+                },
+                toggleActivityPause() {
+                    this.activityPaused = !this.activityPaused;
+                    if (!this.activityPaused) this.flushActivityQueue();
+                },
+                filteredActivity() {
+                    const f = this.activityFilter;
+                    return this.activityEvents.filter(ev => {
+                        if (!ev || !ev.agent) return false;
+                        if (f.agent && this.agentKey(ev.agent.host, ev.agent.name) !== f.agent) return false;
+                        if (f.kind && !ev.kind.startsWith(f.kind)) return false;
+                        if (f.severity) {
+                            const sev = this.activitySeverity(ev);
+                            if (sev !== f.severity) return false;
+                        }
+                        return true;
+                    });
+                },
+                activitySeverity(ev) {
+                    if (!ev || !ev.kind) return 'info';
+                    if (ev.kind === 'turn.errored' || ev.kind === 'turn.abandoned') return 'error';
+                    if (ev.kind === 'typing.refreshed') return 'info';
+                    return 'info';
+                },
+                activityBody(ev) {
+                    if (!ev) return '';
+                    const p = ev.payload || {};
+                    switch (ev.kind) {
+                        case 'turn.started': return (p.chat_name || p.chat_id || '—') + (p.excerpt ? ' — ' + p.excerpt : '');
+                        case 'turn.tool-invoked': return (p.name || 'tool') + (p.target ? ' → ' + p.target : '');
+                        case 'turn.tool-completed': return (p.tool_id || 'tool') + ' · exit=' + (p.exit_code ?? '?') + ' · ' + Math.round((p.duration_ms||0)/100)/10 + 's';
+                        case 'turn.replied': return 'replied · ' + Math.round((p.duration_ms||0)/100)/10 + 's · ' + ((p.tokens_prompt||0) + '→' + (p.tokens_completion||0) + ' tok');
+                        case 'turn.errored': return (p.class || 'error') + (p.message ? ' — ' + p.message : '');
+                        case 'turn.abandoned': return p.reason || 'abandoned';
+                        case 'typing.refreshed': return (p.chat_id || '') + (p.expires_at ? ' exp ' + this.formatAgo(p.expires_at) : '');
+                        case 'config.changed': return 'config updated';
+                        default: return ev.kind;
+                    }
+                },
+                // Stuck toasts (rebuild on each render so dismissed items re-trip if state persists beyond dismissal scope)
+                stuckAgents() {
+                    const out = [];
+                    for (const s of this.agentsObs) {
+                        const key = this.agentKey(s.host, s.name);
+                        if (this.isAgentStuck(s.host, s.name) && !this.stuckDismissed[key]) {
+                            const snap = s.snapshot || {};
+                            out.push({ key, host: s.host, name: s.name, since: snap.status_since });
+                        }
+                    }
+                    return out;
+                },
+                dismissStuck(key) { this.stuckDismissed[key] = Date.now(); },
 
                 // ---------- host hardware panel ----------
                 toggleHardware(hostname) {

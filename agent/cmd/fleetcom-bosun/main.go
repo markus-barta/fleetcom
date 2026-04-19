@@ -36,6 +36,7 @@ type HeartbeatPayload struct {
 	HwStatic      *HwStatic          `json:"hw_static,omitempty"`
 	HwLive        *HwLive            `json:"hw_live,omitempty"`
 	Fastfetch     json.RawMessage    `json:"fastfetch_json,omitempty"`
+	AgentStates   []AgentSnapshot    `json:"agent_states,omitempty"`
 }
 
 type ContainerPayload struct {
@@ -197,6 +198,9 @@ func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []Agent
 	}
 	live := collectLive(cores)
 	payload.HwLive = &live
+
+	// Agent exporter snapshots (FLEET-36) — optional; missing URLs → no-op.
+	payload.AgentStates = scrapeAgentStates()
 
 	if hw != nil {
 

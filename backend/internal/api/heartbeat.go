@@ -26,6 +26,9 @@ type HeartbeatPayload struct {
 	HwStatic  *db.HwStatic    `json:"hw_static,omitempty"`
 	HwLive    *db.HwLive      `json:"hw_live,omitempty"`
 	Fastfetch json.RawMessage `json:"fastfetch_json,omitempty"`
+	// Agent observability (FLEET-36) — bosun attaches one snapshot per
+	// agent scraped from local exporters.
+	AgentStates []db.AgentSnapshot `json:"agent_states,omitempty"`
 }
 
 type ContainerPayload struct {
@@ -82,6 +85,21 @@ func Heartbeat(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			return
 		}
 
+		// Persist any agent snapshots attached to this heartbeat so the
+		// read side has a canonical "latest" per agent without waiting
+		// for events to catch up.
+		for i := range payload.AgentStates {
+			snap := payload.AgentStates[i]
+			if snap.Name == "" {
+				continue
+			}
+			// Override host from the token — exporter cannot claim another host.
+			snap.Host = payload.Hostname
+			if _, _, err := store.UpsertAgentSnapshot(payload.Hostname, snap); err != nil {
+				log.Printf("agent snapshot upsert error: %v", err)
+			}
+		}
+
 		// Broadcast to SSE clients
 		hosts, err := store.AllHosts()
 		if err != nil {
@@ -89,6 +107,17 @@ func Heartbeat(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 		} else {
 			data, _ := json.Marshal(hosts)
 			hub.Broadcast("hosts", data)
+		}
+
+		// Broadcast agents list too when snapshots arrived.
+		if len(payload.AgentStates) > 0 {
+			if ids, err := store.AllHostIDs(); err == nil {
+				if summaries, err := store.ListAgentsForHosts(ids); err == nil {
+					if data, err := json.Marshal(summaries); err == nil {
+						hub.Broadcast("agents", data)
+					}
+				}
+			}
 		}
 
 		// Return interval + optional command so agents can adapt and act.
