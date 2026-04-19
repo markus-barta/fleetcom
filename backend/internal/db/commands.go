@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -123,16 +124,25 @@ func (s *Store) MarkCommandResult(id int64, host, status string, result, errStr 
 	return nil
 }
 
-// CancelCommand drops a pending command (pre-pickup only — executing
-// commands are in flight and can't be un-issued).
+// CancelCommand stops a command. Works for pending (pre-pickup, no
+// side effects on host) AND executing (post-pickup — admin knows the
+// host won't come back, or bosun is dead, or they just want to give
+// up waiting). For executing, cancellation races cleanly with a late
+// MarkCommandResult: that call has `status = 'executing'` in its
+// WHERE clause and will no-op if we flipped to 'cancelled' first.
 func (s *Store) CancelCommand(id int64) error {
-	res, err := s.DB.Exec(`UPDATE host_commands SET status = 'cancelled', completed_at = datetime('now') WHERE id = ? AND status = 'pending'`, id)
+	res, err := s.DB.Exec(`
+		UPDATE host_commands
+		SET status = 'cancelled', completed_at = datetime('now'),
+		    error = CASE WHEN status = 'executing' THEN 'cancelled by admin while in flight' ELSE error END
+		WHERE id = ? AND status IN ('pending','executing')
+	`, id)
 	if err != nil {
 		return err
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("command %d not pending", id)
+		return fmt.Errorf("command %d is not pending or executing", id)
 	}
 	return nil
 }
@@ -168,19 +178,30 @@ func (s *Store) CommandsForHost(host string, limit int) ([]HostCommand, error) {
 // ExpireStuckCommands moves commands stuck in 'executing' past a
 // threshold (typically a few multiples of the heartbeat interval) to
 // 'failed' so the UI doesn't show them as forever-in-progress when a
-// host went dark mid-execution.
+// host went dark mid-execution. Retries transient SQLITE_BUSY (the
+// 5s busy_timeout on open isn't always enough when a heartbeat
+// transaction spans the same rows) before giving up.
 func (s *Store) ExpireStuckCommands(maxAge time.Duration) (int64, error) {
 	cutoff := time.Now().Add(-maxAge).UTC().Format(time.RFC3339)
-	res, err := s.DB.Exec(`
-		UPDATE host_commands
-		SET status = 'failed', error = 'timeout: bosun did not report within window', completed_at = datetime('now')
-		WHERE status = 'executing' AND picked_at < ?
-	`, cutoff)
-	if err != nil {
-		return 0, err
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		res, err := s.DB.Exec(`
+			UPDATE host_commands
+			SET status = 'failed', error = 'timeout: bosun did not report within window', completed_at = datetime('now')
+			WHERE status = 'executing' AND picked_at < ?
+		`, cutoff)
+		if err == nil {
+			n, _ := res.RowsAffected()
+			return n, nil
+		}
+		lastErr = err
+		msg := err.Error()
+		if !strings.Contains(msg, "database is locked") && !strings.Contains(msg, "SQLITE_BUSY") {
+			return 0, err
+		}
+		time.Sleep(time.Duration(attempt+1) * 250 * time.Millisecond)
 	}
-	n, _ := res.RowsAffected()
-	return n, nil
+	return 0, lastErr
 }
 
 func scanCommand(rows *sql.Rows) (HostCommand, error) {

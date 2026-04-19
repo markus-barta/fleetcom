@@ -3360,8 +3360,8 @@
                                                         </div>
                                                         <div style="text-align:right;color:var(--ink-ghost);font-size:10px;white-space:nowrap;">
                                                             <div x-text="formatAgo(c.issued_at)"></div>
-                                                            <template x-if="c.status === 'pending'">
-                                                                <button class="btn btn-ghost" style="font-size:8px;padding:0.15rem 0.4rem;margin-top:2px;" @click="cancelCommand(c.id)">cancel</button>
+                                                            <template x-if="c.status === 'pending' || c.status === 'executing'">
+                                                                <button class="btn btn-ghost" style="font-size:8px;padding:0.15rem 0.4rem;margin-top:2px;" @click="cancelCommand(c.id)" :title="c.status === 'executing' ? 'Force-cancel an in-flight command. Use when bosun is stuck / offline / running an old version that can\u0027t dispatch.' : 'Drop a pending command before bosun picks it up.'" x-text="c.status === 'executing' ? 'force cancel' : 'cancel'"></button>
                                                             </template>
                                                         </div>
                                                     </div>
