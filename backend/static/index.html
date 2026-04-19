@@ -5981,12 +5981,18 @@ WantedBy=multi-user.target</pre>
                         });
                         if (res.ok) {
                             const body = await res.json();
-                            this.toast('Gateway pairing enqueued for ' + host + ' (cmd ' + body.command_id + ')');
+                            this.toast('Pairing enqueued — watching command #' + body.command_id);
                             this.showAddGatewayInline = false;
                             this.newGatewayHost = '';
                             this.newGatewayContainer = '';
                             this.newGatewayContainerCustom = '';
                             this.loadGateways();
+                            // Auto-jump to the host's command drawer so the
+                            // admin sees live status instead of having to
+                            // navigate around looking for it.
+                            this.settingsTab = 'hosts';
+                            if (this.tokens.length === 0) await this.loadTokens();
+                            this.openHostCommands(host);
                         } else {
                             const msg = await res.text();
                             this.toast('Pair failed: ' + msg.slice(0, 160), 'err');
@@ -6095,7 +6101,10 @@ WantedBy=multi-user.target</pre>
                         });
                         if (res.ok) {
                             const body = await res.json();
-                            this.toast('Bridge install enqueued for ' + host + ' (cmd ' + body.id + ')');
+                            this.toast('Bridge install enqueued — watching command #' + body.id);
+                            this.settingsTab = 'hosts';
+                            if (this.tokens.length === 0) await this.loadTokens();
+                            this.openHostCommands(host);
                         } else {
                             this.toast('Deploy failed: ' + (await res.text()).slice(0, 120), 'err');
                         }
@@ -6359,7 +6368,13 @@ WantedBy=multi-user.target</pre>
                     // this makes "seen Xs ago" and hostStatus update every second.
                     void this.tickSec;
                     if (!isoStr) return 9999;
-                    return (Date.now() - new Date(isoStr).getTime()) / 1000;
+                    // Normalize SQLite datetime('now') format ("YYYY-MM-DD HH:MM:SS"
+                    // with no T and no Z) to proper ISO-UTC so JS doesn't parse it
+                    // as local time. Already-RFC3339 strings pass through unchanged.
+                    let s = isoStr;
+                    if (!s.includes('T')) s = s.replace(' ', 'T');
+                    if (!/([Zz]|[+-]\d\d:?\d\d)$/.test(s)) s += 'Z';
+                    return (Date.now() - new Date(s).getTime()) / 1000;
                 },
 
                 formatAgo(isoStr) {
