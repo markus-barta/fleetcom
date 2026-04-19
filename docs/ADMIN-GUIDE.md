@@ -1,5 +1,24 @@
 # Admin Guide
 
+## Host Drawer
+
+Click any host card (normal/detail view) or row (compact view) to open
+a right-side drawer with three tabs:
+
+- **Overview** — status strip, agents, containers, paired gateway and
+  bridges, full hardware panel. Live-updated via SSE.
+- **Commands** — the bosun command audit trail for this host (pair,
+  restart, install, …). Pending/executing commands show a dot on the
+  tab; force-cancel is available per row.
+- **Settings** — display config (icon + comment), lifecycle actions
+  (Update agent, New token, Ignore host, Remove host), and
+  integrations (+ Pair gateway, + Deploy bridge, Unpair, Revoke).
+
+Container chips carry an ellipsis (⋯) menu with Restart + Ignore
+(admin only). Agent Ignore lives in the agent drawer header.
+Settings → Hosts / Gateways / Bridges tabs still work and will be
+retired once the drawer has been battle-tested (FLEET-72).
+
 ## User Management
 
 ### Creating users
