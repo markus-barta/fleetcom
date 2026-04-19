@@ -34,3 +34,15 @@ Thumbs.db
 
 # Docker
 docker-compose.override.yml
+
+# direnv / Nix devShell
+/.direnv/
+
+# Node / Playwright
+/.npm-global/
+/node_modules/
+/.playwright-mcp/
+/*.png
+
+# Claude Code tooling
+/.mcp.json

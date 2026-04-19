@@ -16,7 +16,24 @@ import (
 	"github.com/markus-barta/fleetcom/internal/auth"
 	"github.com/markus-barta/fleetcom/internal/db"
 	"github.com/markus-barta/fleetcom/internal/openclaw"
+	"github.com/markus-barta/fleetcom/internal/sse"
 )
+
+// broadcastGateways pushes the current gateway list to all SSE clients.
+// Called after mutations so the dashboard reflects pair/unpair state
+// without a reload (FLEET-71).
+func broadcastGateways(store *db.Store, hub *sse.Hub) {
+	if hub == nil {
+		return
+	}
+	gs, err := store.AllGateways()
+	if err != nil {
+		return
+	}
+	if data, err := json.Marshal(gs); err == nil {
+		hub.Broadcast("gateways", data)
+	}
+}
 
 // PairGateway implements POST /api/gateways/{host}/pair (FLEET-61):
 // generate FleetCom's Ed25519 keypair + operator token for a gateway
@@ -36,7 +53,7 @@ import (
 //
 // Idempotency: if keys already exist, returns 409. Admin must DELETE
 // the gateway first (tears down client + removes files) to re-pair.
-func PairGateway(store *db.Store, keyRoot string) http.HandlerFunc {
+func PairGateway(store *db.Store, keyRoot string, hub *sse.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host := chi.URLParam(r, "host")
 		if host == "" {
@@ -153,6 +170,9 @@ func PairGateway(store *db.Store, keyRoot string) http.HandlerFunc {
 		if _, err := store.UpsertGateway(host, url); err != nil {
 			log.Printf("pair-gateway upsert: %v", err)
 		}
+		// Broadcast so the host drawer + Gateways tab reflect the new
+		// "pending" row instantly (FLEET-71).
+		broadcastGateways(store, hub)
 
 		log.Printf("pair-gateway %s: keys generated, command %d enqueued, deviceId=%s", host, cmdID, id.DeviceID[:12])
 
@@ -173,7 +193,7 @@ func PairGateway(store *db.Store, keyRoot string) http.HandlerFunc {
 // rows intact so admins can inspect history). Does NOT touch the
 // gateway-side paired.json; admin needs to remove our entry manually
 // if they want to fully decommission.
-func UnpairGateway(store *db.Store, keyRoot string) http.HandlerFunc {
+func UnpairGateway(store *db.Store, keyRoot string, hub *sse.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host := chi.URLParam(r, "host")
 		if host == "" {
@@ -189,6 +209,8 @@ func UnpairGateway(store *db.Store, keyRoot string) http.HandlerFunc {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+		// Broadcast so the host drawer reflects the removal instantly (FLEET-71).
+		broadcastGateways(store, hub)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

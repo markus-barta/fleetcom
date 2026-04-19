@@ -1,5 +1,24 @@
 package main
 
+// Mutation → SSE event mapping (FLEET-71).
+// Every server-side state change that's visible in the dashboard pushes a
+// named SSE event; the browser binds reactively to those data fields, so
+// mutations reflect within ~1s without a manual reload.
+//
+//   POST /api/heartbeat                           → "hosts" + optional "agents"
+//   POST /api/container-events                    → "hosts"
+//   PUT  /api/host-config                         → "host-configs"
+//   PUT  /api/settings, POST /api/branding/*      → "config"
+//   POST /api/hosts/{host}/commands               → (no broadcast — pull-based)
+//   POST /api/command-results                     → "commands"
+//   POST /api/commands/{id}/cancel                → "commands"
+//   POST /api/gateways/{host}/pair                → "gateways"
+//   DELETE /api/gateways/{host}                   → "gateways"
+//   POST /api/gateways/{host}/auto-approve/{mode} → "gateways"
+//   DELETE /api/bridges/{host}/{agent}            → "bridges" + "gateways"
+//   POST /api/update-all, POST /api/hosts/{h}/update → "hosts"
+//   (agent observability push)                    → "agents" + "agent-event"
+
 import (
 	"context"
 	"log"
@@ -200,8 +219,8 @@ func main() {
 		// openclaw.pair command. First dir of ocKeyDir (colon-separated)
 		// that's writable is used for key storage; /app/data is the
 		// conventional choice inside the fleetcom container.
-		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/pair", api.PairGateway(store, "/app/data/openclaw-keys"))
-		r.With(auth.RequireAdmin).Delete("/api/gateways/{host}", api.UnpairGateway(store, "/app/data/openclaw-keys"))
+		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/pair", api.PairGateway(store, "/app/data/openclaw-keys", hub))
+		r.With(auth.RequireAdmin).Delete("/api/gateways/{host}", api.UnpairGateway(store, "/app/data/openclaw-keys", hub))
 		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/auto-approve/{mode}", api.SetGatewayAutoApprove(store, hub))
 		r.With(auth.RequireAdmin).Get("/api/bridges", api.ListBridges(store))
 		r.With(auth.RequireAdmin).Delete("/api/bridges/{host}/{agent}", api.RevokeBridge(store, hub, ocMgr))
