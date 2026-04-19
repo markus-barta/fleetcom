@@ -73,6 +73,29 @@ jobs:
         working-directory: agent
         run: go vet ./...
 
+  lint-bridge:
+    name: Lint Agent-Bridge (gofmt + vet)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: agent-bridge/go.mod
+
+      - name: gofmt
+        working-directory: agent-bridge
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "$unformatted" ; exit 1
+          fi
+
+      - name: go vet
+        working-directory: agent-bridge
+        run: go vet ./...
+
   build:
     name: Build (linux/amd64)
     runs-on: ubuntu-latest
@@ -180,6 +203,39 @@ jobs:
             ghcr.io/markus-barta/fleetcom-agent:latest
             ghcr.io/markus-barta/fleetcom-agent:v${{ env.AGENT_VERSION }}
             ghcr.io/markus-barta/fleetcom-agent:sha-${{ steps.meta.outputs.short_sha }}
+
+  publish-agent-bridge:
+    name: Publish Agent-Bridge to GHCR
+    runs-on: ubuntu-latest
+    needs: [lint-bridge]
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build metadata
+        id: meta
+        run: |
+          echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Build and push bridge image
+        uses: docker/build-push-action@v7
+        with:
+          context: ./agent-bridge
+          push: true
+          build-args: |
+            VERSION=${{ env.AGENT_VERSION }}
+          tags: |
+            ghcr.io/markus-barta/fleetcom-agent-bridge:latest
+            ghcr.io/markus-barta/fleetcom-agent-bridge:v${{ env.AGENT_VERSION }}
+            ghcr.io/markus-barta/fleetcom-agent-bridge:sha-${{ steps.meta.outputs.short_sha }}
 
   publish-agent-binaries:
     name: Publish Agent Binaries (GitHub Release)

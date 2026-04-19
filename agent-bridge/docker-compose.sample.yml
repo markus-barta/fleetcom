@@ -1,0 +1,37 @@
+# Sample compose snippet for hsb0 (or any host running openclaw-gateway).
+# Drop this into your host's docker-compose.yml alongside the existing
+# openclaw-gateway service and fleetcom-bosun.
+
+services:
+  agent-bridge:
+    image: ghcr.io/markus-barta/fleetcom-agent-bridge:latest
+    container_name: fleetcom-agent-bridge
+    restart: unless-stopped
+    depends_on:
+      - openclaw-gateway
+    volumes:
+      # Needs docker daemon access to tail sibling container's logs.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      # Same FleetCom URL + token Bosun uses.
+      - FLEETCOM_URL=${FLEETCOM_URL:-https://fleet.barta.cm}
+      - FLEETCOM_TOKEN=${FLEETCOM_TOKEN}
+      - FLEETCOM_HOSTNAME=${FLEETCOM_HOSTNAME:-hsb0}
+      # Which container to tail for agent-event log lines.
+      - BRIDGE_LOG_CONTAINER=openclaw-gateway
+      # Which agents this bridge is responsible for.
+      - BRIDGE_AGENT_NAMES=merlin,nimue
+      - BRIDGE_AGENT_TYPE=openclaw
+    ports:
+      # Bosun scrapes /v1/agent-state on this port — bind to loopback
+      # if you only want it reachable from within the host.
+      - "127.0.0.1:9180:9180"
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+
+  # Bosun picks up agent-bridge's state endpoint via OPENCLAW_STATE_URL.
+  # Add this env to your fleetcom-bosun service:
+  #
+  # fleetcom-bosun:
+  #   environment:
+  #     - OPENCLAW_STATE_URL=http://agent-bridge:9180/v1/agent-state
