@@ -28,12 +28,12 @@ func (s *Store) ValidateSession(token string) (*User, error) {
 	var u User
 	var expiresAt string
 	err := s.DB.QueryRow(
-		`SELECT u.id, u.email, u.role, u.status, u.totp_enabled, u.created_at, s.expires_at
+		`SELECT u.id, u.email, u.role, u.status, u.totp_enabled, u.created_at, u.avatar, s.expires_at
 		 FROM sessions s
 		 JOIN users u ON s.user_id = u.id
 		 WHERE s.token = ?`,
 		token,
-	).Scan(&u.ID, &u.Email, &u.Role, &u.Status, &u.TOTPEnabled, &u.CreatedAt, &expiresAt)
+	).Scan(&u.ID, &u.Email, &u.Role, &u.Status, &u.TOTPEnabled, &u.CreatedAt, &u.Avatar, &expiresAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

@@ -441,6 +441,39 @@
             font-size: 9px;
             margin-left: 4px;
         }
+        .user-avatar-img {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 1px solid var(--line-2);
+            user-select: none;
+        }
+        .account-avatar-preview {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 1px solid var(--line-2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-0);
+            flex-shrink: 0;
+        }
+        .account-avatar-preview img { width: 100%; height: 100%; object-fit: cover; }
+        .account-avatar-initials {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 22px;
+            font-weight: 600;
+            text-transform: uppercase;
+            line-height: 1;
+        }
 
         .sub-header-sep {
             width: 1px;
@@ -2833,9 +2866,14 @@
                         <span x-text="currentUser ? currentUser.email : ''"></span>
                         <span class="role-badge" x-text="currentUser ? currentUser.role : ''"></span>
                     </span>
-                    <div class="user-avatar"
-                         :style="currentUser ? ('background:' + avatarColor(currentUser.email)) : ''"
-                         x-text="currentUser ? avatarInitials(currentUser.email) : ''"></div>
+                    <template x-if="currentUser && currentUser.avatar">
+                        <img class="user-avatar-img" :src="currentUser.avatar" alt="avatar">
+                    </template>
+                    <template x-if="currentUser && !currentUser.avatar">
+                        <div class="user-avatar"
+                             :style="'background:' + avatarColor(currentUser.email)"
+                             x-text="avatarInitials(currentUser.email)"></div>
+                    </template>
                 </div>
                 <a href="/logout" class="signout" x-show="!shared">
                     <i data-lucide="log-out"></i>
@@ -3761,6 +3799,28 @@
                     <!-- Account tab -->
                     <template x-if="settingsTab === 'account'">
                         <div>
+                            <h3 style="margin-bottom:1rem;color:var(--ink-dim)">Profile Picture</h3>
+                            <div class="form-row" style="gap:1rem;align-items:center;max-width:420px;margin-bottom:1.5rem">
+                                <div class="account-avatar-preview" x-show="currentUser">
+                                    <template x-if="avatarPreview || (currentUser && currentUser.avatar)">
+                                        <img :src="avatarPreview || currentUser.avatar" alt="avatar">
+                                    </template>
+                                    <template x-if="!avatarPreview && currentUser && !currentUser.avatar">
+                                        <div class="account-avatar-initials"
+                                             :style="'background:' + avatarColor(currentUser.email)"
+                                             x-text="avatarInitials(currentUser.email)"></div>
+                                    </template>
+                                </div>
+                                <div style="flex:1;display:flex;flex-direction:column;gap:0.5rem">
+                                    <input type="file" accept="image/*" @change="onAvatarPick($event)" style="font-size:0.75rem">
+                                    <div style="display:flex;gap:0.5rem">
+                                        <button class="btn btn-primary" @click="uploadAvatar()" :disabled="!avatarPreview" x-text="avatarMsg || 'Save picture'"></button>
+                                        <button class="btn" @click="clearAvatar()" x-show="currentUser && currentUser.avatar">Remove</button>
+                                    </div>
+                                    <p style="color:var(--ink-ghost);font-size:0.7rem;margin:0">Images are auto-resized to 128×128 JPEG client-side (~10 KB).</p>
+                                </div>
+                            </div>
+
                             <h3 style="margin-bottom:1rem;color:var(--ink-dim)">Change Password</h3>
                             <div class="form-row" style="flex-direction:column;gap:0.5rem;max-width:360px">
                                 <input type="password" x-model="pwCurrent" placeholder="Current password">
@@ -4997,6 +5057,8 @@ WantedBy=multi-user.target</pre>
                 pinActivity: false,                // persisted pin — drawer reserves space
                 pinHost: false,                    // persisted pin for host drawer
                 sparkTip: null,                    // { x, y, text } for hover tooltip on mini-charts
+                avatarPreview: null,               // data URL selected in Account tab, pending upload
+                avatarMsg: '',                     // transient status text for upload button
                 activityPaused: false,
                 activityEvents: [],                // rolling, newest first (max 500)
                 activityQueue: [],                 // queued while paused
@@ -5465,6 +5527,63 @@ WantedBy=multi-user.target</pre>
                     let h = 0;
                     for (let i = 0; i < email.length; i++) h = (h * 31 + email.charCodeAt(i)) >>> 0;
                     return 'hsl(' + (h % 360) + ',45%,42%)';
+                },
+
+                onAvatarPick(e) {
+                    const f = e.target.files && e.target.files[0];
+                    if (!f) { this.avatarPreview = null; return; }
+                    if (!/^image\//.test(f.type)) { this.toast('Not an image', 'err'); return; }
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const size = 128;
+                            const c = document.createElement('canvas');
+                            c.width = size; c.height = size;
+                            const ctx = c.getContext('2d');
+                            const s = Math.min(img.width, img.height);
+                            const sx = (img.width - s) / 2;
+                            const sy = (img.height - s) / 2;
+                            ctx.drawImage(img, sx, sy, s, s, 0, 0, size, size);
+                            this.avatarPreview = c.toDataURL('image/jpeg', 0.8);
+                        };
+                        img.onerror = () => this.toast('Could not read image', 'err');
+                        img.src = reader.result;
+                    };
+                    reader.onerror = () => this.toast('Could not read file', 'err');
+                    reader.readAsDataURL(f);
+                },
+                async uploadAvatar() {
+                    if (!this.avatarPreview) return;
+                    this.avatarMsg = 'Saving…';
+                    try {
+                        const res = await fetch('/api/auth/avatar', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ data: this.avatarPreview }),
+                        });
+                        if (!res.ok) {
+                            this.avatarMsg = '';
+                            this.toast(res.status === 413 ? 'Image too large' : 'Upload failed', 'err');
+                            return;
+                        }
+                        this.avatarPreview = null;
+                        await this.loadMe();
+                        this.avatarMsg = '';
+                        this.toast('Profile picture updated');
+                    } catch (_) {
+                        this.avatarMsg = '';
+                        this.toast('Network error', 'err');
+                    }
+                },
+                async clearAvatar() {
+                    try {
+                        const res = await fetch('/api/auth/avatar', { method: 'DELETE' });
+                        if (!res.ok) { this.toast('Remove failed', 'err'); return; }
+                        this.avatarPreview = null;
+                        await this.loadMe();
+                        this.toast('Profile picture removed');
+                    } catch (_) { this.toast('Network error', 'err'); }
                 },
 
                 togglePinActivity() {
