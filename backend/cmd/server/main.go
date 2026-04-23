@@ -261,6 +261,8 @@ func main() {
 		r.Post("/api/auth/totp/disable", api.TOTPDisable(store))
 		r.Get("/api/auth/sessions", api.ListSessions(store))
 		r.Delete("/api/auth/sessions/{id}", api.RevokeSession(store))
+		r.Post("/api/auth/avatar", api.UpdateAvatar(store))
+		r.Delete("/api/auth/avatar", api.DeleteAvatar(store))
 
 		// Admin-only routes
 		r.Route("/api/users", func(r chi.Router) {

@@ -270,6 +270,75 @@ func RevokeSession(store *db.Store) http.HandlerFunc {
 	}
 }
 
+// maxAvatarBytes caps the stored data URL size. A 128x128 JPEG at
+// quality 0.8 is typically 4-10 KB; legitimate uploads fit comfortably.
+const maxAvatarBytes = 120 * 1024
+
+// UpdateAvatar handles POST /api/auth/avatar — stores a data URL for the
+// signed-in user. Body: {"data": "data:image/jpeg;base64,..."} or empty.
+func UpdateAvatar(store *db.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := auth.GetUser(r)
+		if u == nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		var body struct {
+			Data string `json:"data"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+
+		data := body.Data
+		if data != "" {
+			if len(data) > maxAvatarBytes {
+				http.Error(w, "avatar too large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			// Accept a handful of raster types; PNG/JPEG/WebP cover all real-world
+			// browser canvas outputs and what users are likely to upload.
+			if !isSupportedDataURL(data) {
+				http.Error(w, "unsupported image type", http.StatusUnsupportedMediaType)
+				return
+			}
+		}
+
+		if err := store.SetUserAvatar(u.ID, data); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+	}
+}
+
+// DeleteAvatar handles DELETE /api/auth/avatar — clears the avatar.
+func DeleteAvatar(store *db.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u := auth.GetUser(r)
+		if u == nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if err := store.SetUserAvatar(u.ID, ""); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"ok": true})
+	}
+}
+
+func isSupportedDataURL(s string) bool {
+	for _, pfx := range []string{"data:image/jpeg;base64,", "data:image/png;base64,", "data:image/webp;base64,"} {
+		if len(s) > len(pfx) && s[:len(pfx)] == pfx {
+			return true
+		}
+	}
+	return false
+}
+
 // --- Admin endpoints ---
 
 // ListUsers handles GET /api/users (admin only).

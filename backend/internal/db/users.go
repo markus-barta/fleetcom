@@ -13,6 +13,7 @@ type User struct {
 	Status      string `json:"status"`
 	TOTPEnabled bool   `json:"totp_enabled"`
 	CreatedAt   string `json:"created_at"`
+	Avatar      string `json:"avatar,omitempty"`
 }
 
 // userInternal includes sensitive fields not exposed via JSON.
@@ -113,6 +114,13 @@ func (s *Store) UpdateUserTOTP(id int64, secret string, enabled bool) error {
 
 func (s *Store) DeleteUserTOTP(id int64) error {
 	return s.UpdateUserTOTP(id, "", false)
+}
+
+// SetUserAvatar stores a data URL (data:image/...;base64,...) for the user.
+// Pass an empty string to clear.
+func (s *Store) SetUserAvatar(id int64, dataURL string) error {
+	_, err := s.DB.Exec(`UPDATE users SET avatar = ? WHERE id = ?`, dataURL, id)
+	return err
 }
 
 // TOTP pending tokens

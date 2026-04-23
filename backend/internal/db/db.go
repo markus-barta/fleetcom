@@ -56,6 +56,8 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE hosts ADD COLUMN fastfetch_at TEXT NOT NULL DEFAULT ''`,
 		// Auto-update / server-triggered update request:
 		`ALTER TABLE hosts ADD COLUMN update_requested_at TEXT NOT NULL DEFAULT ''`,
+		// User avatars (FLEET-487) — stored as a data URL string (data:image/...;base64,...).
+		`ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''`,
 		// Agent observability (FLEET-36) — see docs/AGENT-OBSERVABILITY.md.
 		// New tables are created by the schema const; nothing to ALTER here
 		// unless we evolve existing tables later.
