@@ -427,11 +427,12 @@
             font-size: 9px;
             font-weight: 600;
             color: #fff;
-            letter-spacing: 0.05em;
+            letter-spacing: 0;
             text-transform: uppercase;
             user-select: none;
             border: 1px solid var(--line-2);
             font-family: inherit;
+            line-height: 1;
         }
         .user-chip-tip .role-badge {
             color: var(--ink-dim);
@@ -2357,6 +2358,37 @@
         .drawer.is-open { transform: translateX(0); }
         .drawer.drawer-activity { width: min(480px, 100vw); right: 0; }
         .drawer.drawer-agent.drawer-with-activity { right: min(480px, 100vw); }
+        .drawer.is-pinned { box-shadow: none; }
+        .drawer.drawer-host.with-activity-pinned { right: min(480px, 100vw); }
+        .drawer-pin {
+            background: transparent;
+            border: 1px solid var(--line);
+            color: var(--ink-ghost);
+            cursor: pointer;
+            width: 26px; height: 26px;
+            border-radius: 3px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.12s, background 0.12s, border-color 0.12s;
+        }
+        .drawer-pin:hover { color: var(--ink); background: var(--bg-2); }
+        .drawer-pin.is-pinned { color: var(--accent, #7ec2ff); border-color: var(--accent, #7ec2ff); }
+
+        .hw-spark-area { cursor: crosshair; }
+        .spark-tip {
+            position: fixed;
+            background: var(--bg-0);
+            color: var(--ink);
+            border: 1px solid var(--line-2);
+            padding: 3px 7px;
+            font-size: 10px;
+            z-index: 100;
+            pointer-events: none;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+        }
 
         .drawer-head {
             display: flex;
@@ -2763,7 +2795,7 @@
         </defs>
     </svg>
 
-    <div x-data="fleetcom()" x-init="init()" class="app">
+    <div x-data="fleetcom()" x-init="init()" class="app" :style="'padding-right:' + reservedRightPx() + 'px'">
         <header>
             <div class="header-left">
                 <img x-show="orgLogoURL" :src="orgLogoURL" style="height:24px;border-radius:3px;margin-right:6px" alt="">
@@ -2931,8 +2963,8 @@
                                                     <svg class="agent-version-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1" fill="currentColor"/></svg>
                                                     <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionShort(host)"></span>
                                                     <span class="agent-version-rest" x-show="agentVersionRest(host)" x-text="agentVersionRest(host)"></span>
-                                                    <template x-if="isAgentStale(host)">
-                                                        <span class="agent-stale-mark" title="Agent has not been updated in over 24h. Docker hosts should auto-update daily via watchtower; legacy hosts need manual rollout.">!</span>
+                                                    <template x-if="isOutdatedAgent(host) && isAgentStale(host)">
+                                                        <span class="agent-stale-mark" title="Newer agent version is available and this host hasn't updated in over 24h. Docker hosts should auto-update daily via watchtower; legacy hosts need manual rollout.">!</span>
                                                     </template>
                                                     <template x-if="hasPendingUpdate(host)">
                                                         <span class="agent-update-pending" title="Update requested — will run on next heartbeat">upd</span>
@@ -3104,8 +3136,8 @@
                                                     <svg class="agent-version-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r="1" fill="currentColor"/></svg>
                                                     <span class="agent-version-badge" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')" x-text="agentVersionShort(host)"></span>
                                                     <span class="agent-version-rest" x-show="agentVersionRest(host)" x-text="agentVersionRest(host)"></span>
-                                                    <template x-if="isAgentStale(host)">
-                                                        <span class="agent-stale-mark" title="Agent has not been updated in over 24h. Docker hosts should auto-update daily via watchtower; legacy hosts need manual rollout.">!</span>
+                                                    <template x-if="isOutdatedAgent(host) && isAgentStale(host)">
+                                                        <span class="agent-stale-mark" title="Newer agent version is available and this host hasn't updated in over 24h. Docker hosts should auto-update daily via watchtower; legacy hosts need manual rollout.">!</span>
                                                     </template>
                                                     <template x-if="hasPendingUpdate(host)">
                                                         <span class="agent-update-pending" title="Update requested — will run on next heartbeat">upd</span>
@@ -3218,20 +3250,20 @@
 
                                                 <template x-if="hardwareCache[host.hostname] && hardwareCache[host.hostname].metrics && hardwareCache[host.hostname].metrics.length > 1">
                                                     <div>
-                                                        <div class="hw-section-label">Last hour</div>
+                                                        <div class="hw-section-label" x-text="'Last ' + globalScale"></div>
                                                         <div class="hw-sparks">
                                                             <div class="hw-spark">
                                                                 <div class="hw-spark-head"><span>CPU load 1m</span><span class="v" x-text="host.hw_live ? host.hw_live.cpu_load_1.toFixed(2) : '—'"></span></div>
-                                                                <div x-html="renderSparkline(hardwareCache[host.hostname].metrics, 'cpu_load')"></div>
+                                                                <div class="hw-spark-area" x-html="renderSparkline(hardwareCache[host.hostname].metrics, 'cpu_load', globalScale)" @mousemove="sparkHover($event, hardwareCache[host.hostname].metrics, 'cpu_load', globalScale)" @mouseleave="sparkTip = null"></div>
                                                             </div>
                                                             <div class="hw-spark">
                                                                 <div class="hw-spark-head"><span>Memory used</span><span class="v" x-text="host.hw_live && host.hw_live.mem_used_pct ? host.hw_live.mem_used_pct.toFixed(0) + '%' : '—'"></span></div>
-                                                                <div x-html="renderSparkline(hardwareCache[host.hostname].metrics, 'mem_used_pct')"></div>
+                                                                <div class="hw-spark-area" x-html="renderSparkline(hardwareCache[host.hostname].metrics, 'mem_used_pct', globalScale)" @mousemove="sparkHover($event, hardwareCache[host.hostname].metrics, 'mem_used_pct', globalScale)" @mouseleave="sparkTip = null"></div>
                                                             </div>
                                                             <template x-if="hwCpuTemp(host) != null">
                                                                 <div class="hw-spark">
                                                                     <div class="hw-spark-head"><span>CPU °C</span><span class="v" x-text="hwCpuTemp(host)"></span></div>
-                                                                    <div x-html="renderSparkline(hardwareCache[host.hostname].metrics, 'cpu_temp_c')"></div>
+                                                                    <div class="hw-spark-area" x-html="renderSparkline(hardwareCache[host.hostname].metrics, 'cpu_temp_c', globalScale)" @mousemove="sparkHover($event, hardwareCache[host.hostname].metrics, 'cpu_temp_c', globalScale)" @mouseleave="sparkTip = null"></div>
                                                                 </div>
                                                             </template>
                                                         </div>
@@ -4268,8 +4300,8 @@ WantedBy=multi-user.target</pre>
              x-show / x-for / @click bindings resolve.
         ===================================================================== -->
         <div class="drawer-backdrop"
-             :class="(agentDrawerKey || activityOpen || hostDrawerKey) ? 'is-open' : ''"
-             @click="closeAgentDrawer(); activityOpen = false; closeHostDrawer()"></div>
+             :class="backdropShouldShow() ? 'is-open' : ''"
+             @click="backdropClick()"></div>
 
         <!-- Agent detail drawer -->
         <aside class="drawer drawer-agent"
@@ -4412,8 +4444,8 @@ WantedBy=multi-user.target</pre>
              via existing Alpine reactivity.
         ===================================================================== -->
         <aside class="drawer drawer-host"
-               :class="[hostDrawerKey ? 'is-open' : '', agentDrawerKey ? 'drawer-with-agent' : '']"
-               @keydown.escape.window="closeHostDrawer()"
+               :class="[hostDrawerKey ? 'is-open' : '', agentDrawerKey ? 'drawer-with-agent' : '', pinHost ? 'is-pinned' : '', (pinActivity && activityOpen) ? 'with-activity-pinned' : '']"
+               @keydown.escape.window="if (!pinHost) closeHostDrawer()"
                x-show="hostDrawerKey" style="display:none">
             <!-- Header: hostname + state pill + OS/uptime/seen line + close -->
             <template x-if="hostDrawerKey && hostByName(hostDrawerKey)">
@@ -4432,7 +4464,10 @@ WantedBy=multi-user.target</pre>
                             <span x-text="' · seen ' + formatAgo(hostByName(hostDrawerKey).last_seen)"></span>
                         </div>
                     </div>
-                    <button class="drawer-close" @click="closeHostDrawer()" title="Close (Esc)" style="margin-left:auto">&times;</button>
+                    <button class="drawer-pin" @click="togglePinHost()" :class="pinHost ? 'is-pinned' : ''" :title="pinHost ? 'Unpin (drawer will close on outside click)' : 'Pin drawer (reserves space, stays open)'" style="margin-left:auto">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+                    </button>
+                    <button class="drawer-close" @click="closeHostDrawer(); if (pinHost) togglePinHost()" title="Close (Esc)">&times;</button>
                 </div>
             </template>
 
@@ -4578,20 +4613,20 @@ WantedBy=multi-user.target</pre>
                                 </template>
                                 <template x-if="hardwareCache[hostDrawerKey] && hardwareCache[hostDrawerKey].metrics && hardwareCache[hostDrawerKey].metrics.length > 1">
                                     <div style="margin-top:0.6rem;">
-                                        <div class="hw-section-label">Last hour</div>
+                                        <div class="hw-section-label" x-text="'Last ' + globalScale"></div>
                                         <div class="hw-sparks">
                                             <div class="hw-spark">
                                                 <div class="hw-spark-head"><span>CPU load 1m</span><span class="v" x-text="hostByName(hostDrawerKey).hw_live ? hostByName(hostDrawerKey).hw_live.cpu_load_1.toFixed(2) : '—'"></span></div>
-                                                <div x-html="renderSparkline(hardwareCache[hostDrawerKey].metrics, 'cpu_load')"></div>
+                                                <div class="hw-spark-area" x-html="renderSparkline(hardwareCache[hostDrawerKey].metrics, 'cpu_load', globalScale)" @mousemove="sparkHover($event, hardwareCache[hostDrawerKey].metrics, 'cpu_load', globalScale)" @mouseleave="sparkTip = null"></div>
                                             </div>
                                             <div class="hw-spark">
                                                 <div class="hw-spark-head"><span>Memory used</span><span class="v" x-text="hostByName(hostDrawerKey).hw_live && hostByName(hostDrawerKey).hw_live.mem_used_pct ? hostByName(hostDrawerKey).hw_live.mem_used_pct.toFixed(0) + '%' : '—'"></span></div>
-                                                <div x-html="renderSparkline(hardwareCache[hostDrawerKey].metrics, 'mem_used_pct')"></div>
+                                                <div class="hw-spark-area" x-html="renderSparkline(hardwareCache[hostDrawerKey].metrics, 'mem_used_pct', globalScale)" @mousemove="sparkHover($event, hardwareCache[hostDrawerKey].metrics, 'mem_used_pct', globalScale)" @mouseleave="sparkTip = null"></div>
                                             </div>
                                             <template x-if="hwCpuTemp(hostByName(hostDrawerKey)) != null">
                                                 <div class="hw-spark">
                                                     <div class="hw-spark-head"><span>CPU °C</span><span class="v" x-text="hwCpuTemp(hostByName(hostDrawerKey))"></span></div>
-                                                    <div x-html="renderSparkline(hardwareCache[hostDrawerKey].metrics, 'cpu_temp_c')"></div>
+                                                    <div class="hw-spark-area" x-html="renderSparkline(hardwareCache[hostDrawerKey].metrics, 'cpu_temp_c', globalScale)" @mousemove="sparkHover($event, hardwareCache[hostDrawerKey].metrics, 'cpu_temp_c', globalScale)" @mouseleave="sparkTip = null"></div>
                                                 </div>
                                             </template>
                                         </div>
@@ -4816,15 +4851,18 @@ WantedBy=multi-user.target</pre>
 
         <!-- Global activity drawer -->
         <aside class="drawer drawer-activity"
-               :class="activityOpen ? 'is-open' : ''"
-               @keydown.escape.window="activityOpen = false"
+               :class="[activityOpen ? 'is-open' : '', pinActivity ? 'is-pinned' : '']"
+               @keydown.escape.window="if (!pinActivity) activityOpen = false"
                x-show="activityOpen" style="display:none">
             <div class="drawer-head">
                 <div>
                     <div class="subtitle">Fleet · live</div>
                     <div class="title">Activity</div>
                 </div>
-                <button class="drawer-close" @click="activityOpen = false" title="Close (Esc)">&times;</button>
+                <button class="drawer-pin" @click="togglePinActivity()" :class="pinActivity ? 'is-pinned' : ''" :title="pinActivity ? 'Unpin (drawer will close on outside click)' : 'Pin drawer (reserves space, stays open)'">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+                </button>
+                <button class="drawer-close" @click="activityOpen = false; if (pinActivity) togglePinActivity()" title="Close (Esc)">&times;</button>
             </div>
             <div class="activity-filters">
                 <select x-model="activityFilter.agent" style="background:var(--bg-0);color:var(--ink-dim);border:1px solid var(--line);padding:2px 6px;font-size:10px">
@@ -4876,6 +4914,11 @@ WantedBy=multi-user.target</pre>
                 <button class="dismiss" @click="dismissStuck(s.key)">dismiss</button>
             </div>
         </template>
+
+        <div class="spark-tip" x-show="sparkTip"
+             :style="sparkTip ? ('left:' + sparkTip.x + 'px;top:' + sparkTip.y + 'px') : ''"
+             x-text="sparkTip ? sparkTip.text : ''"
+             style="display:none"></div>
     </div>
 
     <div class="toast-container" id="toasts"></div>
@@ -4951,6 +4994,9 @@ WantedBy=multi-user.target</pre>
                 // so the existing menu template can render from either source.
                 chipMenu: null,
                 activityOpen: false,               // global activity drawer
+                pinActivity: false,                // persisted pin — drawer reserves space
+                pinHost: false,                    // persisted pin for host drawer
+                sparkTip: null,                    // { x, y, text } for hover tooltip on mini-charts
                 activityPaused: false,
                 activityEvents: [],                // rolling, newest first (max 500)
                 activityQueue: [],                 // queued while paused
@@ -4999,6 +5045,9 @@ WantedBy=multi-user.target</pre>
                     if (this.viewMode === 'overview') this.viewMode = 'normal';
                     this.globalScale = localStorage.getItem('fleetcom.globalScale') || '1h';
                     if (!this.scaleList.includes(this.globalScale)) this.globalScale = '1h';
+                    this.pinActivity = localStorage.getItem('fleetcom.pinActivity') === '1';
+                    this.pinHost = localStorage.getItem('fleetcom.pinHost') === '1';
+                    if (this.pinActivity) this.activityOpen = true;
                     this.useUTC = localStorage.getItem('fleetcom.tz') !== 'local';
                     this.cardImgSize = parseInt(localStorage.getItem('fleetcom.imgSize')) || 170;
                     document.documentElement.style.setProperty('--card-img-size', this.cardImgSize + 'px');
@@ -5416,6 +5465,35 @@ WantedBy=multi-user.target</pre>
                     let h = 0;
                     for (let i = 0; i < email.length; i++) h = (h * 31 + email.charCodeAt(i)) >>> 0;
                     return 'hsl(' + (h % 360) + ',45%,42%)';
+                },
+
+                togglePinActivity() {
+                    this.pinActivity = !this.pinActivity;
+                    localStorage.setItem('fleetcom.pinActivity', this.pinActivity ? '1' : '0');
+                    if (this.pinActivity) this.activityOpen = true;
+                },
+                togglePinHost() {
+                    this.pinHost = !this.pinHost;
+                    localStorage.setItem('fleetcom.pinHost', this.pinHost ? '1' : '0');
+                },
+                reservedRightPx() {
+                    let w = 0;
+                    if (this.pinActivity && this.activityOpen) w += 480;
+                    if (this.pinHost && this.hostDrawerKey) w += 720;
+                    const vw = typeof window !== 'undefined' ? window.innerWidth : 1920;
+                    const cap = Math.floor(vw * 0.6);
+                    return Math.min(w, cap);
+                },
+                backdropShouldShow() {
+                    if (this.agentDrawerKey) return true;
+                    if (this.activityOpen && !this.pinActivity) return true;
+                    if (this.hostDrawerKey && !this.pinHost) return true;
+                    return false;
+                },
+                backdropClick() {
+                    if (this.agentDrawerKey) this.closeAgentDrawer();
+                    if (this.activityOpen && !this.pinActivity) this.activityOpen = false;
+                    if (this.hostDrawerKey && !this.pinHost) this.closeHostDrawer();
                 },
 
                 // Format ISO timestamp for display (tokens, shares, presets)
@@ -6083,7 +6161,56 @@ WantedBy=multi-user.target</pre>
                     }
                     return entries;
                 },
-                renderSparkline(points, valueKey) {
+                scaleToMs(scale) {
+                    switch (scale) {
+                        case '1min':  return         60 * 1000;
+                        case '15min': return    15 * 60 * 1000;
+                        case '1h':    return    60 * 60 * 1000;
+                        case '1d':    return 24 * 60 * 60 * 1000;
+                        default:      return Number.POSITIVE_INFINITY;
+                    }
+                },
+                filterMetricsByScale(points, scale) {
+                    if (!points || !points.length) return [];
+                    const winMs = this.scaleToMs(scale);
+                    if (!Number.isFinite(winMs)) return points;
+                    const cutoff = Date.now() - winMs;
+                    return points.filter(p => {
+                        const t = Date.parse(p.ts);
+                        return Number.isFinite(t) && t >= cutoff;
+                    });
+                },
+                formatSparkTs(iso) {
+                    if (!iso) return '—';
+                    const d = new Date(iso);
+                    if (isNaN(d.getTime())) return iso;
+                    const pad = n => String(n).padStart(2, '0');
+                    if (this.useUTC) {
+                        return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds()) + ' UTC';
+                    }
+                    return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+                },
+                sparkHover(e, points, valueKey, scale) {
+                    const filtered = this.filterMetricsByScale(points, scale)
+                        .filter(p => Number.isFinite(Number(p[valueKey])));
+                    if (filtered.length < 2) { this.sparkTip = null; return; }
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const relX = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
+                    const idx = Math.round(relX * (filtered.length - 1));
+                    const p = filtered[idx];
+                    const val = Number(p[valueKey]);
+                    const label = valueKey === 'cpu_load'     ? val.toFixed(2)
+                               : valueKey === 'mem_used_pct' ? val.toFixed(0) + '%'
+                               : valueKey === 'cpu_temp_c'   ? val.toFixed(1) + '°C'
+                               : String(val);
+                    this.sparkTip = {
+                        x: e.clientX + 12,
+                        y: e.clientY - 24,
+                        text: this.formatSparkTs(p.ts) + ' · ' + label,
+                    };
+                },
+                renderSparkline(points, valueKey, scale) {
+                    if (scale) points = this.filterMetricsByScale(points, scale);
                     if (!points || points.length === 0) return '';
                     const values = points.map(p => Number(p[valueKey])).filter(v => Number.isFinite(v));
                     if (values.length < 2) return '';
