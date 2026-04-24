@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -40,7 +41,10 @@ func scrapeAgentStates() []AgentSnapshot {
 			continue
 		}
 		func() {
-			defer resp.Body.Close()
+			defer func() {
+				_, _ = io.Copy(io.Discard, resp.Body)
+				_ = resp.Body.Close()
+			}()
 			if resp.StatusCode != 200 {
 				log.Printf("agent-state: %s → HTTP %d", url, resp.StatusCode)
 				return

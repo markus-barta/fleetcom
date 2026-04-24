@@ -3,6 +3,11 @@ services:
     image: ghcr.io/markus-barta/fleetcom-bosun:latest
     container_name: fleetcom-bosun
     restart: unless-stopped
+    # FLEET-78: hard cap so a runaway agent gets OOM-killed by the kernel
+    # instead of thrashing the host into swap. memswap_limit == mem_limit
+    # disables swap usage for this container so the limit is real.
+    mem_limit: 256m
+    memswap_limit: 256m
     labels:
       # Opt-in: watchtower only manages containers with this label, so it
       # never touches unrelated host containers.
@@ -18,6 +23,10 @@ services:
       - FLEETCOM_TOKEN=${FLEETCOM_TOKEN}
       - FLEETCOM_HOSTNAME=${FLEETCOM_HOSTNAME}
       - FLEETCOM_AGENTS=${FLEETCOM_AGENTS:-[]}
+      # FLEET-78: tell Go's runtime to keep total heap under ~80% of
+      # mem_limit. With a soft limit set, GC runs more aggressively and
+      # returns memory to the OS instead of waiting for kernel pressure.
+      - GOMEMLIMIT=200MiB
       # Watchtower-triggered updates: bosun calls this endpoint when the
       # server sends command="update" in a heartbeat response.
       - WATCHTOWER_URL=http://watchtower:8080

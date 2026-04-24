@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -56,7 +57,10 @@ func triggerWatchtowerUpdate() {
 		log.Printf("watchtower call error: %v", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		_ = resp.Body.Close()
+	}()
 
 	log.Printf("watchtower responded %d", resp.StatusCode)
 }
