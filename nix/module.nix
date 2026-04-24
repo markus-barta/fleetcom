@@ -127,6 +127,9 @@ in
 
       environment = {
         FLEETCOM_TOKEN_FILE = toString cfg.tokenFile;
+        # FLEET-78: soft heap limit so the Go runtime returns memory to
+        # the OS aggressively. Paired with MemoryMax in serviceConfig.
+        GOMEMLIMIT = "200MiB";
       };
 
       path = [ "/run/wrappers" "/run/current-system/sw" ];
@@ -137,6 +140,10 @@ in
         Restart = "on-failure";
         RestartSec = "10s";
         User = "root"; # needs docker access
+        # FLEET-78: cgroup hard cap so a runaway bosun gets OOM-killed
+        # by systemd instead of thrashing the host into swap.
+        MemoryMax = "256M";
+        MemorySwapMax = "0";
       };
     };
   };

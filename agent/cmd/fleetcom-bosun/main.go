@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -15,6 +16,28 @@ import (
 	"syscall"
 	"time"
 )
+
+// Shared HTTP clients — initialised in main, reused for the lifetime of the
+// process. Pre-FLEET-78 each Docker socket call allocated a brand-new
+// http.Transport (with its own idle conn pool + reader goroutines). On a
+// host with ~30 containers that's 30+ transports per heartbeat; over six
+// days the cumulative GC pressure + leaked idle connections grew the
+// agent's RSS to ~2.7 GiB and exhausted host RAM.
+var (
+	dockerCallHTTP   *http.Client // short Docker socket calls (list / inspect)
+	dockerStreamHTTP *http.Client // long-lived /events stream (no timeout)
+	serverHTTP       *http.Client // FleetCom server (heartbeat / events / results)
+)
+
+// drainAndClose reads any unread response body bytes before closing so
+// Go's http.Transport can return the connection to the idle pool instead
+// of force-closing it. json.Decoder stops at the first end-of-object, so
+// trailing whitespace / chunked-encoding terminators would otherwise
+// leak each connection.
+func drainAndClose(body io.ReadCloser) {
+	_, _ = io.Copy(io.Discard, body)
+	_ = body.Close()
+}
 
 // Version info — injected at build time via ldflags.
 var (
@@ -104,11 +127,15 @@ func main() {
 		cancel()
 	}()
 
-	// Start Docker event watcher if socket is available
+	// Initialise shared HTTP clients (FLEET-78). Done before any goroutine
+	// kicks off so all paths use the same pooled transports.
 	socketPath := dockerSocketPath()
+	initHTTPClients(socketPath)
+
+	// Start Docker event watcher if socket is available
 	if socketPath != "" {
 		log.Printf("Docker socket found at %s — starting event watcher", socketPath)
-		go watchDockerEvents(ctx, socketPath, serverURL, token, hostname)
+		go watchDockerEvents(ctx, serverURL, token, hostname)
 	} else {
 		log.Println("no Docker socket found — heartbeat-only mode")
 	}
@@ -122,13 +149,17 @@ func main() {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	prevInterval := interval
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			sendHeartbeat(serverURL, token, hostname, socketPath, agents, agentVersionStr, &interval, hw)
-			ticker.Reset(interval)
+			if interval != prevInterval {
+				ticker.Reset(interval)
+				prevInterval = interval
+			}
 		}
 	}
 }
@@ -260,15 +291,16 @@ func doPost(url, token string, body []byte) ([]byte, error) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := serverHTTP.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer drainAndClose(resp.Body)
 
 	var buf bytes.Buffer
-	buf.ReadFrom(resp.Body)
+	if _, err := io.Copy(&buf, resp.Body); err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
 
 	if resp.StatusCode >= 400 {
 		return buf.Bytes(), fmt.Errorf("HTTP %d: %s", resp.StatusCode, buf.String())
@@ -278,42 +310,66 @@ func doPost(url, token string, body []byte) ([]byte, error) {
 
 // ---------- Docker socket communication ----------
 
-// dockerHTTPClient creates an HTTP client that talks over the Unix socket.
-func dockerHTTPClient(socketPath string) *http.Client {
-	return &http.Client{
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", socketPath)
+// initHTTPClients builds the three long-lived clients bosun uses for the
+// rest of the process lifetime. socketPath may be empty (no Docker socket
+// mounted), in which case the Docker clients are nil and code paths that
+// touch them must guard accordingly.
+func initHTTPClients(socketPath string) {
+	if socketPath != "" {
+		// Short Docker calls — bounded idle pool, sane idle timeout so
+		// abandoned connections don't sit around indefinitely.
+		dockerCallHTTP = &http.Client{
+			Transport: &http.Transport{
+				DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+					return net.Dial("unix", socketPath)
+				},
+				MaxIdleConns:          4,
+				MaxIdleConnsPerHost:   4,
+				IdleConnTimeout:       90 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
 			},
-		},
-		Timeout: 5 * time.Second,
-	}
-}
+			Timeout: 5 * time.Second,
+		}
 
-// dockerStreamClient is like dockerHTTPClient but without a timeout (for event streaming).
-func dockerStreamClient(socketPath string) *http.Client {
-	return &http.Client{
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", socketPath)
+		// Event stream — the response body is the long-lived NDJSON feed,
+		// so no Client-level timeout. Keep-alive is irrelevant here (one
+		// connection per stream lifetime), and we explicitly disable
+		// pooling so a torn-down stream connection is fully released.
+		dockerStreamHTTP = &http.Client{
+			Transport: &http.Transport{
+				DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+					return net.Dial("unix", socketPath)
+				},
+				DisableKeepAlives: true,
 			},
+		}
+	}
+
+	// FleetCom server — pool aggressively since every heartbeat / event /
+	// command-result POSTs to the same host.
+	serverHTTP = &http.Client{
+		Transport: &http.Transport{
+			MaxIdleConns:          8,
+			MaxIdleConnsPerHost:   8,
+			IdleConnTimeout:       90 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
 		},
+		Timeout: 10 * time.Second,
 	}
 }
 
 // listContainers calls GET /containers/json?all=true via the Docker socket.
 func listContainers(socketPath string) []ContainerPayload {
-	if socketPath == "" {
+	if socketPath == "" || dockerCallHTTP == nil {
 		return []ContainerPayload{}
 	}
 
-	client := dockerHTTPClient(socketPath)
-	resp, err := client.Get("http://docker/containers/json?all=true")
+	resp, err := dockerCallHTTP.Get("http://docker/containers/json?all=true")
 	if err != nil {
 		log.Printf("docker list error: %v", err)
 		return []ContainerPayload{}
 	}
-	defer resp.Body.Close()
+	defer drainAndClose(resp.Body)
 
 	var containers []struct {
 		ID    string   `json:"Id"`
@@ -340,8 +396,7 @@ func listContainers(socketPath string) []ContainerPayload {
 			State: c.State,
 		}
 
-		// Inspect for health details
-		if info := inspectContainer(socketPath, c.ID); info != nil {
+		if info := inspectContainer(c.ID); info != nil {
 			cp.Health = info.Health
 			cp.RestartCount = info.RestartCount
 			cp.StartedAt = info.StartedAt
@@ -362,13 +417,15 @@ type inspectInfo struct {
 	OOMKilled    bool
 }
 
-func inspectContainer(socketPath, id string) *inspectInfo {
-	client := dockerHTTPClient(socketPath)
-	resp, err := client.Get("http://docker/containers/" + id + "/json")
+func inspectContainer(id string) *inspectInfo {
+	if dockerCallHTTP == nil {
+		return nil
+	}
+	resp, err := dockerCallHTTP.Get("http://docker/containers/" + id + "/json")
 	if err != nil {
 		return nil
 	}
-	defer resp.Body.Close()
+	defer drainAndClose(resp.Body)
 
 	var result struct {
 		RestartCount int `json:"RestartCount"`
@@ -399,12 +456,15 @@ func inspectContainer(socketPath, id string) *inspectInfo {
 }
 
 // watchDockerEvents subscribes to the Docker events stream and sends events to the server.
-func watchDockerEvents(ctx context.Context, socketPath, serverURL, token, hostname string) {
+func watchDockerEvents(ctx context.Context, serverURL, token, hostname string) {
+	if dockerStreamHTTP == nil {
+		return
+	}
 	filters := `{"event":["die","start","restart","oom","health_status"],"type":["container"]}`
 	url := fmt.Sprintf("http://docker/events?filters=%s", filters)
 
 	for {
-		if err := streamEvents(ctx, socketPath, url, serverURL, token, hostname); err != nil {
+		if err := streamEvents(ctx, url, serverURL, token, hostname); err != nil {
 			if ctx.Err() != nil {
 				return
 			}
@@ -418,18 +478,17 @@ func watchDockerEvents(ctx context.Context, socketPath, serverURL, token, hostna
 	}
 }
 
-func streamEvents(ctx context.Context, socketPath, url, serverURL, token, hostname string) error {
-	client := dockerStreamClient(socketPath)
+func streamEvents(ctx context.Context, url, serverURL, token, hostname string) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return err
 	}
 
-	resp, err := client.Do(req)
+	resp, err := dockerStreamHTTP.Do(req)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer drainAndClose(resp.Body)
 
 	log.Println("docker event stream connected")
 
@@ -474,7 +533,7 @@ func streamEvents(ctx context.Context, socketPath, url, serverURL, token, hostna
 				exitCode = code
 			}
 			// Check if it was an OOM kill
-			if info := inspectContainer(socketPath, event.Actor.ID); info != nil {
+			if info := inspectContainer(event.Actor.ID); info != nil {
 				oomKilled = info.OOMKilled
 			}
 		}
