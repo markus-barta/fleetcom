@@ -86,3 +86,19 @@ apply — investigate the actual top process.
 3. On each host, the bundled or external Watchtower picks up the new
    image on its next poll, or the operator can trigger an immediate
    pull from the FleetCom dashboard ("Update now" on the host drawer).
+
+   Hosts without a label-scoped watchtower will go stale — neither
+   auto-poll nor "Update now" has anything to talk to. Confirm by
+   checking the host drawer: if there is no watchtower container
+   visible, the bosun image will not refresh on its own. Fallback:
+
+   ```
+   ssh <host>
+   cd /opt/fleetcom-agent      # or wherever the bosun compose lives
+   docker compose pull && docker compose up -d
+   ```
+
+   The durable fix is to add a watchtower service to that host's
+   compose (see `nixcfg/hosts/gpc0/docker/docker-compose.yml` for the
+   minimal pattern: label-scoped, HTTP API enabled, token in
+   `/opt/fleetcom-agent/.env`).
