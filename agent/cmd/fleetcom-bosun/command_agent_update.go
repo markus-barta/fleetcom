@@ -21,9 +21,15 @@ type agentUpdateParams struct {
 }
 
 // dockerInspectSpec is what we extract from `docker inspect` on the
-// running bosun container — enough to pass into the helper so it can
-// reproduce the same `docker run` (for non-compose hosts) or detect a
-// compose project (for compose-managed hosts).
+// running bosun container — enough to reproduce it via plain
+// `docker run`. We deliberately do NOT use `docker compose up` for the
+// recreate even when the container was originally created by compose:
+// compose, running inside the helper, can't resolve env_file paths,
+// build contexts, or ${VAR} refs that point outside the project dir
+// (FLEET-86 first attempt failed exactly here on hsb0). Reproducing
+// from the inspected spec is host-config agnostic. We preserve the
+// com.docker.compose.* labels so future `docker compose up` from the
+// host still recognises the container as project-managed.
 type dockerInspectSpec struct {
 	ID     string `json:"Id"`
 	Name   string `json:"Name"`
@@ -41,31 +47,22 @@ type dockerInspectSpec struct {
 		PortBindings  map[string][]map[string]string `json:"PortBindings"`
 	} `json:"HostConfig"`
 	NetworkSettings struct {
-		Networks map[string]struct{} `json:"Networks"`
+		Networks map[string]json.RawMessage `json:"Networks"`
 	} `json:"NetworkSettings"`
-	Mounts []struct {
-		Type        string `json:"Type"`
-		Source      string `json:"Source"`
-		Destination string `json:"Destination"`
-		Mode        string `json:"Mode"`
-		RW          bool   `json:"RW"`
-	} `json:"Mounts"`
 }
 
 // recreatePayload is what the parent passes to the helper (--recreate-mode)
-// via env var. Keeps the helper code tiny and explicit; no shared state
-// between processes beyond this JSON.
+// via env var. Single shape for all hosts — no compose/bare branching.
 type recreatePayload struct {
-	Target            string            `json:"target"`               // container to stop+recreate
-	Image             string            `json:"image"`                // image:tag to run with
-	ComposeProject    string            `json:"compose_project"`      // empty if not compose-managed
-	ComposeWorkingDir string            `json:"compose_working_dir"`  // host path containing docker-compose.yml
-	ComposeService    string            `json:"compose_service"`      // service name in the compose file
-	BareEnv           []string          `json:"bare_env,omitempty"`   // for non-compose recreate only
-	BareBinds         []string          `json:"bare_binds,omitempty"` // for non-compose recreate only
-	BareLabels        map[string]string `json:"bare_labels,omitempty"`
-	BareRestartPolicy string            `json:"bare_restart_policy,omitempty"`
-	BareNetworkMode   string            `json:"bare_network_mode,omitempty"`
+	Target          string            `json:"target"`           // container to stop+recreate
+	Image           string            `json:"image"`            // image:tag to run with
+	Env             []string          `json:"env,omitempty"`    // expanded env from the running container
+	Binds           []string          `json:"binds,omitempty"`  // host_path:container_path[:opts]
+	Labels          map[string]string `json:"labels,omitempty"` // includes compose labels for project recognition
+	RestartPolicy   string            `json:"restart_policy,omitempty"`
+	NetworkMode     string            `json:"network_mode,omitempty"`
+	ExtraNetworks   []string          `json:"extra_networks,omitempty"`  // attached after create via `docker network connect`
+	PortBindings    []string          `json:"port_bindings,omitempty"`   // pre-formatted "host_ip:host_port:container_port/proto"
 }
 
 // handleAgentUpdate dispatches the universal agent.update command for
@@ -74,14 +71,14 @@ type recreatePayload struct {
 //
 // Flow:
 //
-//  1. Detect this host's deployment shape so we can refuse early on
+//  1. Detect this host's deployment shape so we refuse early on
 //     watchtower / systemd-native hosts (those are handled separately).
 //  2. Inspect ourselves to capture the running container's spec.
 //  3. docker pull the new image.
 //  4. Spawn a helper container (same image, --recreate-mode flag) with
 //     the captured spec passed in via env var. Helper waits a few
-//     seconds then docker-stops+recreates this container — that kills
-//     us. Done.
+//     seconds then docker-stops + recreates this container — that
+//     kills us. Done.
 //
 // Reports status="restarting" via the existing command-result endpoint
 // before returning errHandlerAlreadyReported so runAndReport doesn't
@@ -111,20 +108,15 @@ func handleAgentUpdate(id int64, params json.RawMessage) (json.RawMessage, error
 		return nil, fmt.Errorf("inspect self (%s): %w", selfName, err)
 	}
 
-	// Resolve the friendly container name from inspect (Docker prepends
-	// a slash). The helper needs this to docker-stop/rm the right thing.
 	containerName := strings.TrimPrefix(spec.Name, "/")
 
 	// Determine target image. If the admin asked for a pinned tag/digest,
-	// use it; otherwise stay on the same repo with :latest (the common
-	// case for staged rollouts).
+	// use it; otherwise stay on the same repo with :latest.
 	targetImage := spec.Config.Image
 	if !strings.Contains(targetImage, ":") && !strings.Contains(targetImage, "@") {
 		targetImage += ":latest"
 	}
 	if ps.Target != "" && ps.Target != "latest" {
-		// Admin specified a tag or digest. Replace whatever was in the
-		// inspect with the requested one but keep the same repository.
 		repo := stripTag(targetImage)
 		if strings.HasPrefix(ps.Target, "sha256:") {
 			targetImage = repo + "@" + ps.Target
@@ -144,14 +136,12 @@ func handleAgentUpdate(id int64, params json.RawMessage) (json.RawMessage, error
 		return nil, fmt.Errorf("marshal recreate payload: %w", err)
 	}
 
-	helperArgs := buildHelperArgs(spec, payload, string(payloadJSON))
+	helperArgs := buildHelperArgs(payload, string(payloadJSON))
 	log.Printf("agent.update: spawning recreate helper")
 	if out, err := exec.Command("docker", helperArgs...).CombinedOutput(); err != nil {
 		return nil, fmt.Errorf("spawn helper: %v: %s", err, strings.TrimSpace(string(out)))
 	}
 
-	// Tell the server we've kicked off the restart. The new bosun's
-	// first heartbeat will reconcile this command to "done".
 	serverURL := strings.TrimRight(os.Getenv("FLEETCOM_URL"), "/")
 	token := os.Getenv("FLEETCOM_TOKEN")
 	result := json.RawMessage(fmt.Sprintf(`{"phase":"restarting","target_image":%q,"helper_spawned":true}`, targetImage))
@@ -160,7 +150,6 @@ func handleAgentUpdate(id int64, params json.RawMessage) (json.RawMessage, error
 		Status: "restarting",
 		Result: result,
 	})
-	// Sentinel — see runAndReport.
 	return nil, errHandlerAlreadyReported
 }
 
@@ -172,7 +161,6 @@ func stripTag(ref string) string {
 	if i := strings.Index(ref, "@"); i != -1 {
 		return ref[:i]
 	}
-	// Rightmost colon, only if everything after it has no '/'.
 	if i := strings.LastIndex(ref, ":"); i != -1 && !strings.Contains(ref[i:], "/") {
 		return ref[:i]
 	}
@@ -200,63 +188,65 @@ func inspectSelf(name string) (*dockerInspectSpec, error) {
 	return &arr[0], nil
 }
 
-// buildRecreatePayload condenses the inspect output into the minimal
-// shape the helper actually needs.
+// buildRecreatePayload condenses the inspect output into the helper's
+// payload. Always captures full spec — see dockerInspectSpec doc for
+// why we don't use compose for the recreate.
 func buildRecreatePayload(spec *dockerInspectSpec, containerName, targetImage string) recreatePayload {
 	out := recreatePayload{
-		Target: containerName,
-		Image:  targetImage,
+		Target:        containerName,
+		Image:         targetImage,
+		Env:           append([]string{}, spec.Config.Env...),
+		Binds:         append([]string{}, spec.HostConfig.Binds...),
+		Labels:        make(map[string]string, len(spec.Config.Labels)),
+		RestartPolicy: spec.HostConfig.RestartPolicy.Name,
+		NetworkMode:   spec.HostConfig.NetworkMode,
 	}
-	labels := spec.Config.Labels
-	if proj := labels["com.docker.compose.project"]; proj != "" {
-		out.ComposeProject = proj
-		out.ComposeWorkingDir = labels["com.docker.compose.project.working_dir"]
-		out.ComposeService = labels["com.docker.compose.service"]
-		// For compose-managed: the docker-compose file on the host is
-		// the source of truth. We don't need env / mounts / networks
-		// in the payload — `docker compose up -d <service>` will read
-		// them from the file, picking up the new image as a side effect
-		// of the pull we already did.
-		return out
+	for k, v := range spec.Config.Labels {
+		out.Labels[k] = v
 	}
-	// Bare docker run — capture everything.
-	out.BareEnv = append([]string{}, spec.Config.Env...)
-	out.BareBinds = append([]string{}, spec.HostConfig.Binds...)
-	out.BareLabels = make(map[string]string, len(labels))
-	for k, v := range labels {
-		out.BareLabels[k] = v
+	// Additional networks beyond NetworkMode get attached post-create.
+	for net := range spec.NetworkSettings.Networks {
+		if net == out.NetworkMode {
+			continue
+		}
+		out.ExtraNetworks = append(out.ExtraNetworks, net)
 	}
-	out.BareRestartPolicy = spec.HostConfig.RestartPolicy.Name
-	out.BareNetworkMode = spec.HostConfig.NetworkMode
+	// Port bindings: convert {"8090/tcp":[{"HostIp":"127.0.0.1","HostPort":"8090"}]}
+	// into the docker-run "-p" form: "127.0.0.1:8090:8090/tcp".
+	for portProto, binds := range spec.HostConfig.PortBindings {
+		for _, b := range binds {
+			hostIP := b["HostIp"]
+			hostPort := b["HostPort"]
+			if hostIP == "" {
+				out.PortBindings = append(out.PortBindings, hostPort+":"+portProto)
+			} else {
+				out.PortBindings = append(out.PortBindings, hostIP+":"+hostPort+":"+portProto)
+			}
+		}
+	}
 	return out
 }
 
 // buildHelperArgs constructs the `docker run` argv that spawns the
-// helper container with our captured spec embedded as an env var. The
-// helper inherits Docker socket access; for compose-managed hosts we
-// bind-mount the compose dir at the SAME absolute path inside the
-// helper so `docker compose` resolves relative paths (volumes, .env,
-// build contexts) identically to how they'd resolve on the host. Any
-// other mount-translation scheme breaks because the daemon — running
-// on the host — interprets those paths against the host filesystem.
-func buildHelperArgs(spec *dockerInspectSpec, payload recreatePayload, payloadJSON string) []string {
-	args := []string{
+// helper container with the captured spec embedded as an env var.
+// The helper only needs Docker socket access — no host filesystem
+// bind-mounts, since we recreate via plain `docker run` and the daemon
+// resolves Source paths against the host fs directly.
+func buildHelperArgs(payload recreatePayload, payloadJSON string) []string {
+	return []string{
 		"run", "--rm", "-d",
 		"--label", "fleetcom.role=recreate-helper",
 		"-v", "/var/run/docker.sock:/var/run/docker.sock",
 		"-e", "FLEETCOM_RECREATE_PAYLOAD=" + payloadJSON,
+		payload.Image,
+		"--recreate-mode",
 	}
-	if payload.ComposeWorkingDir != "" {
-		args = append(args, "-v", payload.ComposeWorkingDir+":"+payload.ComposeWorkingDir+":ro")
-	}
-	args = append(args, payload.Image, "--recreate-mode")
-	return args
 }
 
 // runRecreateMode is the entrypoint when bosun is invoked with
 // --recreate-mode (FLEET-86). Reads the payload from env, waits a few
 // seconds for the parent to flush its "restarting" report, then docker-
-// stops + recreates the target container.
+// stops + recreates the target container via plain `docker run`.
 func runRecreateMode() {
 	raw := os.Getenv("FLEETCOM_RECREATE_PAYLOAD")
 	if raw == "" {
@@ -276,57 +266,46 @@ func runRecreateMode() {
 
 	log.Printf("recreate-mode: stopping %s", p.Target)
 	if out, err := exec.Command("docker", "stop", "-t", "30", p.Target).CombinedOutput(); err != nil {
-		log.Fatalf("docker stop %s: %v: %s", p.Target, err, strings.TrimSpace(string(out)))
+		// Not fatal — proceed; rm + run will create fresh. Log so it's
+		// visible if there's an underlying issue (e.g. permission).
+		log.Printf("recreate-mode: docker stop %s: %v: %s (continuing)", p.Target, err, strings.TrimSpace(string(out)))
 	}
 	if out, err := exec.Command("docker", "rm", p.Target).CombinedOutput(); err != nil {
-		// Not fatal — `docker compose up -d` will reuse-or-recreate
-		// regardless. Log and continue.
 		log.Printf("recreate-mode: docker rm %s: %v: %s (continuing)", p.Target, err, strings.TrimSpace(string(out)))
 	}
 
-	if p.ComposeProject != "" {
-		// Compose-managed: let compose recreate from its file. The
-		// pull was already done by the parent; up -d will pick up the
-		// new image as the desired state for the service. We chdir
-		// into the host compose path (same path inside helper, by
-		// design — see buildHelperArgs) so .env auto-loading works.
-		if err := os.Chdir(p.ComposeWorkingDir); err != nil {
-			log.Fatalf("chdir %s: %v", p.ComposeWorkingDir, err)
-		}
-		args := []string{
-			"compose",
-			"-p", p.ComposeProject,
-			"up", "-d", p.ComposeService,
-		}
-		log.Printf("recreate-mode: docker %s (cwd=%s)", strings.Join(args, " "), p.ComposeWorkingDir)
-		if out, err := exec.Command("docker", args...).CombinedOutput(); err != nil {
-			log.Fatalf("docker compose up -d %s: %v: %s", p.ComposeService, err, strings.TrimSpace(string(out)))
-		}
-		log.Printf("recreate-mode: %s recreated via compose", p.Target)
-		return
-	}
-
-	// Bare docker run — rebuild the same container with the new image.
 	args := []string{"run", "-d", "--name", p.Target}
-	if p.BareNetworkMode != "" && p.BareNetworkMode != "default" {
-		args = append(args, "--network", p.BareNetworkMode)
+	if p.NetworkMode != "" && p.NetworkMode != "default" {
+		args = append(args, "--network", p.NetworkMode)
 	}
-	if p.BareRestartPolicy != "" && p.BareRestartPolicy != "no" {
-		args = append(args, "--restart", p.BareRestartPolicy)
+	if p.RestartPolicy != "" && p.RestartPolicy != "no" {
+		args = append(args, "--restart", p.RestartPolicy)
 	}
-	for _, e := range p.BareEnv {
+	for _, e := range p.Env {
 		args = append(args, "-e", e)
 	}
-	for _, b := range p.BareBinds {
+	for _, b := range p.Binds {
 		args = append(args, "-v", b)
 	}
-	for k, v := range p.BareLabels {
+	for k, v := range p.Labels {
 		args = append(args, "--label", k+"="+v)
+	}
+	for _, pb := range p.PortBindings {
+		args = append(args, "-p", pb)
 	}
 	args = append(args, p.Image)
 	log.Printf("recreate-mode: docker run %s ...", p.Image)
 	if out, err := exec.Command("docker", args...).CombinedOutput(); err != nil {
 		log.Fatalf("docker run %s: %v: %s", p.Image, err, strings.TrimSpace(string(out)))
 	}
-	log.Printf("recreate-mode: %s recreated via docker run", p.Target)
+
+	// Attach any extra networks the original container was on. NetworkMode
+	// is the primary; multi-attach happens post-create on Docker.
+	for _, n := range p.ExtraNetworks {
+		if out, err := exec.Command("docker", "network", "connect", n, p.Target).CombinedOutput(); err != nil {
+			log.Printf("recreate-mode: network connect %s %s: %v: %s (continuing)", n, p.Target, err, strings.TrimSpace(string(out)))
+		}
+	}
+
+	log.Printf("recreate-mode: %s recreated successfully", p.Target)
 }
