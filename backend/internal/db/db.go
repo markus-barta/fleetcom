@@ -56,6 +56,8 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE hosts ADD COLUMN fastfetch_at TEXT NOT NULL DEFAULT ''`,
 		// Auto-update / server-triggered update request:
 		`ALTER TABLE hosts ADD COLUMN update_requested_at TEXT NOT NULL DEFAULT ''`,
+		// FLEET-84 deployment shape — drives universal Update button gating.
+		`ALTER TABLE hosts ADD COLUMN deployment_shape TEXT NOT NULL DEFAULT ''`,
 		// User avatars (FLEET-487) — stored as a data URL string (data:image/...;base64,...).
 		`ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''`,
 		// Agent observability (FLEET-36) — see docs/AGENT-OBSERVABILITY.md.
@@ -169,7 +171,8 @@ CREATE TABLE IF NOT EXISTS hosts (
 	hw_live_at TEXT NOT NULL DEFAULT '',
 	fastfetch_json TEXT NOT NULL DEFAULT '',
 	fastfetch_at TEXT NOT NULL DEFAULT '',
-	update_requested_at TEXT NOT NULL DEFAULT ''
+	update_requested_at TEXT NOT NULL DEFAULT '',
+	deployment_shape TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS host_metrics (

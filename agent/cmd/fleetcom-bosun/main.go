@@ -49,17 +49,21 @@ var (
 // HwStatic / HwLive / Fastfetch are optional and only included when bosun
 // has fresh values — see sendHeartbeat for the cadence rules.
 type HeartbeatPayload struct {
-	Hostname      string             `json:"hostname"`
-	OS            string             `json:"os"`
-	Kernel        string             `json:"kernel"`
-	UptimeSeconds int64              `json:"uptime_seconds"`
-	AgentVersion  string             `json:"agent_version"`
-	Containers    []ContainerPayload `json:"containers"`
-	Agents        []AgentPayload     `json:"agents"`
-	HwStatic      *HwStatic          `json:"hw_static,omitempty"`
-	HwLive        *HwLive            `json:"hw_live,omitempty"`
-	Fastfetch     json.RawMessage    `json:"fastfetch_json,omitempty"`
-	AgentStates   []AgentSnapshot    `json:"agent_states,omitempty"`
+	Hostname      string `json:"hostname"`
+	OS            string `json:"os"`
+	Kernel        string `json:"kernel"`
+	UptimeSeconds int64  `json:"uptime_seconds"`
+	AgentVersion  string `json:"agent_version"`
+	// DeploymentShape (FLEET-84) tells the server how bosun is deployed on
+	// this host so the dashboard can route the Update button to the right
+	// strategy: "docker+watchtower", "docker-bare", "systemd-native", "unknown".
+	DeploymentShape string             `json:"deployment_shape,omitempty"`
+	Containers      []ContainerPayload `json:"containers"`
+	Agents          []AgentPayload     `json:"agents"`
+	HwStatic        *HwStatic          `json:"hw_static,omitempty"`
+	HwLive          *HwLive            `json:"hw_live,omitempty"`
+	Fastfetch       json.RawMessage    `json:"fastfetch_json,omitempty"`
+	AgentStates     []AgentSnapshot    `json:"agent_states,omitempty"`
 }
 
 type ContainerPayload struct {
@@ -181,6 +185,60 @@ func dockerSocketPath() string {
 	return ""
 }
 
+// detectDeploymentShape (FLEET-84) classifies how bosun is deployed on this
+// host. Reuses the container list from listContainers so it costs nothing
+// extra per heartbeat. Cheap re-eval each beat means a watchtower added or
+// removed mid-flight is reflected within ~60s.
+func detectDeploymentShape(socketPath string, containers []ContainerPayload) string {
+	if inDockerContainer() {
+		if socketPath == "" {
+			// We're in a container but can't see the Docker daemon — bosun
+			// has no way to act on an update command, so flag as unknown
+			// so the dashboard surfaces the manual-update fallback.
+			return "unknown"
+		}
+		for _, c := range containers {
+			if isWatchtowerImage(c.Image) {
+				return "docker+watchtower"
+			}
+		}
+		return "docker-bare"
+	}
+	if _, err := os.Stat("/etc/systemd/system/fleetcom-bosun.service"); err == nil {
+		return "systemd-native"
+	}
+	return "unknown"
+}
+
+// inDockerContainer reports whether bosun itself is running inside a Docker
+// or Podman container (vs. directly on the host as a systemd unit). The two
+// canonical markers — /.dockerenv (Docker) and /run/.containerenv (Podman)
+// — are written by the runtime at container creation.
+func inDockerContainer() bool {
+	if _, err := os.Stat("/.dockerenv"); err == nil {
+		return true
+	}
+	if _, err := os.Stat("/run/.containerenv"); err == nil {
+		return true
+	}
+	return false
+}
+
+// isWatchtowerImage matches the watchtower images that label-scoped
+// auto-update is wired through. Covers the canonical containrrr/watchtower
+// (any registry prefix), the legacy v2tec fork, and the bare "watchtower"
+// shorthand some compose files use.
+func isWatchtowerImage(img string) bool {
+	img = strings.ToLower(img)
+	if strings.Contains(img, "/watchtower") {
+		return true
+	}
+	if img == "watchtower" || strings.HasPrefix(img, "watchtower:") {
+		return true
+	}
+	return false
+}
+
 func formatAgentVersion() string {
 	// Format: "0.1.0 (2026-04-12, 17:45:27)" or just "0.1.0" if no build time
 	if BuildTime != "" && BuildTime != "unknown" {
@@ -200,13 +258,14 @@ func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []Agent
 	containers := listContainers(socketPath)
 
 	payload := HeartbeatPayload{
-		Hostname:      hostname,
-		OS:            getOS(),
-		Kernel:        getKernel(),
-		UptimeSeconds: getUptime(),
-		AgentVersion:  agentVersion,
-		Containers:    containers,
-		Agents:        agents,
+		Hostname:        hostname,
+		OS:              getOS(),
+		Kernel:          getKernel(),
+		UptimeSeconds:   getUptime(),
+		AgentVersion:    agentVersion,
+		DeploymentShape: detectDeploymentShape(socketPath, containers),
+		Containers:      containers,
+		Agents:          agents,
 	}
 
 	// Static first so we have a fresh core count for live's CPU %. Only
