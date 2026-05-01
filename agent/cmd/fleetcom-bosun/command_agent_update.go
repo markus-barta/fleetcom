@@ -54,15 +54,15 @@ type dockerInspectSpec struct {
 // recreatePayload is what the parent passes to the helper (--recreate-mode)
 // via env var. Single shape for all hosts — no compose/bare branching.
 type recreatePayload struct {
-	Target          string            `json:"target"`           // container to stop+recreate
-	Image           string            `json:"image"`            // image:tag to run with
-	Env             []string          `json:"env,omitempty"`    // expanded env from the running container
-	Binds           []string          `json:"binds,omitempty"`  // host_path:container_path[:opts]
-	Labels          map[string]string `json:"labels,omitempty"` // includes compose labels for project recognition
-	RestartPolicy   string            `json:"restart_policy,omitempty"`
-	NetworkMode     string            `json:"network_mode,omitempty"`
-	ExtraNetworks   []string          `json:"extra_networks,omitempty"`  // attached after create via `docker network connect`
-	PortBindings    []string          `json:"port_bindings,omitempty"`   // pre-formatted "host_ip:host_port:container_port/proto"
+	Target        string            `json:"target"`           // container to stop+recreate
+	Image         string            `json:"image"`            // image:tag to run with
+	Env           []string          `json:"env,omitempty"`    // expanded env from the running container
+	Binds         []string          `json:"binds,omitempty"`  // host_path:container_path[:opts]
+	Labels        map[string]string `json:"labels,omitempty"` // includes compose labels for project recognition
+	RestartPolicy string            `json:"restart_policy,omitempty"`
+	NetworkMode   string            `json:"network_mode,omitempty"`
+	ExtraNetworks []string          `json:"extra_networks,omitempty"` // attached after create via `docker network connect`
+	PortBindings  []string          `json:"port_bindings,omitempty"`  // pre-formatted "host_ip:host_port:container_port/proto"
 }
 
 // handleAgentUpdate dispatches the universal agent.update command for
