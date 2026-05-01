@@ -216,10 +216,47 @@ func detectDeploymentShape(socketPath string, containers []ContainerPayload) str
 		}
 		return "docker-bare"
 	}
-	if _, err := os.Stat("/etc/systemd/system/fleetcom-bosun.service"); err == nil {
-		return "systemd-native"
+	// install-native.sh historically installs as the 'fleetcom-agent'
+	// systemd unit. The bosun rename happened on the Docker side only —
+	// native installs still use the legacy unit name. Accept both so we
+	// don't accidentally classify a working host as 'unknown'.
+	for _, unit := range []string{
+		"/etc/systemd/system/fleetcom-bosun.service",
+		"/etc/systemd/system/fleetcom-agent.service",
+	} {
+		if _, err := os.Stat(unit); err == nil {
+			return "systemd-native"
+		}
 	}
 	return "unknown"
+}
+
+// systemdUnitName returns whichever of fleetcom-{bosun,agent}.service
+// is present on this host, used by FLEET-87's systemd-native update
+// strategy to know what to restart. Returns "" if neither is found.
+func systemdUnitName() string {
+	for _, unit := range []string{"fleetcom-bosun", "fleetcom-agent"} {
+		if _, err := os.Stat("/etc/systemd/system/" + unit + ".service"); err == nil {
+			return unit
+		}
+	}
+	return ""
+}
+
+// nativeBinaryPath returns the absolute path of the bosun binary on a
+// systemd-native host. Mirrors install-native.sh: legacy installs use
+// /usr/local/bin/fleetcom-agent; new installs may use /usr/local/bin/
+// fleetcom-bosun. Returns "" if neither exists.
+func nativeBinaryPath() string {
+	for _, p := range []string{
+		"/usr/local/bin/fleetcom-bosun",
+		"/usr/local/bin/fleetcom-agent",
+	} {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
 }
 
 // inDockerContainer reports whether bosun itself is running inside a Docker
