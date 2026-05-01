@@ -1,11 +1,17 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -95,10 +101,24 @@ func handleAgentUpdate(id int64, params json.RawMessage) (json.RawMessage, error
 	socketPath := dockerSocketPath()
 	containers := listContainers(socketPath)
 	shape := detectDeploymentShape(socketPath, containers)
-	if shape != "docker-bare" {
-		return nil, fmt.Errorf("agent.update: this host's shape is %q; FLEET-86 only handles docker-bare (watchtower hosts: legacy path; systemd-native: FLEET-87)", shape)
+	switch shape {
+	case "docker-bare":
+		return updateDockerBare(id, ps)
+	case "systemd-native":
+		return updateSystemdNative(id, ps)
+	case "docker+watchtower":
+		// Legacy path — server already triggers via update_requested_at +
+		// the heartbeat-piggyback "update" command which bosun forwards
+		// to watchtower. We refuse here so we don't double-update.
+		return nil, fmt.Errorf("agent.update: this host runs a watchtower sidecar; use the legacy update path (or remove the watchtower to switch to docker-bare)")
+	default:
+		return nil, fmt.Errorf("agent.update: unsupported deployment shape %q", shape)
 	}
+}
 
+// updateDockerBare implements the agent.update strategy for hosts where
+// bosun runs as a Docker container without watchtower (FLEET-86).
+func updateDockerBare(id int64, ps agentUpdateParams) (json.RawMessage, error) {
 	selfName := os.Getenv("HOSTNAME") // Docker sets HOSTNAME to the container ID's short form by default
 	if v := os.Getenv("FLEETCOM_CONTAINER_NAME"); v != "" {
 		selfName = v
@@ -308,4 +328,161 @@ func runRecreateMode() {
 	}
 
 	log.Printf("recreate-mode: %s recreated successfully", p.Target)
+}
+
+// updateSystemdNative implements the agent.update strategy for hosts
+// where bosun runs natively under systemd (install-native.sh path,
+// typically Raspberry Pi / non-Docker hosts). Pattern borrowed verbatim
+// from `cloudflared update` and our own install-native.sh: download
+// the matching arch binary from GitHub Releases, verify SHA-256, atomic
+// mv into place, then `systemctl restart` the unit. systemd brings the
+// new binary up; the next heartbeat reconciles the command server-side.
+//
+// This binary lives wherever install-native.sh put it
+// (/usr/local/bin/fleetcom-bosun for new installs, /usr/local/bin/
+// fleetcom-agent for legacy ones). We detect both and update in place.
+func updateSystemdNative(id int64, ps agentUpdateParams) (json.RawMessage, error) {
+	binPath := nativeBinaryPath()
+	if binPath == "" {
+		return nil, fmt.Errorf("no fleetcom binary at /usr/local/bin/fleetcom-{bosun,agent} — is this really a systemd-native install?")
+	}
+	unit := systemdUnitName()
+	if unit == "" {
+		return nil, fmt.Errorf("no fleetcom systemd unit at /etc/systemd/system/fleetcom-{bosun,agent}.service")
+	}
+
+	asset, err := nativeAssetForArch(runtime.GOARCH)
+	if err != nil {
+		return nil, err
+	}
+	url, shaURL := nativeReleaseURLs(ps.Target, asset)
+	log.Printf("agent.update systemd-native: downloading %s", url)
+
+	tmpFile, err := os.CreateTemp(filepath.Dir(binPath), "fleetcom.new.*")
+	if err != nil {
+		return nil, fmt.Errorf("create temp in %s: %w", filepath.Dir(binPath), err)
+	}
+	tmpName := tmpFile.Name()
+	defer os.Remove(tmpName) // no-op if rename succeeded
+
+	wantSHA, gotSHA, err := downloadAndHash(url, tmpFile)
+	tmpFile.Close()
+	if err != nil {
+		return nil, err
+	}
+	if expected, err := fetchSHA(shaURL); err == nil && expected != "" {
+		wantSHA = expected
+	}
+	if wantSHA == "" {
+		return nil, fmt.Errorf(".sha256 missing for %s — refusing to install unverified binary", asset)
+	}
+	if !strings.EqualFold(gotSHA, wantSHA) {
+		return nil, fmt.Errorf("sha256 mismatch: want %s, got %s", wantSHA, gotSHA)
+	}
+
+	if err := os.Chmod(tmpName, 0o755); err != nil {
+		return nil, fmt.Errorf("chmod: %w", err)
+	}
+	if err := os.Rename(tmpName, binPath); err != nil {
+		return nil, fmt.Errorf("atomic mv to %s: %w", binPath, err)
+	}
+
+	// Tell the server we've staged the new binary and are about to
+	// restart. systemctl will kill us; the new bosun's first heartbeat
+	// reconciles to "done".
+	serverURL := strings.TrimRight(os.Getenv("FLEETCOM_URL"), "/")
+	token := os.Getenv("FLEETCOM_TOKEN")
+	result := json.RawMessage(fmt.Sprintf(`{"phase":"restarting","unit":%q,"binary":%q,"sha256":%q}`, unit, binPath, wantSHA))
+	reportResult(serverURL, token, commandResult{
+		ID:     id,
+		Status: "restarting",
+		Result: result,
+	})
+
+	// Restart the unit. Use --no-block so systemctl doesn't wait for
+	// the new bosun to come up — we (the old bosun) are about to die
+	// and would otherwise dead-lock waiting for ourselves.
+	if out, err := exec.Command("systemctl", "restart", "--no-block", unit).CombinedOutput(); err != nil {
+		// At this point the new binary IS in place; the failure is in
+		// signalling systemd. Report failure so the operator can
+		// investigate (typically a permission issue).
+		return nil, fmt.Errorf("systemctl restart %s: %v: %s", unit, err, strings.TrimSpace(string(out)))
+	}
+	return nil, errHandlerAlreadyReported
+}
+
+// nativeAssetForArch maps Go's runtime.GOARCH onto the asset name CI
+// publishes to GitHub Releases (matches install-native.sh's switch).
+func nativeAssetForArch(goarch string) (string, error) {
+	switch goarch {
+	case "amd64":
+		return "fleetcom-bosun-linux-amd64", nil
+	case "arm64":
+		return "fleetcom-bosun-linux-arm64", nil
+	case "arm":
+		return "fleetcom-bosun-linux-armv6", nil
+	}
+	return "", fmt.Errorf("unsupported GOARCH %q for systemd-native update", goarch)
+}
+
+// nativeReleaseURLs builds the binary + sha256 URLs for a target version.
+// "latest" (or empty) follows GitHub's rolling /latest/download path; an
+// explicit version becomes the agent-vX.Y.Z release tag.
+func nativeReleaseURLs(target, asset string) (string, string) {
+	base := "https://github.com/markus-barta/fleetcom/releases"
+	v := strings.TrimPrefix(target, "v")
+	var url string
+	if v == "" || v == "latest" {
+		url = base + "/latest/download/" + asset
+	} else {
+		url = base + "/download/agent-v" + v + "/" + asset
+	}
+	return url, url + ".sha256"
+}
+
+// downloadAndHash streams the URL to dst while computing its sha256.
+// Returns ("", hash) when the response is OK; ("", "") with err otherwise.
+func downloadAndHash(url string, dst *os.File) (wantSHA, gotSHA string, err error) {
+	client := &http.Client{Timeout: 10 * time.Minute}
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", "", fmt.Errorf("download: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return "", "", fmt.Errorf("download HTTP %d", resp.StatusCode)
+	}
+	h := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(dst, h), resp.Body); err != nil {
+		return "", "", fmt.Errorf("download body: %w", err)
+	}
+	return "", hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// fetchSHA downloads the .sha256 file and returns the leading hex
+// digest. Tolerates "<hash>  <filename>" or just "<hash>" formats.
+// Empty string + nil error means "no .sha256 published" — caller
+// decides whether to fail.
+func fetchSHA(url string) (string, error) {
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return "", nil
+	}
+	if resp.StatusCode/100 != 2 {
+		return "", fmt.Errorf("sha256 HTTP %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 512))
+	if err != nil {
+		return "", err
+	}
+	fields := strings.Fields(string(body))
+	if len(fields) == 0 {
+		return "", nil
+	}
+	return fields[0], nil
 }

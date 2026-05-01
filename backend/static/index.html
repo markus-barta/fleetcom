@@ -2294,6 +2294,28 @@
         }
         @keyframes updpulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
 
+        /* FLEET-88 deployment_shape badge — small chip showing how the host's
+           bosun is deployed and whether it can be remote-updated. */
+        .deploy-shape-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 9px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            padding: 1px 5px;
+            border-radius: 3px;
+            margin-left: 0.3rem;
+            cursor: help;
+            border: 1px solid var(--line);
+            color: var(--ink-dim);
+            background: transparent;
+        }
+        .deploy-shape-badge.docker-watchtower { color: var(--ok); border-color: var(--ok-dim, var(--line)); }
+        .deploy-shape-badge.docker-bare       { color: var(--warn); border-color: var(--warn-dim, var(--line)); }
+        .deploy-shape-badge.systemd-native    { color: var(--ok); border-color: var(--ok-dim, var(--line)); }
+        .deploy-shape-badge.unknown           { color: var(--crit); border-color: var(--crit-dim, var(--line)); }
+
         /* --- Agent observability (FLEET-36) ------------------------------- */
 
         /* Rich state-aware agent chip. Replaces the plain sparkle+name chip
@@ -3006,6 +3028,9 @@
                                                     </template>
                                                     <template x-if="hasPendingUpdate(host)">
                                                         <span class="agent-update-pending" title="Update requested — will run on next heartbeat">upd</span>
+                                                    </template>
+                                                    <template x-if="host.deployment_shape">
+                                                        <span class="deploy-shape-badge" :class="deployShapeClass(host)" :title="deployShapeTooltip(host)" x-text="deployShapeLabel(host)"></span>
                                                     </template>
                                                 </div>
                                                 <div class="hw-chips" x-show="host.hw_live">
@@ -7274,11 +7299,68 @@ WantedBy=multi-user.target</pre>
                 hasPendingUpdate(host) {
                     return !!(host && host.update_requested_at);
                 },
+                // FLEET-88 deployment_shape helpers
+                deployShapeLabel(host) {
+                    switch (host && host.deployment_shape) {
+                        case 'docker+watchtower': return 'docker+wt';
+                        case 'docker-bare':       return 'docker';
+                        case 'systemd-native':    return 'systemd';
+                        case 'unknown':           return '? unknown';
+                        default:                  return '';
+                    }
+                },
+                deployShapeClass(host) {
+                    switch (host && host.deployment_shape) {
+                        case 'docker+watchtower': return 'docker-watchtower';
+                        case 'docker-bare':       return 'docker-bare';
+                        case 'systemd-native':    return 'systemd-native';
+                        case 'unknown':           return 'unknown';
+                        default:                  return '';
+                    }
+                },
+                deployShapeTooltip(host) {
+                    switch (host && host.deployment_shape) {
+                        case 'docker+watchtower': return 'Bosun runs in Docker with a watchtower sidecar. Update goes through watchtower.';
+                        case 'docker-bare':       return 'Bosun runs in Docker without watchtower. Update spawns a one-shot helper container that recreates the bosun container in place.';
+                        case 'systemd-native':    return 'Bosun runs natively under systemd (install-native.sh). Update downloads the matching binary from GitHub Releases, verifies SHA-256, and systemctl restarts the service.';
+                        case 'unknown':           return 'Bosun reported an unknown deployment shape — auto-update is not available. Manual update required.';
+                        default:                  return 'Deployment shape not yet reported (running pre-FLEET-84 agent).';
+                    }
+                },
+                canRemoteUpdate(host) {
+                    const s = host && host.deployment_shape;
+                    return s === 'docker+watchtower' || s === 'docker-bare' || s === 'systemd-native';
+                },
                 async requestHostUpdate(hostname) {
+                    const host = this.hostByName(hostname);
+                    const shape = host && host.deployment_shape;
+                    if (!shape || shape === 'unknown') {
+                        this.toast('Cannot remote-update ' + hostname + ' (shape: ' + (shape || 'unreported') + '). Manual update required.', 'err');
+                        return;
+                    }
+                    if (shape === 'docker+watchtower') {
+                        // Legacy path — sets update_requested_at; bosun calls watchtower on next heartbeat.
+                        try {
+                            const res = await fetch('/api/hosts/' + encodeURIComponent(hostname) + '/update', { method: 'POST' });
+                            if (res.ok) this.toast('Update requested for ' + hostname);
+                            else this.toast('Failed to request update', 'err');
+                        } catch (_) { this.toast('Network error', 'err'); }
+                        return;
+                    }
+                    // FLEET-86/87 path — agent.update command via FLEET-59 channel.
+                    if (!confirm('Update bosun on ' + hostname + ' to latest?\n\nThis will briefly disconnect monitoring while the new bosun starts.')) return;
                     try {
-                        const res = await fetch('/api/hosts/' + encodeURIComponent(hostname) + '/update', { method: 'POST' });
-                        if (res.ok) this.toast('Update requested for ' + hostname);
-                        else this.toast('Failed to request update', 'err');
+                        const res = await fetch('/api/hosts/' + encodeURIComponent(hostname) + '/commands', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ kind: 'agent.update', params: {} }),
+                        });
+                        if (res.ok) {
+                            this.toast('Update queued for ' + hostname + ' (watch the Commands tab)');
+                        } else {
+                            const text = await res.text().catch(() => '');
+                            this.toast('Update rejected: ' + (text.slice(0, 200) || 'HTTP ' + res.status), 'err');
+                        }
                     } catch (_) { this.toast('Network error', 'err'); }
                 },
                 async requestUpdateAll() {
