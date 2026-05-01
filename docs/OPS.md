@@ -47,13 +47,8 @@ find outliers.
 
 ## Memory Limits
 
-The agent runs with a hard cap that covers both Docker compose
-deployments and the NixOS systemd unit:
-
-- **Docker compose** (`agent/docker-compose.yml`):
-  `mem_limit: 256m` + `memswap_limit: 256m` (no swap allowed)
-- **NixOS module** (`nix/module.nix`):
-  `MemoryMax = "256M"` + `MemorySwapMax = "0"`
+The agent runs with a hard cap configured in `agent/docker-compose.yml`:
+`mem_limit: 256m` + `memswap_limit: 256m` (no swap allowed).
 
 The Go runtime is also given a soft heap target via `GOMEMLIMIT=200MiB`
 (~80% of the cgroup cap). Below that, the GC runs aggressively and
