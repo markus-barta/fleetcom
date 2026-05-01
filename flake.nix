@@ -17,9 +17,6 @@
       forAllSystems = nixpkgs.lib.genAttrs systems;
     in
     {
-      nixosModules.fleetcom-bosun = import ./nix/module.nix;
-      nixosModules.default = self.nixosModules.fleetcom-bosun;
-
       devShells = forAllSystems (
         system:
         let
