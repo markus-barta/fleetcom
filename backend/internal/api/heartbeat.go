@@ -13,13 +13,16 @@ import (
 )
 
 type HeartbeatPayload struct {
-	Hostname      string             `json:"hostname"`
-	OS            string             `json:"os"`
-	Kernel        string             `json:"kernel"`
-	UptimeSeconds int64              `json:"uptime_seconds"`
-	AgentVersion  string             `json:"agent_version"`
-	Containers    []ContainerPayload `json:"containers"`
-	Agents        []AgentPayload     `json:"agents"`
+	Hostname      string `json:"hostname"`
+	OS            string `json:"os"`
+	Kernel        string `json:"kernel"`
+	UptimeSeconds int64  `json:"uptime_seconds"`
+	AgentVersion  string `json:"agent_version"`
+	// DeploymentShape (FLEET-84) — see db.Host.DeploymentShape. Older
+	// agents pre-FLEET-84 omit this; server treats absence as "" (unknown).
+	DeploymentShape string             `json:"deployment_shape,omitempty"`
+	Containers      []ContainerPayload `json:"containers"`
+	Agents          []AgentPayload     `json:"agents"`
 	// Hardware/metadata fields — all optional. Bosun sends HwStatic on
 	// startup + on change, HwLive on every heartbeat once collection is
 	// active, and Fastfetch only when it has been (re)run.
@@ -78,7 +81,7 @@ func Heartbeat(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			Live:      payload.HwLive,
 			Fastfetch: payload.Fastfetch,
 		}
-		command, err := store.UpsertHeartbeat(payload.Hostname, payload.OS, payload.Kernel, payload.UptimeSeconds, payload.AgentVersion, toDBContainers(payload.Containers), toDBAgents(payload.Agents), hw)
+		command, err := store.UpsertHeartbeat(payload.Hostname, payload.OS, payload.Kernel, payload.UptimeSeconds, payload.AgentVersion, payload.DeploymentShape, toDBContainers(payload.Containers), toDBAgents(payload.Agents), hw)
 		if err != nil {
 			log.Printf("heartbeat upsert error: %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
