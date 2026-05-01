@@ -21,7 +21,7 @@ type containerRestartParams struct {
 // handleContainerRestart restarts one container by name via the docker
 // CLI using the socket bosun already has mounted. Fails fast if the
 // container doesn't exist or docker isn't reachable.
-func handleContainerRestart(params json.RawMessage) (json.RawMessage, error) {
+func handleContainerRestart(_ int64, params json.RawMessage) (json.RawMessage, error) {
 	var p containerRestartParams
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, fmt.Errorf("invalid params: %w", err)

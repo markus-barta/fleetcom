@@ -38,7 +38,7 @@ type openclawPairParams struct {
 //
 // We also preserve any existing paired devices (control UI pairings,
 // other FleetCom instances, etc.) — this is a merge, not a replace.
-func handleOpenclawPair(params json.RawMessage) (json.RawMessage, error) {
+func handleOpenclawPair(_ int64, params json.RawMessage) (json.RawMessage, error) {
 	var p openclawPairParams
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, fmt.Errorf("invalid params: %w", err)

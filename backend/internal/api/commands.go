@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strconv"
@@ -42,8 +43,8 @@ func CommandResults(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			http.Error(w, "invalid json", http.StatusBadRequest)
 			return
 		}
-		if body.ID == 0 || (body.Status != "done" && body.Status != "failed") {
-			http.Error(w, "id + status (done|failed) required", http.StatusBadRequest)
+		if body.ID == 0 || (body.Status != "done" && body.Status != "failed" && body.Status != "restarting") {
+			http.Error(w, "id + status (done|failed|restarting) required", http.StatusBadRequest)
 			return
 		}
 
@@ -187,6 +188,47 @@ func EnqueueCommand(store *db.Store) http.HandlerFunc {
 				return
 			}
 		}
+
+		// FLEET-85: agent.update has special pre-flight + capture logic.
+		// We need the host's deployment shape to know whether bosun can
+		// remote-update at all, and the current agent_version so we can
+		// reconcile the post-restart heartbeat that confirms success.
+		if body.Kind == "agent.update" {
+			shape, err := store.DeploymentShapeForHost(host)
+			if err != nil {
+				log.Printf("agent.update pre-flight (shape) for %s: %v", host, err)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			if shape == "" || shape == "unknown" {
+				http.Error(w, fmt.Sprintf("host %s: deployment_shape is %q — bosun cannot self-update remotely; manual update required", host, shape), http.StatusBadRequest)
+				return
+			}
+			if existing, err := store.PendingOrInflightAgentUpdate(host); err == nil && existing != 0 {
+				http.Error(w, fmt.Sprintf("agent.update %d already in progress for %s", existing, host), http.StatusConflict)
+				return
+			} else if err != nil {
+				log.Printf("agent.update pre-flight (idempotency) for %s: %v", host, err)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			// Capture pre-update agent_version so the heartbeat handler
+			// can reconcile post-restart. Default empty if unknown.
+			preVer, _ := store.AgentVersionForHost(host)
+			pmap, _ := paramsAny.(map[string]interface{})
+			if pmap == nil {
+				pmap = map[string]interface{}{}
+			}
+			pmap["pre_update_version"] = preVer
+			if _, ok := pmap["target"]; !ok {
+				pmap["target"] = "latest"
+			}
+			if _, ok := pmap["source"]; !ok {
+				pmap["source"] = "ghcr"
+			}
+			paramsAny = pmap
+		}
+
 		id, err := store.EnqueueCommand(host, body.Kind, paramsAny, uid)
 		if err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
