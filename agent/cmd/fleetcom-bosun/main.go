@@ -95,6 +95,18 @@ type ContainerEventPayload struct {
 }
 
 func main() {
+	// FLEET-86: --recreate-mode is the "helper container" entrypoint. The
+	// outgoing bosun spawns a copy of itself with this flag to perform the
+	// stop-rm-recreate dance, since a process can't recreate the container
+	// it's running inside. The helper exits cleanly when done; the parent
+	// is gone by then (killed by `docker stop`).
+	for _, a := range os.Args[1:] {
+		if a == "--recreate-mode" {
+			runRecreateMode()
+			return
+		}
+	}
+
 	serverURL := os.Getenv("FLEETCOM_URL")
 	if serverURL == "" {
 		log.Fatal("FLEETCOM_URL is required")

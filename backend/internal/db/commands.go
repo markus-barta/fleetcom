@@ -100,26 +100,48 @@ func (s *Store) PendingCommandsForHost(host string) ([]HostCommand, error) {
 	return out, nil
 }
 
-// MarkCommandResult records bosun's report back. status must be 'done'
-// or 'failed'. result is the handler's structured output (stdout tail,
-// exit code, affected resource IDs, etc.), error is a short human
-// message. Either may be empty.
+// MarkCommandResult records bosun's report back. status must be 'done',
+// 'failed', or 'restarting'. The 'restarting' value (FLEET-85) is the
+// agent.update signal — bosun has finished the destructive part of an
+// update and is about to die; reconciliation happens later when the
+// new bosun's first heartbeat arrives. 'done' / 'failed' are terminal.
+//
+// result is the handler's structured output (stdout tail, exit code,
+// affected resource IDs, etc.), error is a short human message. Either
+// may be empty.
 func (s *Store) MarkCommandResult(id int64, host, status string, result, errStr string) error {
-	if status != "done" && status != "failed" {
+	if status != "done" && status != "failed" && status != "restarting" {
 		return fmt.Errorf("invalid status: %s", status)
+	}
+	if status == "restarting" {
+		// Only valid transition: executing → restarting. Stays
+		// non-terminal (no completed_at, no result yet).
+		res, err := s.DB.Exec(`
+			UPDATE host_commands
+			SET status = 'restarting', result = ?, error = ?
+			WHERE id = ? AND host = ? AND status = 'executing'
+		`, result, errStr, id, host)
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			return fmt.Errorf("command %d not in executing state for host %s", id, host)
+		}
+		return nil
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 	res, err := s.DB.Exec(`
 		UPDATE host_commands
 		SET status = ?, result = ?, error = ?, completed_at = ?
-		WHERE id = ? AND host = ? AND status = 'executing'
+		WHERE id = ? AND host = ? AND status IN ('executing','restarting')
 	`, status, result, errStr, now, id, host)
 	if err != nil {
 		return err
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("command %d not in executing state for host %s", id, host)
+		return fmt.Errorf("command %d not in executing or restarting state for host %s", id, host)
 	}
 	return nil
 }
@@ -175,20 +197,29 @@ func (s *Store) CommandsForHost(host string, limit int) ([]HostCommand, error) {
 	return out, rows.Err()
 }
 
-// ExpireStuckCommands moves commands stuck in 'executing' past a
-// threshold (typically a few multiples of the heartbeat interval) to
+// ExpireStuckCommands moves commands stuck in non-terminal states past
+// a threshold (typically a few multiples of the heartbeat interval) to
 // 'failed' so the UI doesn't show them as forever-in-progress when a
-// host went dark mid-execution. Retries transient SQLITE_BUSY (the
-// 5s busy_timeout on open isn't always enough when a heartbeat
-// transaction spans the same rows) before giving up.
+// host went dark mid-execution. 'restarting' agent.update commands
+// (FLEET-85) are also covered — if the new bosun never reports back
+// with the new agent_version, the update is considered failed.
+//
+// Retries transient SQLITE_BUSY (the 5s busy_timeout on open isn't
+// always enough when a heartbeat transaction spans the same rows)
+// before giving up.
 func (s *Store) ExpireStuckCommands(maxAge time.Duration) (int64, error) {
 	cutoff := time.Now().Add(-maxAge).UTC().Format(time.RFC3339)
 	var lastErr error
 	for attempt := 0; attempt < 4; attempt++ {
 		res, err := s.DB.Exec(`
 			UPDATE host_commands
-			SET status = 'failed', error = 'timeout: bosun did not report within window', completed_at = datetime('now')
-			WHERE status = 'executing' AND picked_at < ?
+			SET status = 'failed',
+			    error = CASE
+			        WHEN status = 'restarting' THEN 'timeout: bosun did not return on the new version within window'
+			        ELSE 'timeout: bosun did not report within window'
+			    END,
+			    completed_at = datetime('now')
+			WHERE status IN ('executing','restarting') AND picked_at < ?
 		`, cutoff)
 		if err == nil {
 			n, _ := res.RowsAffected()
@@ -202,6 +233,117 @@ func (s *Store) ExpireStuckCommands(maxAge time.Duration) (int64, error) {
 		time.Sleep(time.Duration(attempt+1) * 250 * time.Millisecond)
 	}
 	return 0, lastErr
+}
+
+// PendingOrInflightAgentUpdate returns the id of any agent.update
+// command for the host that is still in pending / executing /
+// restarting state, or 0 if none. Used by the EnqueueCommand handler
+// to enforce idempotency (FLEET-85): only one update may be in flight
+// for a given host at a time.
+func (s *Store) PendingOrInflightAgentUpdate(host string) (int64, error) {
+	var id int64
+	err := s.DB.QueryRow(`
+		SELECT id FROM host_commands
+		WHERE host = ? AND kind = 'agent.update' AND status IN ('pending','executing','restarting')
+		ORDER BY id DESC LIMIT 1
+	`, host).Scan(&id)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	return id, err
+}
+
+// DeploymentShapeForHost returns the host's reported deployment_shape.
+// Returns "" if the host doesn't exist or hasn't been bosun-classified
+// yet. Used by the agent.update pre-flight (FLEET-85).
+func (s *Store) DeploymentShapeForHost(host string) (string, error) {
+	var shape string
+	err := s.DB.QueryRow(`SELECT deployment_shape FROM hosts WHERE hostname = ?`, host).Scan(&shape)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return shape, err
+}
+
+// AgentVersionForHost returns the host's last-reported agent_version.
+// Used by the agent.update pre-flight to capture the pre-update value
+// so the post-restart heartbeat can be reconciled (FLEET-85).
+func (s *Store) AgentVersionForHost(host string) (string, error) {
+	var v string
+	err := s.DB.QueryRow(`SELECT agent_version FROM hosts WHERE hostname = ?`, host).Scan(&v)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return v, err
+}
+
+// ReconcileAgentUpdate is called from the heartbeat handler. If the
+// host has any agent.update commands in 'restarting' state and the
+// just-arrived heartbeat reports a non-empty agent_version that
+// differs from the version captured at enqueue time, mark them done
+// — bosun came back on the new version. Returns the count of
+// commands reconciled.
+//
+// If a "restarting" command is older than the timeout window the
+// generic ExpireStuckCommands sweeper will mark it failed instead.
+func (s *Store) ReconcileAgentUpdate(host, currentAgentVersion string) (int, error) {
+	if currentAgentVersion == "" {
+		return 0, nil
+	}
+	rows, err := s.DB.Query(`
+		SELECT id, params FROM host_commands
+		WHERE host = ? AND kind = 'agent.update' AND status = 'restarting'
+	`, host)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	type pending struct {
+		id     int64
+		params string
+	}
+	var todo []pending
+	for rows.Next() {
+		var p pending
+		if err := rows.Scan(&p.id, &p.params); err != nil {
+			return 0, err
+		}
+		todo = append(todo, p)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	count := 0
+	for _, p := range todo {
+		var ps struct {
+			Target            string `json:"target"`
+			PreUpdateVersion  string `json:"pre_update_version"`
+			PreUpdateAgentVer string `json:"pre_update_agent_version"`
+		}
+		_ = json.Unmarshal([]byte(p.params), &ps)
+		pre := ps.PreUpdateVersion
+		if pre == "" {
+			pre = ps.PreUpdateAgentVer
+		}
+		// If the bosun is reporting a version that differs from the
+		// version it had pre-update, the swap took. We don't enforce
+		// exact target match — "latest" requests can resolve to any
+		// newer build, and tag-based requests may resolve to a
+		// formatted-version string that doesn't equal the requested
+		// tag verbatim. The dashboard displays both for the operator.
+		if pre != "" && currentAgentVersion != pre {
+			result := fmt.Sprintf(`{"reconciled_via_heartbeat":true,"pre_update":%q,"now":%q}`, pre, currentAgentVersion)
+			if _, err := s.DB.Exec(`
+				UPDATE host_commands
+				SET status='done', result=?, completed_at=?
+				WHERE id=? AND status='restarting'
+			`, result, now, p.id); err == nil {
+				count++
+			}
+		}
+	}
+	return count, nil
 }
 
 func scanCommand(rows *sql.Rows) (HostCommand, error) {

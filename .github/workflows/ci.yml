@@ -12,8 +12,8 @@ permissions:
   packages: write
 
 env:
-  VERSION: 0.6.27
-  AGENT_VERSION: 0.4.7
+  VERSION: 0.6.28
+  AGENT_VERSION: 0.4.8
 
 jobs:
   lint:

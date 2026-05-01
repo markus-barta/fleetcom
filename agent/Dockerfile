@@ -14,8 +14,10 @@ RUN CGO_ENABLED=0 go build \
 FROM alpine:3.21
 # docker-cli: required by FLEET-61/62/63 command handlers (openclaw.pair,
 # container.restart, bridge.install) which shell out to `docker exec`
-# / `docker restart` / `docker run`. The CLI talks to the host daemon
-# via the bind-mounted /var/run/docker.sock — no daemon runs inside.
-RUN apk add --no-cache ca-certificates tzdata fastfetch docker-cli
+# / `docker restart` / `docker run`. docker-cli-compose adds the compose
+# plugin used by FLEET-86's agent.update recreate-mode for compose-
+# managed hosts. Both talk to the host daemon via the bind-mounted
+# /var/run/docker.sock — no daemon runs inside.
+RUN apk add --no-cache ca-certificates tzdata fastfetch docker-cli docker-cli-compose
 COPY --from=builder /fleetcom-bosun /usr/local/bin/fleetcom-bosun
 ENTRYPOINT ["fleetcom-bosun"]

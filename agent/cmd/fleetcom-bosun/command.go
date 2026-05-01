@@ -86,7 +86,10 @@ type commandResult struct {
 // commandHandler executes one command and returns (resultJSON, error).
 // resultJSON is opaque, surfaced to admins in the command history.
 // A nil error means status=done; any returned error means status=failed.
-type commandHandler func(params json.RawMessage) (json.RawMessage, error)
+// The id parameter is the command's host_commands.id — handlers that
+// post their own intermediate result asynchronously (e.g. agent.update
+// → "restarting") need it; others can ignore.
+type commandHandler func(id int64, params json.RawMessage) (json.RawMessage, error)
 
 // commandAllowlist is bosun's compiled-in set of commands it will run.
 // Unknown kinds fail fast so a compromised / buggy server can't coax
@@ -96,7 +99,14 @@ var commandAllowlist = map[string]commandHandler{
 	"openclaw.pair":     handleOpenclawPair,     // FLEET-61
 	"container.restart": handleContainerRestart, // FLEET-62
 	"bridge.install":    handleBridgeInstall,    // FLEET-63
+	"agent.update":      handleAgentUpdate,      // FLEET-86
 }
+
+// errHandlerAlreadyReported is a sentinel a handler returns when it has
+// already POSTed its own command-result asynchronously and runAndReport
+// must NOT post a second one. Used by agent.update which transitions to
+// "restarting" before bosun is killed by its own replacement container.
+var errHandlerAlreadyReported = fmt.Errorf("__handler_already_reported__")
 
 // dispatchCommands is called once per heartbeat with the commands the
 // server just handed out. Each runs in its own goroutine so a slow
@@ -131,7 +141,15 @@ func runAndReport(c hostCommand, serverURL, token string) {
 				done <- commandResult{ID: c.ID, Status: "failed", Error: fmt.Sprintf("handler panic: %v", p)}
 			}
 		}()
-		result, err := handler(c.Params)
+		result, err := handler(c.ID, c.Params)
+		if err == errHandlerAlreadyReported {
+			// Handler already POSTed its own result (e.g.
+			// agent.update transitioning to "restarting"). Pass a
+			// sentinel through the channel so runAndReport unblocks
+			// without posting a second result.
+			done <- commandResult{ID: c.ID, Status: "__skip__"}
+			return
+		}
 		if err != nil {
 			done <- commandResult{ID: c.ID, Status: "failed", Result: result, Error: err.Error()}
 			return
@@ -141,6 +159,9 @@ func runAndReport(c hostCommand, serverURL, token string) {
 
 	select {
 	case r := <-done:
+		if r.Status == "__skip__" {
+			return
+		}
 		reportResult(serverURL, token, r)
 	case <-time.After(4 * time.Minute):
 		// Server-side expiry is 5m; we fail-report just before so the

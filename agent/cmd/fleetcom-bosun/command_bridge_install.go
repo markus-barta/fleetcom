@@ -29,7 +29,7 @@ type bridgeInstallParams struct {
 // creating a duplicate. Uses docker run with --network host so the
 // bridge can reach the sibling gateway on localhost:18789 without
 // depending on a specific compose network.
-func handleBridgeInstall(params json.RawMessage) (json.RawMessage, error) {
+func handleBridgeInstall(_ int64, params json.RawMessage) (json.RawMessage, error) {
 	var p bridgeInstallParams
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, fmt.Errorf("invalid params: %w", err)

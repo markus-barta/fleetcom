@@ -88,6 +88,24 @@ func Heartbeat(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			return
 		}
 
+		// FLEET-85: reconcile agent.update commands left in 'restarting'
+		// state — if bosun is now reporting a different agent_version
+		// than the one captured at enqueue time, the swap took, so flip
+		// the command to 'done'. Broadcast updated commands list so any
+		// open audit drawer sees the transition without a refresh.
+		if reconciled, err := store.ReconcileAgentUpdate(payload.Hostname, payload.AgentVersion); err != nil {
+			log.Printf("agent.update reconcile for %s: %v", payload.Hostname, err)
+		} else if reconciled > 0 {
+			if cmds, err := store.CommandsForHost(payload.Hostname, 50); err == nil {
+				for i := range cmds {
+					cmds[i].Params = redactCommandParams(cmds[i].Kind, cmds[i].Params)
+				}
+				if data, err := json.Marshal(map[string]any{"host": payload.Hostname, "commands": cmds}); err == nil {
+					hub.Broadcast("commands", data)
+				}
+			}
+		}
+
 		// Persist any agent snapshots attached to this heartbeat so the
 		// read side has a canonical "latest" per agent without waiting
 		// for events to catch up.
