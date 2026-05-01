@@ -75,25 +75,64 @@ apply — investigate the actual top process.
 
 ## Releasing a Bosun Fix
 
-1. Patch-bump `BOSUN_VERSION` in `.github/workflows/ci.yml`.
+1. Patch-bump `AGENT_VERSION` (and `VERSION` if the server also changed)
+   in `.github/workflows/ci.yml`. Bump the **minor** segment for feature
+   releases (e.g. `0.4.x` → `0.5.0` when shipping FLEET-83).
 2. Push to `main`. CI builds + publishes
-   `ghcr.io/markus-barta/fleetcom-bosun:latest` (and a digest tag).
-3. On each host, the bundled or external Watchtower picks up the new
-   image on its next poll, or the operator can trigger an immediate
-   pull from the FleetCom dashboard ("Update now" on the host drawer).
+   `ghcr.io/markus-barta/fleetcom-bosun:latest` (plus a `:vX.Y.Z` tag
+   and an `agent-vX.Y.Z` GitHub Release for the cross-compiled native
+   binaries).
+3. The dashboard's per-host **"Update agent"** button is the primary
+   path for triggering an upgrade. It dispatches by each host's
+   `deployment_shape` (FLEET-84):
 
-   Hosts without a label-scoped watchtower will go stale — neither
-   auto-poll nor "Update now" has anything to talk to. Confirm by
-   checking the host drawer: if there is no watchtower container
-   visible, the bosun image will not refresh on its own. Fallback:
+   | Shape                | What "Update agent" does                                                                |
+   | -------------------- | --------------------------------------------------------------------------------------- |
+   | `docker+watchtower`  | POSTs to the host's watchtower HTTP API, which pulls + recreates fleetcom-bosun.        |
+   | `docker-bare`        | Enqueues an `agent.update` command. Bosun spawns a one-shot helper container that      |
+   |                      | does `docker stop` + `docker rm` + `docker run` with the inspected spec preserved      |
+   |                      | (env, mounts, labels including compose, network, ports). Compose-aware for free        |
+   |                      | because the labels survive — next `docker compose up` from the host still recognises   |
+   |                      | the container as project-managed. (FLEET-86)                                            |
+   | `systemd-native`     | Bosun downloads the matching ARMv6/arm64/amd64 binary from the GitHub Release,         |
+   |                      | verifies SHA-256, atomic-mvs onto `/usr/local/bin/fleetcom-{bosun,agent}`, then        |
+   |                      | `systemctl restart --no-block <unit>`. (FLEET-87)                                       |
+   | `unknown`            | Button is disabled; tooltip explains "manual update required". The dashboard will not  |
+   |                      | silently fire a no-op (the failure mode that bit hsb0 pre-FLEET-83).                    |
+
+   Server reconciles the `restarting` command to `done` automatically
+   when the new bosun's first heartbeat reports a different
+   `agent_version` than was captured at enqueue time. If the new
+   version doesn't return within 5 min, `ExpireStuckCommands` flips the
+   command to `failed` with a timeout error so the operator sees it.
+
+4. **Manual fallback** (Path B) when the dashboard route can't be used —
+   bootstrapping a host onto a v0.5.0+ binary that has the FLEET-87
+   handler in the first place, or recovering from a botched in-process
+   update:
 
    ```
+   # Docker hosts
    ssh <host>
-   cd /opt/fleetcom-agent      # or wherever the bosun compose lives
-   docker compose pull && docker compose up -d
+   cd <compose-dir>            # nixcfg/hosts/<host>/docker is the standard;
+                               # /opt/fleetcom-agent/ on legacy unmigrated hosts
+                               # (cf. NIX-76, DSC26-60).
+   sudo docker compose pull fleetcom-agent && sudo docker compose up -d fleetcom-agent
+
+   # Native systemd hosts (Pi etc.)
+   ssh <host>
+   sudo AGENT_VERSION=<X.Y.Z> bash <(curl -fsSL \
+     https://raw.githubusercontent.com/markus-barta/fleetcom/main/agent/install-native.sh)
    ```
 
-   The durable fix is to add a watchtower service to that host's
-   compose (see `nixcfg/hosts/gpc0/docker/docker-compose.yml` for the
-   minimal pattern: label-scoped, HTTP API enabled, token in
-   `/opt/fleetcom-agent/.env`).
+   The dashboard's per-host Commands tab shows the audit trail either
+   way — failures from in-process updates are recorded there with the
+   bosun-side error.
+
+5. **Deployment-shape coverage.** As of 2026-05-01 the fleet runs:
+   `csb0`, `csb1`, `gpc0`, `hsb1`, `hsb8` on `docker+watchtower`;
+   `hsb0`, `dsc0`, `msbp` on `docker-bare`; `hsb2` on `systemd-native`.
+   Hosts where bosun reports `unknown` (no Docker socket visible from
+   inside the container, no systemd unit on the host) need their
+   deployment hardened before they can self-update — the badge on the
+   host card will flag them.
