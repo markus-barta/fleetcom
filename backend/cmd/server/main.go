@@ -219,8 +219,8 @@ func main() {
 		// openclaw.pair command. First dir of ocKeyDir (colon-separated)
 		// that's writable is used for key storage; /app/data is the
 		// conventional choice inside the fleetcom container.
-		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/pair", api.PairGateway(store, "/app/data/openclaw-keys", hub))
-		r.With(auth.RequireAdmin).Delete("/api/gateways/{host}", api.UnpairGateway(store, "/app/data/openclaw-keys", hub))
+		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/pair", api.PairGateway(store, "/app/data/openclaw-keys", hub, ocMgr))
+		r.With(auth.RequireAdmin).Delete("/api/gateways/{host}", api.UnpairGateway(store, "/app/data/openclaw-keys", hub, ocMgr))
 		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/auto-approve/{mode}", api.SetGatewayAutoApprove(store, hub))
 		r.With(auth.RequireAdmin).Get("/api/bridges", api.ListBridges(store))
 		r.With(auth.RequireAdmin).Delete("/api/bridges/{host}/{agent}", api.RevokeBridge(store, hub, ocMgr))

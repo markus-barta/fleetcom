@@ -35,6 +35,14 @@ func broadcastGateways(store *db.Store, hub *sse.Hub) {
 	}
 }
 
+// GatewayNudger lets PairGateway/UnpairGateway request an immediate
+// manager reconcile after writing/removing keys, so the WS client
+// starts (or stops) within seconds instead of waiting up to 2 minutes
+// for the periodic tick. Implemented by openclaw.Manager (FLEET-92).
+type GatewayNudger interface {
+	Nudge()
+}
+
 // PairGateway implements POST /api/gateways/{host}/pair (FLEET-61):
 // generate FleetCom's Ed25519 keypair + operator token for a gateway
 // on `{host}`, persist them to the fleetcom container's own data dir
@@ -53,7 +61,7 @@ func broadcastGateways(store *db.Store, hub *sse.Hub) {
 //
 // Idempotency: if keys already exist, returns 409. Admin must DELETE
 // the gateway first (tears down client + removes files) to re-pair.
-func PairGateway(store *db.Store, keyRoot string, hub *sse.Hub) http.HandlerFunc {
+func PairGateway(store *db.Store, keyRoot string, hub *sse.Hub, nudger GatewayNudger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host := chi.URLParam(r, "host")
 		if host == "" {
@@ -163,18 +171,30 @@ func PairGateway(store *db.Store, keyRoot string, hub *sse.Hub) http.HandlerFunc
 			return
 		}
 
-		// Also upsert the gateway row so the Gateways tab shows a
-		// "pending" entry immediately, instead of waiting for the
-		// manager's 2m reconcile tick.
+		// Upsert the gateway row + mark it paired immediately. The keys
+		// are on disk and the row is owned by FleetCom — there's no
+		// reason to leave it as the schema-default 'unpaired' until the
+		// manager's 2-minute reconcile tick (FLEET-92). The earlier
+		// design left the disk-scan reconcile as the single source of
+		// truth, but for the wizard path we already know the keys
+		// exist, so the status flip can happen synchronously here.
 		url := fmt.Sprintf("wss://%s:18789", host)
 		if _, err := store.UpsertGateway(host, url); err != nil {
 			log.Printf("pair-gateway upsert: %v", err)
 		}
-		// Broadcast so the host drawer + Gateways tab reflect the new
-		// "pending" row instantly (FLEET-71).
+		if err := store.MarkGatewayPaired(host, id.PubKeyRawB64U, ""); err != nil {
+			log.Printf("pair-gateway mark paired: %v", err)
+		}
+		// Broadcast so the host drawer + Gateways tab reflect the
+		// 'paired' row instantly (FLEET-71/91).
 		broadcastGateways(store, hub)
+		// Nudge the manager so the WS client starts immediately
+		// instead of waiting up to 2m for the periodic reconcile.
+		if nudger != nil {
+			nudger.Nudge()
+		}
 
-		log.Printf("pair-gateway %s: keys generated, command %d enqueued, deviceId=%s", host, cmdID, id.DeviceID[:12])
+		log.Printf("pair-gateway %s: keys generated, marked paired, command %d enqueued, deviceId=%s", host, cmdID, id.DeviceID[:12])
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -193,7 +213,7 @@ func PairGateway(store *db.Store, keyRoot string, hub *sse.Hub) http.HandlerFunc
 // rows intact so admins can inspect history). Does NOT touch the
 // gateway-side paired.json; admin needs to remove our entry manually
 // if they want to fully decommission.
-func UnpairGateway(store *db.Store, keyRoot string, hub *sse.Hub) http.HandlerFunc {
+func UnpairGateway(store *db.Store, keyRoot string, hub *sse.Hub, nudger GatewayNudger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host := chi.URLParam(r, "host")
 		if host == "" {
@@ -211,6 +231,11 @@ func UnpairGateway(store *db.Store, keyRoot string, hub *sse.Hub) http.HandlerFu
 		}
 		// Broadcast so the host drawer reflects the removal instantly (FLEET-71).
 		broadcastGateways(store, hub)
+		// Nudge the manager so the now-unwanted WS client is stopped
+		// promptly (FLEET-92).
+		if nudger != nil {
+			nudger.Nudge()
+		}
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

@@ -33,6 +33,9 @@ type Manager struct {
 
 	mu      sync.Mutex
 	clients map[string]*clientHandle
+
+	ctx   context.Context
+	nudge chan struct{}
 }
 
 type clientHandle struct {
@@ -54,6 +57,7 @@ func NewManager(store *db.Store, hub *sse.Hub, keyDir, version string) *Manager 
 		keyDir:  keyDir,
 		version: version,
 		clients: make(map[string]*clientHandle),
+		nudge:   make(chan struct{}, 1),
 	}
 }
 
@@ -71,8 +75,10 @@ func (m *Manager) keyDirs() []string {
 }
 
 // Start kicks off the reconcile loop. Caller owns the context — cancel
-// it to stop all clients.
+// it to stop all clients. Reconciles can also be triggered out-of-cycle
+// via Nudge() — see PairGateway/UnpairGateway flows (FLEET-92).
 func (m *Manager) Start(ctx context.Context) {
+	m.ctx = ctx
 	m.reconcile(ctx)
 	go func() {
 		t := time.NewTicker(2 * time.Minute)
@@ -81,12 +87,29 @@ func (m *Manager) Start(ctx context.Context) {
 			select {
 			case <-t.C:
 				m.reconcile(ctx)
+			case <-m.nudge:
+				m.reconcile(ctx)
 			case <-ctx.Done():
 				m.stopAll()
 				return
 			}
 		}
 	}()
+}
+
+// Nudge requests an immediate reconcile. Used by PairGateway after
+// keys are written to disk so the WS client starts within seconds
+// instead of waiting up to 2 minutes for the periodic tick. Non-
+// blocking — if a reconcile is already pending, the second nudge is
+// dropped (the next reconcile will see the same disk state anyway).
+func (m *Manager) Nudge() {
+	if m == nil || m.nudge == nil {
+		return
+	}
+	select {
+	case m.nudge <- struct{}{}:
+	default:
+	}
 }
 
 func (m *Manager) stopAll() {
