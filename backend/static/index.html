@@ -784,6 +784,13 @@
             line-height: 1.2;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
         }
+        /* FLEET-91: standalone state-pill modifiers for drawer/header
+           pills that aren't nested under a .card. The .card.state-ok
+           cascade still wins inside cards. */
+        .state-pill.state-ok { color: var(--ok); background: rgba(61, 220, 151, 0.05); }
+        .state-pill.state-warn { color: var(--warn); background: rgba(255, 184, 77, 0.05); }
+        .state-pill.state-crit { color: var(--crit); background: rgba(255, 77, 109, 0.10); }
+        .state-pill.state-dead { color: var(--dead); }
         .card.state-ok .state-pill {
             color: var(--ok);
             background: rgba(61, 220, 151, 0.05);
@@ -4040,9 +4047,9 @@
                                                     @change="toggleAutoApprove(g.host, $event.target.checked)">
                                                 auto-approve
                                             </label>
-                                            <!-- FLEET-63: deploy bridge when this gateway has no bridge yet. -->
+                                            <!-- FLEET-63/93: deploy agent-bridge when this gateway has no bridge yet. -->
                                             <template x-if="!hasBridgeForHost(g.host)">
-                                                <button class="btn btn-primary" @click="deployBridge(g.host)" title="Deploy the agent-bridge container on this host. Uses docker run with host network + bosun's own token. Idempotent — safe to click twice.">+ Bridge</button>
+                                                <button class="btn btn-primary" @click="deployBridge(g.host)" title="Deploy the fleetcom-agent-bridge container on this host. The bridge relays AI agent turns + lifecycle events from the local OpenClaw gateway to FleetCom. Uses docker run with host network + bosun's own token. Idempotent — safe to click twice.">+ Deploy agent-bridge</button>
                                             </template>
                                             <button class="btn btn-danger" @click="unpairGateway(g.host)">Unpair</button>
                                         </div>
@@ -4110,7 +4117,7 @@
                     <template x-if="settingsTab === 'bridges'">
                         <div>
                             <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em; margin-bottom: 1rem;">
-                                Agent-bridges registered with FleetCom. Pending rows are waiting for gateway approval; approved rows are actively relaying events. Revoking drops the pairing — the bridge will re-register and re-pair on next boot.
+                                The <strong>agent-bridge</strong> is a small relay container that forwards AI agent turns + lifecycle events from the local OpenClaw gateway to FleetCom. Deploy it from a host's drawer (Settings tab) or via <strong>+ Deploy agent-bridge</strong> next to a gateway. It depends on a paired gateway with auto-approve on — registration sits pending until those are in place. Pending rows are waiting for gateway approval; approved rows are actively relaying events. Revoking drops the pairing; the bridge will re-register and re-pair on next boot.
                             </p>
 
                             <ul class="token-list">
@@ -4664,7 +4671,7 @@ WantedBy=multi-user.target</pre>
                                                 <div class="v" x-text="(gatewayForHost(hostDrawerKey) || {}).url"></div>
                                             </div>
                                             <div style="display:flex;align-items:center;gap:0.5rem;">
-                                                <span class="state-pill" :class="(gatewayForHost(hostDrawerKey).state || 'pending') === 'online' ? 'state-ok' : 'state-warn'" x-text="((gatewayForHost(hostDrawerKey).state || 'pending')).toUpperCase()"></span>
+                                                <span class="state-pill" :class="gatewayStatusClass(gatewayForHost(hostDrawerKey))" x-text="gatewayStatusLabel(gatewayForHost(hostDrawerKey))"></span>
                                             </div>
                                         </div>
                                     </template>
@@ -4674,7 +4681,7 @@ WantedBy=multi-user.target</pre>
                                                 <div class="k">Bridge</div>
                                                 <div class="v" x-text="b.agent"></div>
                                             </div>
-                                            <span class="state-pill" :class="b.state === 'online' ? 'state-ok' : 'state-warn'" x-text="(b.state || 'pending').toUpperCase()"></span>
+                                            <span class="state-pill" :class="bridgeStatusClass(b)" x-text="bridgeStatusLabel(b)"></span>
                                         </div>
                                     </template>
                                 </div>
@@ -4888,7 +4895,7 @@ WantedBy=multi-user.target</pre>
                                     <div style="min-width:0;">
                                         <div class="k">OpenClaw gateway</div>
                                         <template x-if="gatewayForHost(hostDrawerKey)">
-                                            <div class="v" x-text="gatewayForHost(hostDrawerKey).url + ' · ' + (gatewayForHost(hostDrawerKey).state || 'pending')"></div>
+                                            <div class="v" x-text="gatewayForHost(hostDrawerKey).url + ' · ' + ((gatewayForHost(hostDrawerKey).status) || 'unknown')"></div>
                                         </template>
                                         <template x-if="!gatewayForHost(hostDrawerKey)">
                                             <div class="v" style="color:var(--ink-ghost);font-style:italic;">not paired</div>
@@ -4912,18 +4919,18 @@ WantedBy=multi-user.target</pre>
                                                 <template x-for="b in bridgesForHost(hostDrawerKey)" :key="b.agent">
                                                     <span style="display:inline-block;margin-right:0.5rem;">
                                                         <span x-text="b.agent"></span>
-                                                        <span style="color:var(--ink-ghost)" x-text="' · ' + (b.state || 'pending')"></span>
+                                                        <span style="color:var(--ink-ghost)" x-text="' · ' + ((b.status) || 'unknown')"></span>
                                                         <button class="btn btn-ghost" style="font-size:8px;padding:0.1rem 0.35rem;margin-left:0.3rem;" @click="revokeBridge(hostDrawerKey, b.agent)">revoke</button>
                                                     </span>
                                                 </template>
                                             </div>
                                         </template>
                                         <template x-if="bridgesForHost(hostDrawerKey).length === 0">
-                                            <div class="v" style="color:var(--ink-ghost);font-style:italic;">none deployed</div>
+                                            <div class="v" style="color:var(--ink-ghost);font-style:italic;">no agent-bridge deployed</div>
                                         </template>
                                     </div>
                                     <div>
-                                        <button class="btn btn-primary" @click="deployBridge(hostDrawerKey)" title="Deploy the agent-bridge container on this host. Uses docker run with host network + bosun's own token. Idempotent — safe to click twice.">+ Deploy bridge</button>
+                                        <button class="btn btn-primary" @click="deployBridge(hostDrawerKey)" title="Deploy the fleetcom-agent-bridge container on this host. The bridge relays AI agent turns + lifecycle events from the local OpenClaw gateway to FleetCom. Uses docker run with host network + bosun's own token. Idempotent — safe to click twice.">+ Deploy agent-bridge</button>
                                     </div>
                                 </div>
                             </div>
@@ -6017,6 +6024,24 @@ WantedBy=multi-user.target</pre>
                 bridgesForHost(host) {
                     return (this.bridges || []).filter(b => b.host === host);
                 },
+                // FLEET-91: server-side gateway/bridge status mapping. The
+                // backend struct is `status`, not `state` — older code read
+                // `.state` (always undefined) and silently fell back to
+                // 'pending', so the drawer never reflected reality.
+                gatewayStatusLabel(g) { return ((g && g.status) || 'unknown').toUpperCase(); },
+                gatewayStatusClass(g) {
+                    const s = (g && g.status) || '';
+                    if (s === 'paired') return 'state-ok';
+                    if (s === 'revoked') return 'state-crit';
+                    return 'state-warn'; // unpaired or unknown
+                },
+                bridgeStatusLabel(b) { return ((b && b.status) || 'unknown').toUpperCase(); },
+                bridgeStatusClass(b) {
+                    const s = (b && b.status) || '';
+                    if (s === 'approved') return 'state-ok';
+                    if (s === 'revoked') return 'state-crit';
+                    return 'state-warn'; // pending or unknown
+                },
 
                 // ---------- agent observability (FLEET-36) ----------
                 agentKey(host, name) { return host + '/' + name; },
@@ -7080,7 +7105,7 @@ WantedBy=multi-user.target</pre>
                 // reuses its own FLEETCOM_TOKEN + FLEETCOM_URL env, so
                 // params only carry agent names (reasonable defaults).
                 async deployBridge(host) {
-                    const names = prompt('Agent names to relay (comma-separated):', 'merlin,nimue');
+                    const names = prompt('Deploy agent-bridge on ' + host + '.\n\nWhich AI agents should it relay? (comma-separated, e.g. merlin,nimue,percival)\n\nThe bridge needs a paired gateway with auto-approve on; otherwise registration is a no-op.', 'merlin,nimue');
                     if (names === null) return; // cancelled
                     const clean = (names || '').trim() || 'merlin,nimue';
                     try {
@@ -7091,7 +7116,7 @@ WantedBy=multi-user.target</pre>
                         });
                         if (res.ok) {
                             const body = await res.json();
-                            this.toast('Bridge install enqueued — watching command #' + body.id);
+                            this.toast('agent-bridge install enqueued — watching command #' + body.id);
                             // FLEET-68: jump into the host drawer's COMMANDS
                             // tab so the admin watches the bridge.install
                             // result live without navigating to Settings.
