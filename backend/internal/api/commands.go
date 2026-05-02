@@ -5,13 +5,25 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/markus-barta/fleetcom/internal/auth"
 	"github.com/markus-barta/fleetcom/internal/db"
 	"github.com/markus-barta/fleetcom/internal/sse"
 )
+
+// destructiveCommandsEnabled reads FLEETCOM_DESTRUCTIVE_COMMANDS at request
+// time so an operator can flip the gate without a server restart (env
+// changes that compose-restart the container will still take effect on
+// the next start; the lookup is cheap either way). Recognised truthy
+// values: 1, true, yes, on (case-insensitive). Default: off.
+func destructiveCommandsEnabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("FLEETCOM_DESTRUCTIVE_COMMANDS")))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
 
 // commandResultRequest is the body bosun sends back after running a
 // command it picked up from the heartbeat response.
@@ -187,6 +199,42 @@ func EnqueueCommand(store *db.Store) http.HandlerFunc {
 				http.Error(w, "invalid params json", http.StatusBadRequest)
 				return
 			}
+		}
+
+		// FLEET-369.1: host.reboot is destructive — gate hard.
+		if body.Kind == "host.reboot" {
+			if !destructiveCommandsEnabled() {
+				http.Error(w, "host.reboot is disabled on this server (set FLEETCOM_DESTRUCTIVE_COMMANDS=1 to enable)", http.StatusForbidden)
+				return
+			}
+			allow, err := store.AllowRebootForHost(host)
+			if err != nil {
+				log.Printf("host.reboot pre-flight (allow_reboot) for %s: %v", host, err)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			if !allow {
+				http.Error(w, fmt.Sprintf("host %s: allow_reboot is off (per-host kill switch). Toggle via Settings.", host), http.StatusForbidden)
+				return
+			}
+			if existing, err := store.PendingOrInflightHostReboot(host); err == nil && existing != 0 {
+				http.Error(w, fmt.Sprintf("host.reboot %d already in progress for %s", existing, host), http.StatusConflict)
+				return
+			} else if err != nil {
+				log.Printf("host.reboot pre-flight (idempotency) for %s: %v", host, err)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			// Capture pre-reboot boot_id so the heartbeat handler can
+			// reconcile post-reboot. Empty is fine — the reconcile is
+			// a no-op until both sides know a value.
+			preBoot, _ := store.BootIDForHost(host)
+			pmap, _ := paramsAny.(map[string]interface{})
+			if pmap == nil {
+				pmap = map[string]interface{}{}
+			}
+			pmap["pre_reboot_boot_id"] = preBoot
+			paramsAny = pmap
 		}
 
 		// FLEET-85: agent.update has special pre-flight + capture logic.

@@ -58,6 +58,12 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE hosts ADD COLUMN update_requested_at TEXT NOT NULL DEFAULT ''`,
 		// FLEET-84 deployment shape — drives universal Update button gating.
 		`ALTER TABLE hosts ADD COLUMN deployment_shape TEXT NOT NULL DEFAULT ''`,
+		// FLEET-369.1 host.reboot — boot_id from /proc/sys/kernel/random/boot_id is
+		// the canonical "did this host actually reboot?" signal; allow_reboot is a
+		// per-host kill switch the operator flips when a host shouldn't be rebooted
+		// even if the global feature flag is on (e.g. hsb2 mid-bake).
+		`ALTER TABLE hosts ADD COLUMN boot_id TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE hosts ADD COLUMN allow_reboot INTEGER NOT NULL DEFAULT 1`,
 		// User avatars (FLEET-487) — stored as a data URL string (data:image/...;base64,...).
 		`ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''`,
 		// Agent observability (FLEET-36) — see docs/AGENT-OBSERVABILITY.md.
@@ -172,7 +178,9 @@ CREATE TABLE IF NOT EXISTS hosts (
 	fastfetch_json TEXT NOT NULL DEFAULT '',
 	fastfetch_at TEXT NOT NULL DEFAULT '',
 	update_requested_at TEXT NOT NULL DEFAULT '',
-	deployment_shape TEXT NOT NULL DEFAULT ''
+	deployment_shape TEXT NOT NULL DEFAULT '',
+	boot_id TEXT NOT NULL DEFAULT '',
+	allow_reboot INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS host_metrics (

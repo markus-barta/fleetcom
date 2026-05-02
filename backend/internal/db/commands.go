@@ -277,6 +277,124 @@ func (s *Store) AgentVersionForHost(host string) (string, error) {
 	return v, err
 }
 
+// BootIDForHost returns the host's last-reported boot_id (the contents of
+// /proc/sys/kernel/random/boot_id at the time of the last heartbeat). Used
+// by the host.reboot pre-flight (FLEET-369.1) to capture the value so the
+// post-reboot heartbeat can be reconciled — a different boot_id on return
+// is the canonical "the kernel actually rebooted" signal.
+func (s *Store) BootIDForHost(host string) (string, error) {
+	var v string
+	err := s.DB.QueryRow(`SELECT boot_id FROM hosts WHERE hostname = ?`, host).Scan(&v)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return v, err
+}
+
+// AllowRebootForHost returns the host-level kill switch for host.reboot.
+// Defaults true on insert; admin can flip via SetAllowReboot. Used by the
+// host.reboot pre-flight so an operator can disable reboots on a single
+// host without touching the global FLEETCOM_DESTRUCTIVE_COMMANDS flag.
+func (s *Store) AllowRebootForHost(host string) (bool, error) {
+	var v int
+	err := s.DB.QueryRow(`SELECT allow_reboot FROM hosts WHERE hostname = ?`, host).Scan(&v)
+	if err == sql.ErrNoRows {
+		return true, nil
+	}
+	return v != 0, err
+}
+
+// SetAllowReboot flips the per-host reboot kill switch. Returns an error
+// if the host doesn't exist (so callers can return 404 cleanly).
+func (s *Store) SetAllowReboot(host string, on bool) error {
+	v := 0
+	if on {
+		v = 1
+	}
+	res, err := s.DB.Exec(`UPDATE hosts SET allow_reboot = ? WHERE hostname = ?`, v, host)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("host not found: %s", host)
+	}
+	return nil
+}
+
+// PendingOrInflightHostReboot returns the id of any host.reboot command
+// for the host that is still pending / executing / restarting, or 0 if
+// none. Used by EnqueueCommand to enforce idempotency: only one reboot
+// may be in flight for a given host at a time.
+func (s *Store) PendingOrInflightHostReboot(host string) (int64, error) {
+	var id int64
+	err := s.DB.QueryRow(`
+		SELECT id FROM host_commands
+		WHERE host = ? AND kind = 'host.reboot' AND status IN ('pending','executing','restarting')
+		ORDER BY id DESC LIMIT 1
+	`, host).Scan(&id)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	return id, err
+}
+
+// ReconcileHostReboot is called from the heartbeat handler. If the host
+// has a host.reboot command in 'restarting' state and the just-arrived
+// heartbeat reports a non-empty boot_id that differs from the one
+// captured at enqueue time, mark the command done — the kernel actually
+// rebooted. Returns the count of commands reconciled.
+//
+// Stuck "restarting" reboots are swept by ExpireStuckCommands the same
+// way agent.update is.
+func (s *Store) ReconcileHostReboot(host, currentBootID string) (int, error) {
+	if currentBootID == "" {
+		return 0, nil
+	}
+	rows, err := s.DB.Query(`
+		SELECT id, params FROM host_commands
+		WHERE host = ? AND kind = 'host.reboot' AND status = 'restarting'
+	`, host)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	type pending struct {
+		id     int64
+		params string
+	}
+	var todo []pending
+	for rows.Next() {
+		var p pending
+		if err := rows.Scan(&p.id, &p.params); err != nil {
+			return 0, err
+		}
+		todo = append(todo, p)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	now := time.Now().UTC().Format(time.RFC3339)
+	count := 0
+	for _, p := range todo {
+		var ps struct {
+			PreRebootBootID string `json:"pre_reboot_boot_id"`
+		}
+		_ = json.Unmarshal([]byte(p.params), &ps)
+		if ps.PreRebootBootID != "" && currentBootID != ps.PreRebootBootID {
+			result := fmt.Sprintf(`{"reconciled_via_heartbeat":true,"pre_reboot_boot_id":%q,"now_boot_id":%q}`, ps.PreRebootBootID, currentBootID)
+			if _, err := s.DB.Exec(`
+				UPDATE host_commands
+				SET status='done', result=?, completed_at=?
+				WHERE id=? AND status='restarting'
+			`, result, now, p.id); err == nil {
+				count++
+			}
+		}
+	}
+	return count, nil
+}
+
 // ReconcileAgentUpdate is called from the heartbeat handler. If the
 // host has any agent.update commands in 'restarting' state and the
 // just-arrived heartbeat reports a non-empty agent_version that

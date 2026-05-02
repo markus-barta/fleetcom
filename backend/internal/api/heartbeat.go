@@ -20,9 +20,13 @@ type HeartbeatPayload struct {
 	AgentVersion  string `json:"agent_version"`
 	// DeploymentShape (FLEET-84) — see db.Host.DeploymentShape. Older
 	// agents pre-FLEET-84 omit this; server treats absence as "" (unknown).
-	DeploymentShape string             `json:"deployment_shape,omitempty"`
-	Containers      []ContainerPayload `json:"containers"`
-	Agents          []AgentPayload     `json:"agents"`
+	DeploymentShape string `json:"deployment_shape,omitempty"`
+	// BootID (FLEET-369.1) — /proc/sys/kernel/random/boot_id from the host.
+	// Server uses this to reconcile a 'restarting' host.reboot command once
+	// the host comes back. Older agents omit this field.
+	BootID     string             `json:"boot_id,omitempty"`
+	Containers []ContainerPayload `json:"containers"`
+	Agents     []AgentPayload     `json:"agents"`
 	// Hardware/metadata fields — all optional. Bosun sends HwStatic on
 	// startup + on change, HwLive on every heartbeat once collection is
 	// active, and Fastfetch only when it has been (re)run.
@@ -81,21 +85,37 @@ func Heartbeat(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			Live:      payload.HwLive,
 			Fastfetch: payload.Fastfetch,
 		}
-		command, err := store.UpsertHeartbeat(payload.Hostname, payload.OS, payload.Kernel, payload.UptimeSeconds, payload.AgentVersion, payload.DeploymentShape, toDBContainers(payload.Containers), toDBAgents(payload.Agents), hw)
+		command, err := store.UpsertHeartbeat(payload.Hostname, payload.OS, payload.Kernel, payload.UptimeSeconds, payload.AgentVersion, payload.DeploymentShape, payload.BootID, toDBContainers(payload.Containers), toDBAgents(payload.Agents), hw)
 		if err != nil {
 			log.Printf("heartbeat upsert error: %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
 
+		reconciledAny := false
+
 		// FLEET-85: reconcile agent.update commands left in 'restarting'
 		// state — if bosun is now reporting a different agent_version
 		// than the one captured at enqueue time, the swap took, so flip
-		// the command to 'done'. Broadcast updated commands list so any
-		// open audit drawer sees the transition without a refresh.
+		// the command to 'done'.
 		if reconciled, err := store.ReconcileAgentUpdate(payload.Hostname, payload.AgentVersion); err != nil {
 			log.Printf("agent.update reconcile for %s: %v", payload.Hostname, err)
 		} else if reconciled > 0 {
+			reconciledAny = true
+		}
+
+		// FLEET-369.1: reconcile host.reboot commands left in 'restarting'
+		// state — a different boot_id on return is the canonical "the
+		// kernel actually rebooted" signal.
+		if reconciled, err := store.ReconcileHostReboot(payload.Hostname, payload.BootID); err != nil {
+			log.Printf("host.reboot reconcile for %s: %v", payload.Hostname, err)
+		} else if reconciled > 0 {
+			reconciledAny = true
+		}
+
+		// Broadcast updated commands list so any open audit drawer sees
+		// the transition without a refresh.
+		if reconciledAny {
 			if cmds, err := store.CommandsForHost(payload.Hostname, 50); err == nil {
 				for i := range cmds {
 					cmds[i].Params = redactCommandParams(cmds[i].Kind, cmds[i].Params)
