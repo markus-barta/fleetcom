@@ -669,7 +669,7 @@
             object-fit: contain;
             object-position: center;
         }
-        .card > *:not(.card-bg-img):not(.card-gear) { position: relative; z-index: 1; }
+        .card > *:not(.card-bg-img) { position: relative; z-index: 1; }
 
         /* Text shadows over the background image — text-shadow is much
            cheaper than filter: drop-shadow because it doesn't create a
@@ -744,35 +744,9 @@
         /* .card-section-label has no background — backdrop-filter removed,
            nothing to replace. */
 
-        /* Gear icon — top right of card, "Configure" label on hover */
-        .card-gear {
-            position: absolute;
-            bottom: 0.5rem;
-            right: 0.5rem;
-            z-index: 2;
-            background: transparent;
-            border: none;
-            color: var(--ink-faint);
-            cursor: pointer;
-            padding: 3px;
-            line-height: 0;
-            transition: color 0.12s;
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-        }
-        .card-gear:hover { color: var(--ink-dim); }
-        .card-gear svg, .card-gear .lucide { width: 13px; height: 13px; }
-        .card-gear-label {
-            font-size: 8px;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            font-weight: 600;
-            opacity: 0;
-            transition: opacity 0.15s;
-            pointer-events: none;
-        }
-        .card-gear:hover .card-gear-label { opacity: 1; }
+        /* FLEET-377: .card-gear and .card-gear-label removed — the gear
+           icon was a hover affordance to open the host drawer's Settings
+           tab. Cards are click-to-open-drawer everywhere now. */
         .state-pill {
             display: inline-block;
             font-size: 8px;
@@ -3050,11 +3024,6 @@
                                         </div>
                                     </template>
 
-                                    <button class="card-gear" @click.stop="openHostDrawer(host.hostname, 'settings')" title="Open host settings (display config, lifecycle, integrations)">
-                                        <span class="card-gear-label">Settings</span>
-                                        <i data-lucide="settings"></i>
-                                    </button>
-
                                     <div class="card-head card-head-clickable" @click="openHostDrawer(host.hostname)" :title="'Open ' + host.hostname + ' drawer'" style="position:relative;">
                                         <div class="card-head-left">
                                             <div class="card-head-identity">
@@ -3215,11 +3184,6 @@
                                             <img :src="'/api/image-presets/' + hostConfigs[host.hostname].image_preset_id + '/image'" :alt="host.hostname">
                                         </div>
                                     </template>
-
-                                    <button class="card-gear" @click.stop="openHostDrawer(host.hostname, 'settings')" title="Open host settings (display config, lifecycle, integrations)">
-                                        <span class="card-gear-label">Settings</span>
-                                        <i data-lucide="settings"></i>
-                                    </button>
 
                                     <div class="card-head card-head-clickable" @click="openHostDrawer(host.hostname)" :title="'Open ' + host.hostname + ' drawer'" style="position:relative;">
                                         <div class="card-head-left">
@@ -3534,8 +3498,9 @@
                         <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'config' && 'active'" @click="settingsTab = 'config'">Config</button>
                         <button class="settings-tab" :class="settingsTab === 'account' && 'active'" @click="settingsTab = 'account'; loadMySessions()">Account</button>
                         <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'users' && 'active'" @click="settingsTab = 'users'; loadUsers()">Users</button>
-                        <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'gateways' && 'active'" @click="settingsTab = 'gateways'; loadGateways()">Gateways</button>
-                        <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'bridges' && 'active'" @click="settingsTab = 'bridges'; loadBridges()">Bridges</button>
+                        <!-- FLEET-377: Settings → Gateways and Bridges tabs removed.
+                             Pair / Unpair / auto-approve / Deploy agent-bridge / Revoke
+                             all live in the host drawer's Integrations row now. -->
                         <span class="tab-spacer"></span>
                         <button class="settings-tab" :class="settingsTab === 'docs' && 'active'" @click="settingsTab = 'docs'">Docs</button>
                     </div>
@@ -3560,9 +3525,12 @@
                                 </div>
                             </template>
 
+                            <!-- FLEET-377: row is now click-to-open-drawer; per-row inline actions
+                                 (Update / Display / Token / Remove) and the expandable Commands /
+                                 Display blocks all live in the host drawer. -->
                             <ul class="token-list">
                                 <template x-for="t in tokens" :key="t.hostname">
-                                    <li style="flex-wrap:wrap;">
+                                    <li style="flex-wrap:wrap;cursor:pointer;" @click="openHostDrawer(t.hostname, 'settings')" :title="'Open ' + t.hostname + ' drawer'">
                                         <div style="display:flex;align-items:center;justify-content:space-between;width:100%;">
                                             <div style="display:flex;align-items:center;gap:0.6rem;">
                                                 <span class="dot" :class="hostByName(t.hostname) ? 'dot-' + hostStatus(hostByName(t.hostname)) : ''" style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--ink-faint);"></span>
@@ -3582,117 +3550,17 @@
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div style="display:flex;gap:0.4rem;align-items:center;">
+                                            <div style="display:flex;gap:0.4rem;align-items:center;color:var(--ink-ghost);font-size:10px;">
                                                 <template x-if="hostByName(t.hostname) && hasPendingUpdate(hostByName(t.hostname))">
                                                     <span class="agent-update-pending" title="Update requested — will run on next heartbeat">upd</span>
                                                 </template>
-                                                <button class="btn" @click="requestHostUpdate(t.hostname)" :disabled="!hostByName(t.hostname)" :title="hostByName(t.hostname) ? 'Force watchtower to pull the latest fleetcom-bosun image on this host now (bypasses the 24h poll).' : 'Host has not reported yet'">Update agent</button>
-                                                <button class="btn btn-ghost" @click="commandsHost === t.hostname ? commandsHost = '' : openHostCommands(t.hostname)" :class="commandsHost === t.hostname ? 'btn-primary' : ''" title="Bosun command history for this host (pair, restart, install, …) — read-only audit trail.">
-                                                    <span x-text="commandsHost === t.hostname ? 'Close' : 'Commands'"></span>
-                                                    <template x-if="hostHasActiveCommand(t.hostname)"><span style="margin-left:4px;color:var(--warn);">●</span></template>
-                                                </button>
-                                                <button class="btn btn-ghost" @click="configHost === t.hostname ? configHost = '' : openHostConfig(t.hostname)" x-text="configHost === t.hostname ? 'Close' : 'Display'" title="Edit how this host appears on the dashboard: icon, label, comment. Does not touch the host itself."></button>
-                                                <button class="btn btn-ghost" @click="regenerateToken(t.hostname)" title="Replace this host's bearer token. The old token stops working immediately — you'll need to update the host's env (agenix on NixOS) and restart bosun.">New token</button>
-                                                <button class="btn btn-danger" @click="removeHost(t.hostname)" title="Delete this host from FleetCom. Invalidates the token permanently and removes all history.">Remove</button>
+                                                <template x-if="hostHasActiveCommand(t.hostname)">
+                                                    <span style="color:var(--warn);" title="Command in flight">●</span>
+                                                </template>
+                                                <span style="opacity:0.6;">open drawer →</span>
                                             </div>
                                         </div>
-                                        <template x-if="configHost === t.hostname">
-                                            <div style="width:100%;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--line);">
-                                                <div style="display:flex;gap:1rem;margin-bottom:0.6rem;align-items:center;flex-wrap:wrap;">
-                                                    <label style="font-size:10px;color:var(--ink-ghost);letter-spacing:0.12em;text-transform:uppercase;font-weight:600;">Icon</label>
-                                                    <div class="imgpick"
-                                                         :class="{ 'is-open': imgPickOpen }"
-                                                         @keydown.escape.prevent="imgPickOpen = false"
-                                                         @keydown.arrow-down.prevent="imgPickNav(1)"
-                                                         @keydown.arrow-up.prevent="imgPickNav(-1)"
-                                                         @keydown.enter.prevent="imgPickCommit()"
-                                                         @click.outside="imgPickOpen = false">
-                                                        <button type="button" class="imgpick-trigger" @click="imgPickToggle()">
-                                                            <template x-if="configImageId">
-                                                                <span class="imgpick-thumb">
-                                                                    <img :src="'/api/image-presets/' + configImageId + '/image'" alt="">
-                                                                </span>
-                                                            </template>
-                                                            <template x-if="!configImageId">
-                                                                <span class="imgpick-thumb is-empty">Ø</span>
-                                                            </template>
-                                                            <span class="imgpick-name" :class="{ 'is-empty': !configImageId }"
-                                                                  x-text="configImageId ? (imagePresetName(configImageId) || 'unknown') : 'none — no icon'"></span>
-                                                            <span class="imgpick-chev"></span>
-                                                        </button>
-                                                        <template x-if="imgPickOpen">
-                                                            <div class="imgpick-panel" @mouseleave="imgPickFocus = -1">
-                                                                <div class="imgpick-option"
-                                                                     :class="{ 'is-selected': configImageId === null, 'is-active': imgPickFocus === 0 }"
-                                                                     @click="imgPickSelect(null)"
-                                                                     @mouseenter="imgPickFocus = 0">
-                                                                    <span class="imgpick-thumb is-empty">Ø</span>
-                                                                    <span class="imgpick-option-name">none — no icon</span>
-                                                                    <span class="check">✓</span>
-                                                                </div>
-                                                                <template x-for="(p, idx) in imagePresets" :key="p.id">
-                                                                    <div class="imgpick-option"
-                                                                         :class="{ 'is-selected': configImageId === p.id, 'is-active': imgPickFocus === idx + 1 }"
-                                                                         @click="imgPickSelect(p.id)"
-                                                                         @mouseenter="imgPickFocus = idx + 1">
-                                                                        <span class="imgpick-thumb">
-                                                                            <img :src="'/api/image-presets/' + p.id + '/image'" :alt="p.name">
-                                                                        </span>
-                                                                        <span class="imgpick-option-name" x-text="p.name"></span>
-                                                                        <span class="check">✓</span>
-                                                                    </div>
-                                                                </template>
-                                                                <template x-if="imagePresets.length === 0">
-                                                                    <div class="imgpick-option" style="cursor:default;color:var(--ink-ghost);font-style:italic;">
-                                                                        <span class="imgpick-option-name">no icons uploaded — use the Icons tab</span>
-                                                                    </div>
-                                                                </template>
-                                                            </div>
-                                                        </template>
-                                                    </div>
-                                                </div>
-                                                <div style="margin-bottom:0.6rem;">
-                                                    <label style="font-size:10px;color:var(--ink-ghost);letter-spacing:0.12em;text-transform:uppercase;font-weight:600;display:block;margin-bottom:0.3rem;">Comment</label>
-                                                    <textarea x-model="configComment"
-                                                              rows="3"
-                                                              maxlength="200"
-                                                              placeholder="Short description (3 lines max)"
-                                                              style="width:100%;background:var(--bg-0);border:1px solid var(--line-2);color:var(--ink);font-family:inherit;font-size:11px;padding:0.4rem 0.6rem;resize:none;"></textarea>
-                                                </div>
-                                                <button class="btn btn-primary" @click="saveHostConfig()">Save</button>
-                                            </div>
-                                        </template>
-
-                                        <!-- FLEET-60/61/62/63: bosun command history -->
-                                        <template x-if="commandsHost === t.hostname">
-                                            <div style="width:100%;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--line);">
-                                                <div style="font-size:9px;letter-spacing:0.18em;text-transform:uppercase;color:var(--ink-ghost);font-weight:600;margin-bottom:0.5rem;">Command History</div>
-                                                <template x-if="(commandsByHost[t.hostname] || []).length === 0">
-                                                    <div style="font-size:10px;color:var(--ink-ghost);font-style:italic;">No commands yet. Pair a gateway, restart a container, or deploy a bridge to see audit entries here.</div>
-                                                </template>
-                                                <template x-for="c in (commandsByHost[t.hostname] || [])" :key="c.id">
-                                                    <div style="padding:0.4rem 0;border-bottom:1px dashed var(--line);font-size:11px;display:grid;grid-template-columns:auto 1fr auto;gap:0.6rem;align-items:start;">
-                                                        <span :style="'color:' + commandStatusColor(c.status) + ';font-weight:600;font-size:9px;letter-spacing:0.1em;text-transform:uppercase;min-width:72px;'" x-text="c.status"></span>
-                                                        <div>
-                                                            <span style="color:var(--ink);font-family:ui-monospace,monospace;" x-text="c.kind"></span>
-                                                            <span style="color:var(--ink-faint);font-size:10px;" x-text="' · #' + c.id"></span>
-                                                            <template x-if="c.error">
-                                                                <div style="color:var(--crit);font-size:10px;margin-top:2px;" x-text="'error: ' + c.error"></div>
-                                                            </template>
-                                                            <template x-if="c.status === 'done' && commandResultSummary(c)">
-                                                                <div style="color:var(--ink-dim);font-size:10px;margin-top:2px;" x-text="commandResultSummary(c)"></div>
-                                                            </template>
-                                                        </div>
-                                                        <div style="text-align:right;color:var(--ink-ghost);font-size:10px;white-space:nowrap;">
-                                                            <div x-text="formatAgo(c.issued_at)"></div>
-                                                            <template x-if="c.status === 'pending' || c.status === 'executing'">
-                                                                <button class="btn btn-ghost" style="font-size:8px;padding:0.15rem 0.4rem;margin-top:2px;" @click="cancelCommand(c.id)" :title="c.status === 'executing' ? 'Force-cancel an in-flight command. Use when bosun is stuck / offline / running an old version that can\u0027t dispatch.' : 'Drop a pending command before bosun picks it up.'" x-text="c.status === 'executing' ? 'force cancel' : 'cancel'"></button>
-                                                            </template>
-                                                        </div>
-                                                    </div>
-                                                </template>
-                                            </div>
-                                        </template>
+                                        <!-- FLEET-377: per-row Display config + Commands history removed; both live in the host drawer Settings/Commands tabs now. Row click opens the drawer. -->
                                     </li>
                                 </template>
                             </ul>
@@ -4063,134 +3931,11 @@
                     </template>
 
                     <!-- Gateways tab -->
-                    <template x-if="settingsTab === 'gateways'">
-                        <div>
-                            <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em; margin-bottom: 1rem;">
-                                OpenClaw gateways FleetCom has paired with. Adding one generates FleetCom's Ed25519 keypair + operator token server-side, then enqueues an <code>openclaw.pair</code> command so the host's bosun merges them into the gateway's <code>paired.json</code> and restarts it. Whole flow is zero-SSH and typically completes within one bosun heartbeat (~60s).
-                            </p>
-
-                            <ul class="token-list">
-                                <template x-for="g in gateways" :key="g.id">
-                                    <li>
-                                        <div>
-                                            <span class="hostname" x-text="g.host"></span>
-                                            <span class="created">
-                                                <span x-text="g.status"></span>
-                                                <template x-if="g.paired_at">
-                                                    <span x-text="' · paired ' + formatTs(g.paired_at)"></span>
-                                                </template>
-                                                <template x-if="g.url">
-                                                    <span x-text="' · ' + g.url"></span>
-                                                </template>
-                                            </span>
-                                        </div>
-                                        <div style="display:flex;align-items:center;gap:0.8rem;">
-                                            <label style="display:flex;align-items:center;gap:0.4rem;font-size:10px;color:var(--ink-dim);cursor:pointer;">
-                                                <input type="checkbox" :checked="g.auto_approve_bridges"
-                                                    @change="toggleAutoApprove(g.host, $event.target.checked)">
-                                                auto-approve
-                                            </label>
-                                            <!-- FLEET-63/93: deploy agent-bridge when this gateway has no bridge yet. -->
-                                            <template x-if="!hasBridgeForHost(g.host)">
-                                                <button class="btn btn-primary" @click="deployBridge(g.host)" title="Deploy the fleetcom-agent-bridge container on this host. The bridge relays AI agent turns + lifecycle events from the local OpenClaw gateway to FleetCom. Uses docker run with host network + bosun's own token. Idempotent — safe to click twice.">+ Deploy agent-bridge</button>
-                                            </template>
-                                            <button class="btn btn-danger" @click="unpairGateway(g.host)">Unpair</button>
-                                        </div>
-                                    </li>
-                                </template>
-                            </ul>
-
-                            <!-- + Add Gateway ghost tile — pick a registered host without a gateway, generate keys + enqueue openclaw.pair. -->
-                            <div class="card card-ghost" style="margin-top: 0.75rem;" @click="showAddGatewayInline || loadPairableHosts()">
-                                <template x-if="!showAddGatewayInline">
-                                    <div class="card-ghost-body">
-                                        <div class="card-ghost-icon">+</div>
-                                        <div class="card-ghost-label">Add Gateway</div>
-                                    </div>
-                                </template>
-                                <template x-if="showAddGatewayInline">
-                                    <div class="card-ghost-body" @click.stop style="max-width:520px;">
-                                        <template x-if="pairableHosts.length === 0">
-                                            <div style="color:var(--ink-dim); font-size:11px;">No hosts available — all registered hosts are already paired, or no hosts are registered.</div>
-                                        </template>
-                                        <template x-if="pairableHosts.length > 0">
-                                            <div style="display:flex;flex-direction:column;gap:0.4rem;width:100%;">
-                                                <select x-model="newGatewayHost" @change="onNewGatewayHostChange()" class="card-ghost-input" style="cursor:pointer;">
-                                                    <option value="" disabled>Pick a host…</option>
-                                                    <template x-for="h in pairableHosts" :key="h">
-                                                        <option :value="h" x-text="h"></option>
-                                                    </template>
-                                                </select>
-                                                <!-- Container name — pre-filled by picker when a host is chosen. -->
-                                                <template x-if="newGatewayHost">
-                                                    <div style="display:flex;flex-direction:column;gap:0.25rem;">
-                                                        <label style="font-size:9px;letter-spacing:0.12em;text-transform:uppercase;color:var(--ink-ghost);">Gateway container</label>
-                                                        <template x-if="gatewayContainerCandidates(newGatewayHost).length > 0">
-                                                            <select x-model="newGatewayContainer" class="card-ghost-input" style="cursor:pointer;">
-                                                                <template x-for="c in gatewayContainerCandidates(newGatewayHost)" :key="c">
-                                                                    <option :value="c" x-text="c"></option>
-                                                                </template>
-                                                                <option value="__custom__">(custom…)</option>
-                                                            </select>
-                                                        </template>
-                                                        <template x-if="gatewayContainerCandidates(newGatewayHost).length === 0 || newGatewayContainer === '__custom__'">
-                                                            <input type="text" x-model="newGatewayContainerCustom" class="card-ghost-input" placeholder="container name on that host">
-                                                        </template>
-                                                    </div>
-                                                </template>
-                                            </div>
-                                        </template>
-                                        <div class="card-ghost-actions">
-                                            <button class="btn btn-primary" @click.stop="pairGateway()" :disabled="!newGatewayHost || pairableHosts.length === 0 || !resolvedGatewayContainer()">Pair</button>
-                                            <button class="btn btn-ghost" @click.stop="showAddGatewayInline = false; newGatewayHost = ''; newGatewayContainer = ''; newGatewayContainerCustom = '';">Cancel</button>
-                                        </div>
-                                    </div>
-                                </template>
-                            </div>
-
-                            <template x-if="gateways.length === 0">
-                                <div class="empty-state" style="padding: 1rem; margin-top: 0.5rem;">
-                                    <p style="font-size:11px;">No gateways yet. Click <strong>+ Add Gateway</strong> above to pair one.</p>
-                                </div>
-                            </template>
-                        </div>
-                    </template>
-
-                    <!-- Bridges tab -->
-                    <template x-if="settingsTab === 'bridges'">
-                        <div>
-                            <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em; margin-bottom: 1rem;">
-                                The <strong>agent-bridge</strong> is a small relay container that forwards AI agent turns + lifecycle events from the local OpenClaw gateway to FleetCom. Deploy it from a host's drawer (Settings tab) or via <strong>+ Deploy agent-bridge</strong> next to a gateway. It depends on a paired gateway with auto-approve on — registration sits pending until those are in place. Pending rows are waiting for gateway approval; approved rows are actively relaying events. Revoking drops the pairing; the bridge will re-register and re-pair on next boot.
-                            </p>
-
-                            <ul class="token-list">
-                                <template x-for="b in bridges" :key="b.id">
-                                    <li>
-                                        <div>
-                                            <span class="hostname" x-text="b.host + ' / ' + b.agent"></span>
-                                            <span class="created">
-                                                <span x-text="b.status"></span>
-                                                <span x-text="' · fp ' + (b.pubkey_fp || '').slice(0, 12)"></span>
-                                                <template x-if="b.approved_at">
-                                                    <span x-text="' · approved ' + formatTs(b.approved_at)"></span>
-                                                </template>
-                                                <template x-if="b.last_seen_at">
-                                                    <span x-text="' · seen ' + formatTs(b.last_seen_at)"></span>
-                                                </template>
-                                            </span>
-                                        </div>
-                                        <button class="btn btn-danger" @click="revokeBridge(b.host, b.agent)">Revoke</button>
-                                    </li>
-                                </template>
-                            </ul>
-
-                            <template x-if="bridges.length === 0">
-                                <div class="empty-state" style="padding: 2rem;">
-                                    <p>No bridges registered yet. Bridges appear here as soon as they POST to <code>/api/bridges/register</code>.</p>
-                                </div>
-                            </template>
-                        </div>
-                    </template>
+                    <!-- FLEET-377: Settings → Gateways + Bridges tab templates removed.
+                         Per-host pair/unpair/auto-approve and bridge deploy/revoke all live in
+                         the host drawer Integrations row now. The + Add Gateway / + Add Bridge
+                         entry points are reachable from the host drawer (Settings tab) on each
+                         host card. -->
 
                     <template x-if="settingsTab === 'docs'">
                         <div class="docs">
@@ -4961,7 +4706,15 @@ WantedBy=multi-user.target</pre>
                                             <div class="v" style="color:var(--ink-ghost);font-style:italic;">not paired</div>
                                         </template>
                                     </div>
-                                    <div style="display:flex;gap:0.3rem;align-items:center;">
+                                    <div style="display:flex;gap:0.5rem;align-items:center;">
+                                        <!-- FLEET-377: auto-approve toggle migrated from Settings → Gateways tab. -->
+                                        <template x-if="gatewayForHost(hostDrawerKey)">
+                                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:10px;color:var(--ink-dim);cursor:pointer;" title="When on, FleetCom auto-approves matching agent-bridge pair requests on this gateway. Off = pending until manual approve.">
+                                                <input type="checkbox" :checked="(gatewayForHost(hostDrawerKey) || {}).auto_approve_bridges"
+                                                       @change="toggleAutoApprove(hostDrawerKey, $event.target.checked)">
+                                                auto-approve
+                                            </label>
+                                        </template>
                                         <template x-if="!gatewayForHost(hostDrawerKey)">
                                             <button class="btn btn-primary" @click="openPairGatewayFromDrawer(hostDrawerKey)" title="Generate FleetCom keys + enqueue openclaw.pair on this host. Jumps to the Commands tab so you can watch it.">+ Pair gateway</button>
                                         </template>
@@ -4980,6 +4733,7 @@ WantedBy=multi-user.target</pre>
                                                     <span style="display:inline-block;margin-right:0.5rem;">
                                                         <span x-text="b.agent"></span>
                                                         <span style="color:var(--ink-ghost)" x-text="' · ' + ((b.status) || 'unknown')"></span>
+                                                        <span style="color:var(--ink-faint);font-size:9px;font-family:ui-monospace,monospace;" :title="'Public key fingerprint: ' + (b.pubkey_fp || '')" x-text="' · fp ' + ((b.pubkey_fp || '').slice(0, 12))"></span>
                                                         <button class="btn btn-ghost" style="font-size:8px;padding:0.1rem 0.35rem;margin-left:0.3rem;" @click="revokeBridge(hostDrawerKey, b.agent)">revoke</button>
                                                     </span>
                                                 </template>
@@ -5353,7 +5107,7 @@ WantedBy=multi-user.target</pre>
                         if (res.ok) {
                             this.currentUser = await res.json();
                             // Non-admins have no access to the admin-only tabs; land them on Account.
-                            if (this.currentUser && this.currentUser.role !== 'admin' && (this.settingsTab === 'hosts' || this.settingsTab === 'icons' || this.settingsTab === 'sharing' || this.settingsTab === 'config' || this.settingsTab === 'gateways' || this.settingsTab === 'bridges')) {
+                            if (this.currentUser && this.currentUser.role !== 'admin' && (this.settingsTab === 'hosts' || this.settingsTab === 'icons' || this.settingsTab === 'sharing' || this.settingsTab === 'config')) {
                                 this.settingsTab = 'account';
                             }
                         }
@@ -5995,8 +5749,10 @@ WantedBy=multi-user.target</pre>
                     if (this.settingsTab === 'hosts') this.loadTokens();
                     else if (this.settingsTab === 'sharing') this.loadShares();
                     else if (this.settingsTab === 'ignored') this.loadIgnoredList();
-                    else if (this.settingsTab === 'gateways') this.loadGateways();
-                    else if (this.settingsTab === 'bridges') this.loadBridges();
+                    // FLEET-377: gateways/bridges tabs removed; loadGateways /
+                    // loadBridges still kept on the Alpine state (called from
+                    // SSE handlers + the drawer-initiated pair flow), so no
+                    // need to land them here anymore.
                 },
 
                 // ---------- ignored entities ----------
