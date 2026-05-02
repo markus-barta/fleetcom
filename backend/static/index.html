@@ -7257,8 +7257,16 @@ WantedBy=multi-user.target</pre>
                 },
                 containerUptime(c) {
                     if (!c.started_at) return '';
+                    // FLEET-199: Docker reports `0001-01-01T00:00:00Z` for
+                    // containers that never actually started (state=created,
+                    // failed image pull, etc.). Without this guard the
+                    // frontend formatted the ~64Bsec delta as "up 739718d".
+                    // Belt-and-braces: agent strips zero time, but keep the
+                    // frontend safe in case a stale heartbeat slips through.
+                    if (c.started_at.startsWith('0001-')) return '';
                     const started = new Date(c.started_at).getTime();
                     if (isNaN(started)) return '';
+                    if (started < 946684800000) return ''; // pre-2000 → bogus
                     const secs = Math.floor((Date.now() - started) / 1000);
                     if (secs < 0) return '';
                     if (secs < 60) return secs + 's';

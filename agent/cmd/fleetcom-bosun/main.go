@@ -551,9 +551,18 @@ func inspectContainer(id string) *inspectInfo {
 		return nil
 	}
 
+	// FLEET-199: docker inspect returns "0001-01-01T00:00:00Z" for
+	// containers in created/never-started states. Forwarding it makes
+	// the dashboard render absurd uptime values ("up 739718d"). Strip
+	// it at the source so the heartbeat carries an empty StartedAt
+	// for these containers.
+	startedAt := result.State.StartedAt
+	if strings.HasPrefix(startedAt, "0001-") {
+		startedAt = ""
+	}
 	info := &inspectInfo{
 		RestartCount: result.RestartCount,
-		StartedAt:    result.State.StartedAt,
+		StartedAt:    startedAt,
 		ExitCode:     result.State.ExitCode,
 		OOMKilled:    result.State.OOMKilled,
 	}
