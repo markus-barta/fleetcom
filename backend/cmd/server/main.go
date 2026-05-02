@@ -244,6 +244,8 @@ func main() {
 		r.With(auth.RequireAdmin).Delete("/api/hosts", api.DeleteHost(store))
 		r.With(auth.RequireAdmin).Post("/api/hosts/{hostname}/update", api.RequestHostUpdate(store, hub))
 		r.With(auth.RequireAdmin).Post("/api/hosts/{hostname}/token", api.RegenerateHostToken(store))
+		// FLEET-369.1 — per-host kill switch for the destructive host.reboot command.
+		r.With(auth.RequireAdmin).Put("/api/hosts/{hostname}/allow-reboot", api.SetAllowReboot(store))
 		r.With(auth.RequireAdmin).Post("/api/hosts/update-all", api.RequestUpdateAll(store, hub))
 		r.With(auth.RequireAdmin).Get("/api/shares", api.ListShareLinks(store))
 		r.With(auth.RequireAdmin).Post("/api/shares", api.CreateShareLink(store))

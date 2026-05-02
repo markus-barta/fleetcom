@@ -75,6 +75,33 @@ func AddHost(store *db.Store) http.HandlerFunc {
 	}
 }
 
+// SetAllowReboot toggles the per-host kill switch for the destructive
+// host.reboot command (FLEET-369.1). Independent from the global
+// FLEETCOM_DESTRUCTIVE_COMMANDS env so an operator can disable reboot
+// on one host (e.g. during a long bake) without yanking the feature
+// fleet-wide.
+func SetAllowReboot(store *db.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		hostname := chi.URLParam(r, "hostname")
+		if hostname == "" {
+			http.Error(w, "hostname required", http.StatusBadRequest)
+			return
+		}
+		var body struct {
+			On bool `json:"on"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+		if err := store.SetAllowReboot(hostname, body.On); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 func DeleteHost(store *db.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		hostname := r.URL.Query().Get("hostname")

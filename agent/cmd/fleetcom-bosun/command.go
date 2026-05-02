@@ -100,6 +100,7 @@ var commandAllowlist = map[string]commandHandler{
 	"container.restart": handleContainerRestart, // FLEET-62
 	"bridge.install":    handleBridgeInstall,    // FLEET-63
 	"agent.update":      handleAgentUpdate,      // FLEET-86
+	"host.reboot":       handleHostReboot,       // FLEET-369.1
 }
 
 // errHandlerAlreadyReported is a sentinel a handler returns when it has

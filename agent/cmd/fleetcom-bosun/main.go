@@ -57,13 +57,18 @@ type HeartbeatPayload struct {
 	// DeploymentShape (FLEET-84) tells the server how bosun is deployed on
 	// this host so the dashboard can route the Update button to the right
 	// strategy: "docker+watchtower", "docker-bare", "systemd-native", "unknown".
-	DeploymentShape string             `json:"deployment_shape,omitempty"`
-	Containers      []ContainerPayload `json:"containers"`
-	Agents          []AgentPayload     `json:"agents"`
-	HwStatic        *HwStatic          `json:"hw_static,omitempty"`
-	HwLive          *HwLive            `json:"hw_live,omitempty"`
-	Fastfetch       json.RawMessage    `json:"fastfetch_json,omitempty"`
-	AgentStates     []AgentSnapshot    `json:"agent_states,omitempty"`
+	DeploymentShape string `json:"deployment_shape,omitempty"`
+	// BootID (FLEET-369.1) is /proc/sys/kernel/random/boot_id — opaque
+	// 36-char string that changes only on actual host reboot. The server
+	// uses this to reconcile a 'restarting' host.reboot command once the
+	// host comes back. Cheap to read on every heartbeat.
+	BootID      string             `json:"boot_id,omitempty"`
+	Containers  []ContainerPayload `json:"containers"`
+	Agents      []AgentPayload     `json:"agents"`
+	HwStatic    *HwStatic          `json:"hw_static,omitempty"`
+	HwLive      *HwLive            `json:"hw_live,omitempty"`
+	Fastfetch   json.RawMessage    `json:"fastfetch_json,omitempty"`
+	AgentStates []AgentSnapshot    `json:"agent_states,omitempty"`
 }
 
 type ContainerPayload struct {
@@ -313,6 +318,7 @@ func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []Agent
 		UptimeSeconds:   getUptime(),
 		AgentVersion:    agentVersion,
 		DeploymentShape: detectDeploymentShape(socketPath, containers),
+		BootID:          getBootID(),
 		Containers:      containers,
 		Agents:          agents,
 	}
@@ -736,4 +742,22 @@ func getUptime() int64 {
 		}
 	}
 	return 0
+}
+
+// getBootID returns /proc/sys/kernel/random/boot_id — a kernel-issued
+// UUID that changes only on actual host reboot. Used by the server's
+// host.reboot reconciliation (FLEET-369.1). Read on every heartbeat
+// (~3 syscalls, negligible cost). Empty string if unreadable.
+func getBootID() string {
+	for _, path := range []string{"/host/proc/sys/kernel/random/boot_id", "/proc/sys/kernel/random/boot_id"} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		s := strings.TrimSpace(string(data))
+		if s != "" {
+			return s
+		}
+	}
+	return ""
 }

@@ -2054,6 +2054,49 @@
         /* ============================================================
            TOAST NOTIFICATIONS
            ============================================================ */
+        /* FLEET-369.1: type-to-confirm modal for destructive actions. */
+        .modal-backdrop {
+            position: fixed; inset: 0;
+            background: rgba(0, 0, 0, 0.55);
+            backdrop-filter: blur(2px);
+            z-index: 100;
+            display: flex; align-items: center; justify-content: center;
+            padding: 1rem;
+        }
+        .modal-card {
+            background: var(--bg-1);
+            border: 1px solid var(--line);
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+            padding: 1rem 1.1rem;
+            width: 100%;
+            max-width: 420px;
+            border-radius: 4px;
+        }
+        .modal-title {
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--crit);
+            margin-bottom: 0.6rem;
+        }
+        .modal-input {
+            display: block;
+            width: 100%;
+            margin-top: 0.4rem;
+            background: var(--bg-0);
+            color: var(--ink);
+            border: 1px solid var(--line);
+            padding: 0.4rem 0.5rem;
+            font-family: inherit;
+            font-size: 12px;
+            border-radius: 3px;
+        }
+        .modal-input:focus { outline: none; border-color: var(--crit); }
+        .modal-actions {
+            display: flex; gap: 0.4rem; justify-content: flex-end;
+            margin-top: 0.85rem;
+        }
         .toast-container {
             position: fixed;
             bottom: 1.5rem;
@@ -4866,6 +4909,12 @@ WantedBy=multi-user.target</pre>
                                     <span class="agent-update-pending" title="Update requested — will run on next heartbeat">upd</span>
                                 </template>
                                 <button class="btn btn-ghost" @click="regenerateToken(hostDrawerKey)" title="Replace this host's bearer token. Old token stops working immediately.">New token</button>
+                                <!-- FLEET-369.1: reboot button — only visible when destructive commands are enabled server-side. Disabled when the per-host kill switch is off. Triggers a hostname-confirm modal. -->
+                                <template x-if="ver.destructive_commands_enabled">
+                                    <button class="btn btn-danger" @click="openRebootConfirm(hostDrawerKey)"
+                                            :disabled="hostByName(hostDrawerKey) && hostByName(hostDrawerKey).allow_reboot === false"
+                                            :title="hostByName(hostDrawerKey) && hostByName(hostDrawerKey).allow_reboot === false ? 'Reboot disabled for this host (kill switch is off — toggle below)' : 'Reboot the host. Triggers systemd-logind via D-Bus. Requires hostname confirmation.'">Reboot host</button>
+                                </template>
                                 <template x-if="!isIgnored('host', hostDrawerKey)">
                                     <button class="btn btn-ghost" @click="ignoreEntity('host', hostDrawerKey)">Ignore host</button>
                                 </template>
@@ -4874,6 +4923,17 @@ WantedBy=multi-user.target</pre>
                                 </template>
                                 <button class="btn btn-danger" @click="removeHost(hostDrawerKey); closeHostDrawer()" style="margin-left:auto;">Remove host</button>
                             </div>
+                            <!-- FLEET-369.1: per-host reboot kill switch (only meaningful when the global flag is on). -->
+                            <template x-if="ver.destructive_commands_enabled && hostByName(hostDrawerKey)">
+                                <div style="margin-top:0.45rem;display:flex;align-items:center;gap:0.4rem;font-size:10px;color:var(--ink-dim);">
+                                    <label style="display:flex;align-items:center;gap:0.35rem;cursor:pointer;">
+                                        <input type="checkbox" :checked="hostByName(hostDrawerKey).allow_reboot !== false"
+                                               @change="setAllowReboot(hostDrawerKey, $event.target.checked)">
+                                        Allow reboot for this host
+                                    </label>
+                                    <span style="color:var(--ink-ghost);">— per-host kill switch independent of the server-side feature flag</span>
+                                </div>
+                            </template>
                             <template x-if="newToken && newToken.hostname === hostDrawerKey">
                                 <div class="token-reveal" style="margin-top:0.6rem;">
                                     <div class="label">Agent token for <span x-text="newToken.hostname"></span></div>
@@ -5014,6 +5074,37 @@ WantedBy=multi-user.target</pre>
     </div>
 
     <div class="toast-container" id="toasts"></div>
+
+    <!-- FLEET-369.1: hostname-confirm modal for host.reboot. The destructive
+         action requires the operator to type the hostname exactly — same
+         pattern as `git push --force` to a release branch. -->
+    <div x-show="rebootConfirm.host" x-cloak
+         @keydown.escape.window="rebootConfirm.host = ''; rebootConfirm.typed = ''"
+         class="modal-backdrop"
+         style="display:none">
+        <div class="modal-card" @click.stop>
+            <div class="modal-title">Reboot host</div>
+            <p style="font-size:11px;color:var(--ink-dim);line-height:1.5;">
+                This will trigger an orderly reboot of <strong x-text="rebootConfirm.host"></strong>
+                via systemd-logind (D-Bus). The host will go offline for a few minutes.
+                Bosun reports back automatically once the new boot_id is seen.
+            </p>
+            <p style="font-size:10px;color:var(--ink-ghost);margin-top:0.4rem;">
+                Type the hostname to confirm:
+            </p>
+            <input type="text" class="modal-input"
+                   x-model="rebootConfirm.typed"
+                   :placeholder="rebootConfirm.host"
+                   @keydown.enter="rebootConfirm.typed === rebootConfirm.host && submitReboot()"
+                   x-init="$watch('rebootConfirm.host', v => { if (v) $nextTick(() => $el.focus()); })">
+            <div class="modal-actions">
+                <button class="btn btn-ghost" @click="rebootConfirm.host = ''; rebootConfirm.typed = ''">Cancel</button>
+                <button class="btn btn-danger"
+                        :disabled="rebootConfirm.typed !== rebootConfirm.host"
+                        @click="submitReboot()">Reboot</button>
+            </div>
+        </div>
+    </div>
     <script src="/static/lucide.min.js"></script>
     <script src="/static/alpine.min.js" defer></script>
     <script>
@@ -5031,7 +5122,9 @@ WantedBy=multi-user.target</pre>
                 shareLabel: '',
                 shareHours: '24',
                 es: null,
-                ver: { version: '', commit: '', build_time: '', build_time_display: '' },
+                ver: { version: '', commit: '', build_time: '', build_time_display: '', destructive_commands_enabled: false },
+                // FLEET-369.1: state for the host.reboot type-to-confirm modal.
+                rebootConfirm: { host: '', typed: '' },
 
                 // Connection state machine
                 connState: 'reconnecting', // 'live' | 'reconnecting' | 'offline'
@@ -7406,6 +7499,46 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Failed to request updates', 'err');
                         }
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+                // FLEET-369.1: open the hostname-confirm modal for host.reboot.
+                openRebootConfirm(hostname) {
+                    if (!hostname) return;
+                    this.rebootConfirm = { host: hostname, typed: '' };
+                },
+                async submitReboot() {
+                    const host = this.rebootConfirm.host;
+                    if (!host || this.rebootConfirm.typed !== host) return;
+                    const target = host;
+                    this.rebootConfirm = { host: '', typed: '' };
+                    try {
+                        const res = await fetch('/api/hosts/' + encodeURIComponent(target) + '/commands', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ kind: 'host.reboot', params: {} }),
+                        });
+                        if (res.ok) {
+                            this.toast('Reboot requested for ' + target + ' — host is going down');
+                            this.openHostDrawer(target, 'commands');
+                        } else {
+                            const text = await res.text().catch(() => '');
+                            this.toast('Reboot rejected: ' + (text.slice(0, 200) || 'HTTP ' + res.status), 'err');
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+                async setAllowReboot(hostname, on) {
+                    try {
+                        const res = await fetch('/api/hosts/' + encodeURIComponent(hostname) + '/allow-reboot', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ on: !!on }),
+                        });
+                        if (!res.ok) {
+                            this.toast('Failed to update reboot kill switch', 'err');
+                        }
+                        // Optimistic update — host will refresh on next SSE heartbeat.
+                        const h = this.hostByName(hostname);
+                        if (h) h.allow_reboot = !!on;
                     } catch (_) { this.toast('Network error', 'err'); }
                 },
                 agentStatus(a) {

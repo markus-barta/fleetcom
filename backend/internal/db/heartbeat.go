@@ -20,11 +20,19 @@ type Host struct {
 	// DeploymentShape (FLEET-84) tells the dashboard how this host's bosun is
 	// deployed: "docker+watchtower" / "docker-bare" / "systemd-native" / "unknown".
 	// Drives Update-button gating and the manual-fallback hint.
-	DeploymentShape string      `json:"deployment_shape,omitempty"`
-	HwLive          *HwLive     `json:"hw_live,omitempty"`
-	HwLiveAt        string      `json:"hw_live_at,omitempty"`
-	Containers      []Container `json:"containers"`
-	Agents          []Agent     `json:"agents"`
+	DeploymentShape string `json:"deployment_shape,omitempty"`
+	// BootID (FLEET-369.1) is /proc/sys/kernel/random/boot_id — changes only on
+	// actual host reboot. Used to reconcile a "restarting" host.reboot command
+	// once the host comes back. Older agents pre-FLEET-369.1 omit it.
+	BootID string `json:"boot_id,omitempty"`
+	// AllowReboot is the per-host kill switch for the destructive
+	// host.reboot command. Defaults to true; admin can flip via Settings →
+	// host drawer when a host shouldn't be rebooted (long bake, demo, etc.).
+	AllowReboot bool        `json:"allow_reboot"`
+	HwLive      *HwLive     `json:"hw_live,omitempty"`
+	HwLiveAt    string      `json:"hw_live_at,omitempty"`
+	Containers  []Container `json:"containers"`
+	Agents      []Agent     `json:"agents"`
 }
 
 // HardwareHeartbeat carries optional hardware/metadata fields from a heartbeat.
@@ -65,7 +73,7 @@ type Agent struct {
 // consumes a pending "update" command if one was flagged for this host.
 // Returns a non-empty command string when the caller should relay a
 // command to the agent in the heartbeat response.
-func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64, agentVersion, deploymentShape string, containers []Container, agents []Agent, hw *HardwareHeartbeat) (string, error) {
+func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64, agentVersion, deploymentShape, bootID string, containers []Container, agents []Agent, hw *HardwareHeartbeat) (string, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	tx, err := s.DB.Begin()
@@ -74,22 +82,23 @@ func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64
 	}
 	defer tx.Rollback()
 
-	// Upsert host. deployment_shape only updates when bosun reports a
-	// non-empty value — old pre-FLEET-84 agents that omit the field don't
-	// clobber a previously-known shape.
+	// Upsert host. deployment_shape and boot_id only update when bosun
+	// reports a non-empty value — old agents pre-FLEET-84/369.1 that omit
+	// the field don't clobber a previously-known value.
 	var hostID int64
 	err = tx.QueryRow(`
-		INSERT INTO hosts (hostname, os, kernel, uptime_seconds, agent_version, last_seen, deployment_shape)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO hosts (hostname, os, kernel, uptime_seconds, agent_version, last_seen, deployment_shape, boot_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(hostname) DO UPDATE SET
 			os = excluded.os,
 			kernel = excluded.kernel,
 			uptime_seconds = excluded.uptime_seconds,
 			agent_version = excluded.agent_version,
 			last_seen = excluded.last_seen,
-			deployment_shape = CASE WHEN excluded.deployment_shape != '' THEN excluded.deployment_shape ELSE hosts.deployment_shape END
+			deployment_shape = CASE WHEN excluded.deployment_shape != '' THEN excluded.deployment_shape ELSE hosts.deployment_shape END,
+			boot_id = CASE WHEN excluded.boot_id != '' THEN excluded.boot_id ELSE hosts.boot_id END
 		RETURNING id
-	`, hostname, os, kernel, uptimeSeconds, agentVersion, now, deploymentShape).Scan(&hostID)
+	`, hostname, os, kernel, uptimeSeconds, agentVersion, now, deploymentShape, bootID).Scan(&hostID)
 	if err != nil {
 		return "", fmt.Errorf("upsert host: %w", err)
 	}
@@ -203,9 +212,11 @@ func scanHosts(rows *sql.Rows) ([]Host, error) {
 	for rows.Next() {
 		var h Host
 		var liveBlob string
-		if err := rows.Scan(&h.ID, &h.Hostname, &h.OS, &h.Kernel, &h.UptimeSeconds, &h.AgentVersion, &h.LastSeen, &liveBlob, &h.HwLiveAt, &h.CreatedAt, &h.UpdateRequestedAt, &h.DeploymentShape); err != nil {
+		var allowReboot int
+		if err := rows.Scan(&h.ID, &h.Hostname, &h.OS, &h.Kernel, &h.UptimeSeconds, &h.AgentVersion, &h.LastSeen, &liveBlob, &h.HwLiveAt, &h.CreatedAt, &h.UpdateRequestedAt, &h.DeploymentShape, &h.BootID, &allowReboot); err != nil {
 			return nil, err
 		}
+		h.AllowReboot = allowReboot != 0
 		if liveBlob != "" {
 			var hl HwLive
 			if err := json.Unmarshal([]byte(liveBlob), &hl); err == nil {
@@ -218,7 +229,7 @@ func scanHosts(rows *sql.Rows) ([]Host, error) {
 }
 
 func (s *Store) AllHosts() ([]Host, error) {
-	rows, err := s.DB.Query(`SELECT id, hostname, os, kernel, uptime_seconds, agent_version, last_seen, hw_live, hw_live_at, created_at, update_requested_at, deployment_shape FROM hosts ORDER BY hostname`)
+	rows, err := s.DB.Query(`SELECT id, hostname, os, kernel, uptime_seconds, agent_version, last_seen, hw_live, hw_live_at, created_at, update_requested_at, deployment_shape, boot_id, allow_reboot FROM hosts ORDER BY hostname`)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +257,7 @@ func (s *Store) AllHosts() ([]Host, error) {
 // HostsForUser returns hosts filtered by user_host_access for regular users.
 func (s *Store) HostsForUser(userID int64) ([]Host, error) {
 	rows, err := s.DB.Query(
-		`SELECT h.id, h.hostname, h.os, h.kernel, h.uptime_seconds, h.agent_version, h.last_seen, h.hw_live, h.hw_live_at, h.created_at, h.update_requested_at, h.deployment_shape
+		`SELECT h.id, h.hostname, h.os, h.kernel, h.uptime_seconds, h.agent_version, h.last_seen, h.hw_live, h.hw_live_at, h.created_at, h.update_requested_at, h.deployment_shape, h.boot_id, h.allow_reboot
 		 FROM hosts h
 		 JOIN user_host_access uha ON h.id = uha.host_id
 		 WHERE uha.user_id = ?

@@ -18,6 +18,13 @@ services:
       - /sys:/host/sys:ro
       - /etc/os-release:/host/etc/os-release:ro
       - /etc/mtab:/host/etc/mtab:ro
+      # FLEET-369.1: system D-Bus socket so the host.reboot handler can
+      # call org.freedesktop.login1.Manager.Reboot — same path systemctl
+      # reboot uses. Mount is optional; without it, the host.reboot
+      # command fails cleanly with a "is the bus socket bind-mounted?"
+      # error and the rest of bosun keeps working. Stock polkit defaults
+      # permit uid 0 to reboot without prompting.
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
     environment:
       - FLEETCOM_URL=${FLEETCOM_URL:-https://fleet.barta.cm}
       - FLEETCOM_TOKEN=${FLEETCOM_TOKEN}
