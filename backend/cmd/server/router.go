@@ -180,6 +180,11 @@ func newRouter(d *routerDeps) chi.Router {
 		r.Post("/api/auth/api-tokens", api.CreateAPIToken(store))
 		r.Delete("/api/auth/api-tokens/{id}", api.RevokeAPIToken(store))
 
+		// FLEET-108: operator activity log. busy() in the browser POSTs
+		// after every async user-initiated action; the drawer reads via GET.
+		r.Get("/api/activity", api.ListActivity(store))
+		r.Post("/api/activity", api.RecordActivity(store))
+
 		// Admin-only routes
 		r.Route("/api/users", func(r chi.Router) {
 			r.Use(auth.RequireAdmin)

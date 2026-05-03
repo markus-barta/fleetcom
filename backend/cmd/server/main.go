@@ -69,6 +69,11 @@ func main() {
 	const hostMetricsRetention = 24 * time.Hour
 	// Agent observability: match status samples (400d rolling).
 	const agentObsRetention = sampleRetention
+	// FLEET-108: activity log — keep most rows 7 days; CREATE/DELETE/GRANT/
+	// REVOKE rows kept 30 days because operators look back at those when
+	// investigating "who changed what last quarter".
+	const activityShortRetention = 7 * 24 * time.Hour
+	const activityLongRetention = 30 * 24 * time.Hour
 	if n, err := store.PurgeOldSamples(sampleRetention); err != nil {
 		log.Printf("initial sample purge failed: %v", err)
 	} else if n > 0 {
@@ -88,6 +93,11 @@ func main() {
 		log.Printf("initial agent_obs purge failed: %v", err)
 	} else if n > 0 {
 		log.Printf("purged %d old agent rows", n)
+	}
+	if n, err := store.PruneOldActivity(activityShortRetention, activityLongRetention); err != nil {
+		log.Printf("initial activity prune failed: %v", err)
+	} else if n > 0 {
+		log.Printf("purged %d old activity rows", n)
 	}
 	store.CleanExpiredSessions()
 	store.CleanExpiredTOTPPending()
@@ -115,6 +125,11 @@ func main() {
 				log.Printf("agent_obs purge failed: %v", err)
 			} else if n > 0 {
 				log.Printf("purged %d old agent rows", n)
+			}
+			if n, err := store.PruneOldActivity(activityShortRetention, activityLongRetention); err != nil {
+				log.Printf("activity prune failed: %v", err)
+			} else if n > 0 {
+				log.Printf("purged %d old activity rows", n)
 			}
 			store.CleanExpiredSessions()
 			store.CleanExpiredTOTPPending()
