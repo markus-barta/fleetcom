@@ -6095,6 +6095,16 @@ WantedBy=multi-user.target</pre>
                             if (this.currentUser && this.currentUser.role !== 'admin' && (this.settingsTab === 'hosts' || this.settingsTab === 'icons' || this.settingsTab === 'sharing' || this.settingsTab === 'config')) {
                                 this.settingsTab = 'account';
                             }
+                            // FLEET-377 hotfix: prime gateways + bridges for admins so
+                            // the host drawer's gatewayForHost() and the FLEET-112 PAIR
+                            // header pill have data immediately, instead of waiting up
+                            // to 2 minutes for the openclaw manager's reconcile broadcast.
+                            // SSE only pushes deltas — there's no initial snapshot — so
+                            // these one-shot loads close the gap on first paint.
+                            if (this.currentUser && this.currentUser.role === 'admin') {
+                                this.loadGateways();
+                                this.loadBridges();
+                            }
                         }
                     } catch (_) {} // silent: pure background load
                 },
