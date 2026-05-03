@@ -2483,6 +2483,10 @@
             --fc-drawer-host-w: 720px;
             --fc-drawer-activity-w: 480px;
             --fc-drawer-agent-w: 560px;
+            /* FLEET-108: left-side operator log drawer (separate from the
+               right-side AI-agent Activity drawer, which is per-turn AI
+               telemetry from FLEET-36). */
+            --fc-drawer-oplog-w: 400px;
         }
         .drawer {
             position: fixed;
@@ -2500,6 +2504,83 @@
         }
         .drawer.is-open { transform: translateX(0); }
         .drawer.drawer-activity { width: min(var(--fc-drawer-activity-w), 100vw); right: 0; }
+        /* FLEET-108: operator log mirrors the right-side drawer but flipped — slides in from the left edge. */
+        .drawer.drawer-oplog {
+            left: 0; right: auto;
+            width: min(var(--fc-drawer-oplog-w), 100vw);
+            border-left: none;
+            border-right: 1px solid var(--line);
+            box-shadow: 8px 0 32px rgba(0, 0, 0, 0.4);
+            transform: translateX(-100%);
+        }
+        .drawer.drawer-oplog.is-open { transform: translateX(0); }
+        /* FLEET-108: dense console-style list. Fixed-width timestamp + verb
+           + flexible target + outcome dot at end. Hover reveals full error. */
+        .oplog-rows { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; }
+        .oplog-row {
+            display: grid;
+            grid-template-columns: 60px 56px 1fr auto auto;
+            gap: 0.5rem;
+            padding: 0.35rem 0.85rem;
+            align-items: center;
+            border-bottom: 1px solid var(--line);
+            color: var(--ink-dim);
+            background: transparent;
+            border-left: 2px solid transparent;
+            text-align: left;
+            border-top: 0; border-right: 0;
+            cursor: default;
+            font-family: inherit;
+            line-height: 1.3;
+        }
+        .oplog-row.is-fresh { animation: oplog-flash 1.2s ease-out; }
+        @keyframes oplog-flash {
+            0%   { border-left-color: var(--accent); background: rgba(106, 176, 255, 0.10); }
+            100% { border-left-color: transparent; background: transparent; }
+        }
+        .oplog-ts { color: var(--ink-faint); }
+        .oplog-verb { font-weight: 600; letter-spacing: 0.04em; }
+        .oplog-row.o-ok   .oplog-verb { color: var(--ok); }
+        .oplog-row.o-err  .oplog-verb { color: var(--crit); }
+        .oplog-row.o-pend .oplog-verb { color: var(--warn); }
+        .oplog-target { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+        .oplog-ms { color: var(--ink-ghost); font-size: 10px; }
+        .oplog-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
+        .oplog-row.o-ok   .oplog-dot { background: var(--ok); }
+        .oplog-row.o-err  .oplog-dot { background: var(--crit); }
+        .oplog-row.o-pend .oplog-dot { background: var(--warn); }
+        .oplog-row.is-error-detail { background: rgba(255, 77, 109, 0.04); border-left-color: var(--crit); }
+        .oplog-error { grid-column: 1 / -1; color: var(--crit); font-size: 10px; padding-left: calc(60px + 0.5rem); white-space: pre-wrap; word-break: break-word; }
+        .oplog-empty { color: var(--ink-ghost); padding: 1.2rem 1rem; font-style: italic; font-size: 11px; }
+        .oplog-filters { display: flex; gap: 0.4rem; padding: 0.5rem 0.85rem; border-bottom: 1px solid var(--line); }
+        .oplog-chip {
+            background: transparent;
+            border: 1px solid var(--line-2);
+            color: var(--ink-dim);
+            font-family: inherit;
+            font-size: 9px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 0.2rem 0.55rem;
+            cursor: pointer;
+        }
+        .oplog-chip:hover { color: var(--ink); border-color: var(--ink-dim); }
+        .oplog-chip.is-active { color: var(--accent); border-color: var(--accent); }
+        /* Header toggle (left-edge, mirrors the right-edge open buttons). */
+        .oplog-toggle {
+            background: transparent;
+            border: 1px solid var(--line);
+            color: var(--ink-dim);
+            font-family: inherit;
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 0.25rem 0.6rem;
+            cursor: pointer;
+        }
+        .oplog-toggle:hover { color: var(--accent); border-color: var(--accent); }
+        .oplog-toggle.is-active { color: var(--accent); border-color: var(--accent); }
+        .oplog-toggle .oplog-toggle-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: 1px; opacity: 0.85; }
         .drawer.drawer-agent.drawer-with-activity { right: min(var(--fc-drawer-activity-w), 100vw); }
         .drawer.is-pinned { box-shadow: none; }
         .drawer.drawer-host.with-activity-pinned { right: min(var(--fc-drawer-activity-w), 100vw); }
@@ -2993,6 +3074,17 @@
                 <button class="theme-toggle btn-activity" @click="toggleActivityDrawer()" title="Global agent activity" style="background:none;border:1px solid var(--ink-faint);border-radius:4px;padding:2px 8px;cursor:pointer;color:var(--ink-dim);font-size:11px;font-family:inherit" x-show="agentsObs.length > 0">
                     <span style="font-family:inherit;letter-spacing:0.05em">ACTIVITY</span>
                     <template x-if="activityUnread > 0"><span class="unread-dot"></span></template>
+                </button>
+                <!-- FLEET-108: operator log toggle. Distinct from the AI-agent
+                     ACTIVITY button to its left — that one is per-turn telemetry,
+                     this is the operator's own audit history. -->
+                <button class="oplog-toggle"
+                        :class="oplogOpen ? 'is-active' : ''"
+                        @click="toggleOplog()"
+                        title="Operator log — recent actions and audit trail"
+                        x-show="!shared && currentUser">
+                    <span class="oplog-toggle-dot" x-show="oplogOpen"></span>
+                    OP·LOG
                 </button>
                 <button class="theme-toggle" @click="cycleTheme()" :title="'Theme: ' + theme" style="background:none;border:1px solid var(--ink-faint);border-radius:4px;padding:2px 6px;cursor:pointer;color:var(--ink-dim);font-size:11px;font-family:inherit">
                     <span x-text="theme === 'dark' ? '&#9790;' : theme === 'light' ? '&#9788;' : '&#9681;'"></span>
@@ -4976,6 +5068,49 @@ WantedBy=multi-user.target</pre>
         </aside>
 
         <!-- Global activity drawer -->
+        <!-- FLEET-108: operator log drawer. Left-edge slide-in. Distinct from
+             the right-edge .drawer-activity which is AI-agent telemetry. -->
+        <aside class="drawer drawer-oplog"
+               :class="oplogOpen ? 'is-open' : ''"
+               @keydown.escape.window="oplogOpen = false"
+               x-show="oplogOpen" style="display:none">
+            <div class="drawer-head">
+                <div>
+                    <div class="subtitle">Audit · history</div>
+                    <div class="title">Operator Log</div>
+                </div>
+                <button class="drawer-close" @click="oplogOpen = false" title="Close (Esc)">&times;</button>
+            </div>
+            <div class="oplog-filters">
+                <template x-for="f in ['ALL','OPS','ADMIN','ERR']" :key="f">
+                    <button class="oplog-chip"
+                            :class="oplogFilter === f ? 'is-active' : ''"
+                            @click="oplogFilter = f"
+                            x-text="f"></button>
+                </template>
+            </div>
+            <div class="drawer-body" style="padding:0">
+                <template x-if="filteredOplog().length === 0">
+                    <div class="oplog-empty" x-text="oplogList.length === 0 ? 'No operator activity yet. Issue any command and it appears here.' : 'No rows match the current filter.'"></div>
+                </template>
+                <div class="oplog-rows">
+                    <template x-for="e in filteredOplog()" :key="e.id">
+                        <div class="oplog-row" :class="['o-' + (e.outcome || 'ok'), e._fresh ? 'is-fresh' : '', e.error ? 'is-error-detail' : '']">
+                            <span class="oplog-ts" x-text="oplogTime(e.ts)"></span>
+                            <span class="oplog-verb" x-text="e.verb"></span>
+                            <span class="oplog-target" :title="(e.target_type ? e.target_type + '/' : '') + (e.target_key || '')"
+                                  x-text="oplogTargetLabel(e)"></span>
+                            <span class="oplog-ms" x-text="e.duration_ms ? e.duration_ms + 'ms' : ''"></span>
+                            <span class="oplog-dot"></span>
+                            <template x-if="e.error">
+                                <span class="oplog-error" x-text="e.error"></span>
+                            </template>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </aside>
+
         <aside class="drawer drawer-activity"
                :class="[activityOpen ? 'is-open' : '', pinActivity ? 'is-pinned' : '']"
                @keydown.escape.window="if (!pinActivity) activityOpen = false"
@@ -5313,6 +5448,12 @@ WantedBy=multi-user.target</pre>
                 // :data-pending="!!pending['<key>']" :disabled="!!pending['<key>']"
                 // to render the scanline animation and prevent double-clicks.
                 pending: {},
+                // FLEET-108: operator log drawer (left-side, distinct from the
+                // right-side AI-agent ACTIVITY drawer at FLEET-36).
+                oplogOpen: false,
+                oplogList: [],          // most-recent first; ring buffer of last 200
+                oplogFilter: 'ALL',     // ALL | OPS | ADMIN | ERR
+                _oplogSeq: 0,           // local id for synthetic entries before server confirms
                 usersList: [],
                 newUserEmail: '', newUserPassword: '', newUserRole: 'user',
                 selectedUser: null, selectedUserHosts: [], allHostsList: [],
@@ -8076,6 +8217,9 @@ WantedBy=multi-user.target</pre>
                     if (this.pending[key]) return; // double-click guard
                     // Object-replacement so Alpine reactivity always sees the change
                     this.pending = { ...this.pending, [key]: true };
+                    const startedAt = performance.now();
+                    let outcome = 'ok';
+                    let errMsg = '';
                     try {
                         const res = await fn();
                         if (opts.toast !== false) {
@@ -8088,7 +8232,8 @@ WantedBy=multi-user.target</pre>
                         }
                         return res;
                     } catch (e) {
-                        const msg = (e && e.message) || (typeof e === 'string' ? e : 'Operation failed');
+                        outcome = 'err';
+                        errMsg = (e && e.message) || (typeof e === 'string' ? e : 'Operation failed');
                         const actions = [];
                         if (opts.idempotent === true) {
                             actions.push({ label: 'RETRY', onClick: () => this.busy(key, label, fn, opts) });
@@ -8097,17 +8242,25 @@ WantedBy=multi-user.target</pre>
                             level:  'err',
                             verb:   opts.verb || 'FAIL',
                             target: opts.target,
-                            msg,
+                            msg:    errMsg,
                             actions,
                         });
-                        // Don't throw — most callers don't care to handle it,
-                        // and an unhandled rejection would just produce a console
-                        // warning that adds noise. The error toast is the audit.
                         return undefined;
                     } finally {
+                        const ms = Math.round(performance.now() - startedAt);
                         const next = { ...this.pending };
                         delete next[key];
                         this.pending = next;
+                        // FLEET-108: record to operator log. Fire-and-forget;
+                        // log errors here go to console only — the busy() result
+                        // toast is already on screen.
+                        this.recordOplog({
+                            verb:        opts.verb || (outcome === 'err' ? 'FAIL' : 'OK'),
+                            target:      opts.target || '',
+                            outcome,
+                            duration_ms: ms,
+                            error:       errMsg,
+                        });
                     }
                 },
 
@@ -8122,6 +8275,97 @@ WantedBy=multi-user.target</pre>
                         if (text) msg = text.length > 200 ? text.slice(0, 197) + '…' : text;
                     } catch (_) {} // silent: pure background load
                     throw new Error(msg);
+                },
+
+                // ---------- FLEET-108 operator log ----------
+                // Toggle the left-edge drawer; lazy-load on first open.
+                toggleOplog() {
+                    this.oplogOpen = !this.oplogOpen;
+                    if (this.oplogOpen) this.loadOplog();
+                },
+
+                async loadOplog() {
+                    try {
+                        const res = await fetch('/api/activity?limit=200');
+                        if (!res.ok) return;
+                        const rows = await res.json() || [];
+                        // Preserve _fresh flag on rows that are still flashing
+                        const freshIds = new Set(this.oplogList.filter(r => r._fresh).map(r => r.id));
+                        this.oplogList = rows.map(r => freshIds.has(r.id) ? { ...r, _fresh: true } : r);
+                    } catch (_) {} // silent: pure background load
+                },
+
+                // Called from busy() finally{}. Optimistic prepend + server POST.
+                // Failure to record is non-fatal; the operation already completed
+                // and the toast already fired.
+                async recordOplog({ verb, target, outcome, duration_ms, error }) {
+                    let target_type = '', target_key = target || '';
+                    const slash = target_key.indexOf('/');
+                    if (slash > 0) {
+                        target_type = target_key.slice(0, slash);
+                        target_key  = target_key.slice(slash + 1);
+                    }
+                    // Optimistic local entry (negative id; replaced when server returns)
+                    const tempId = -(++this._oplogSeq);
+                    const optimistic = {
+                        id: tempId,
+                        ts: new Date().toISOString(),
+                        user_id: this.currentUser ? this.currentUser.id : 0,
+                        user_email: this.currentUser ? this.currentUser.email : '',
+                        verb, target_type, target_key, outcome,
+                        duration_ms: duration_ms || 0,
+                        error: error || '',
+                        _fresh: true,
+                    };
+                    this.oplogList = [optimistic, ...this.oplogList].slice(0, 200);
+                    setTimeout(() => {
+                        this.oplogList = this.oplogList.map(r => r.id === tempId ? { ...r, _fresh: false } : r);
+                    }, 1300);
+                    try {
+                        const res = await fetch('/api/activity', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ verb, target_type, target_key, outcome, duration_ms, error }),
+                        });
+                        if (res.ok) {
+                            const body = await res.json();
+                            if (body && body.id) {
+                                this.oplogList = this.oplogList.map(r => r.id === tempId ? { ...r, id: body.id } : r);
+                            }
+                        }
+                    } catch (_) {} // silent: pure background load
+                },
+
+                filteredOplog() {
+                    const f = this.oplogFilter;
+                    if (f === 'ALL') return this.oplogList;
+                    if (f === 'ERR') return this.oplogList.filter(e => e.outcome === 'err');
+                    const opsVerbs = new Set(['EXEC','REVOKE','RESTART','PAIR','UNPAIR']);
+                    const adminVerbs = new Set(['CREATE','DELETE','UPDATE','GRANT','UPLOAD','SETUP','ENABLE','DISABLE']);
+                    if (f === 'OPS') return this.oplogList.filter(e => opsVerbs.has(e.verb));
+                    if (f === 'ADMIN') return this.oplogList.filter(e => adminVerbs.has(e.verb));
+                    return this.oplogList;
+                },
+
+                // Render activity timestamp as HH:MM:SS — server emits either
+                // RFC3339 ("2026-05-03T11:23:45Z") or sqlite's datetime('now')
+                // format ("2026-05-03 11:23:45"). Handle both.
+                oplogTime(ts) {
+                    if (!ts) return '--:--:--';
+                    const norm = ts.includes('T') ? ts : ts.replace(' ', 'T') + 'Z';
+                    const d = new Date(norm);
+                    if (isNaN(d.getTime())) return ts.slice(11, 19);
+                    const pad = n => String(n).padStart(2, '0');
+                    return pad(this.useUTC ? d.getUTCHours() : d.getHours()) + ':' +
+                           pad(this.useUTC ? d.getUTCMinutes() : d.getMinutes()) + ':' +
+                           pad(this.useUTC ? d.getUTCSeconds() : d.getSeconds());
+                },
+
+                oplogTargetLabel(e) {
+                    if (e.target_type && e.target_key) return e.target_type + '/' + e.target_key;
+                    if (e.target_key) return e.target_key;
+                    if (e.target_type) return e.target_type;
+                    return '—';
                 },
 
                 async copyToClipboard(text, okMsg = 'Copied to clipboard') {

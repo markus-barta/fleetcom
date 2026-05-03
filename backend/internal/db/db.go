@@ -357,6 +357,25 @@ CREATE TABLE IF NOT EXISTS user_api_tokens (
 CREATE INDEX IF NOT EXISTS idx_user_api_tokens_user ON user_api_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_api_tokens_hash ON user_api_tokens(token_hash);
 
+-- FLEET-108: operator activity log. Every async user-initiated action goes
+-- through busy() in the browser, which POSTs a row here on completion.
+-- Drives the left-edge activity drawer and gives the operator a "what did
+-- I just do" view that survives page reloads. Admins see all rows; regular
+-- users see only their own (host-scoped filtering is a v2 refinement).
+CREATE TABLE IF NOT EXISTS activity_events (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	ts TEXT NOT NULL DEFAULT (datetime('now')),
+	user_id INTEGER NOT NULL DEFAULT 0,
+	verb TEXT NOT NULL DEFAULT '',
+	target_type TEXT NOT NULL DEFAULT '',
+	target_key TEXT NOT NULL DEFAULT '',
+	outcome TEXT NOT NULL DEFAULT 'ok',
+	duration_ms INTEGER NOT NULL DEFAULT 0,
+	error TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_activity_ts ON activity_events(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_activity_user_ts ON activity_events(user_id, ts DESC);
+
 -- OpenClaw gateway pairing + bridge registry (FLEET-51) —
 -- see docs/AGENT-BRIDGE-PAIRING.md.
 CREATE TABLE IF NOT EXISTS openclaw_gateways (

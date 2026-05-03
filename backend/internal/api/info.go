@@ -167,6 +167,12 @@ var EndpointCatalog = []EndpointInfo{
 	{Method: "DELETE", Path: "/api/auth/api-tokens/{id}", Auth: []string{"session"},
 		Description: "Revoke one of the caller's fleet_pat_ tokens (sticky, immediate)."},
 
+	// ---------- FLEET-108: operator activity log ----------
+	{Method: "GET", Path: "/api/activity", Auth: []string{"session"},
+		Description: "Operator activity log. Admins see all rows; regular users see only their own. Filters: since (RFC3339), limit, verb, target, outcome."},
+	{Method: "POST", Path: "/api/activity", Auth: []string{"session"},
+		Description: "Record one activity row. Called by busy() in the browser after every async user-initiated action."},
+
 	// ---------- Admin: gateways / bridges (OpenClaw) ----------
 	{Method: "GET", Path: "/api/gateways", Auth: []string{"session"}, RequiresAdmin: true,
 		Description: "All paired OpenClaw gateways and their per-host status."},
