@@ -4,13 +4,13 @@
 // Drives the first-run banner that appears above the host grid when
 // any of these is non-empty:
 //
-//   1. Hosts with a recent bosun heartbeat but no OpenClaw gateway
-//      paired yet — these are the "ready to run the pair-flow"
-//      candidates.
-//   2. Hosts with a paired gateway but no bridges registered — these
-//      are the "ready to deploy a bridge" candidates.
-//   3. Bridges in pending approval state — these are the "waiting on
-//      operator eyeballs" rows that FLEET-120's verify-modal handles.
+//  1. Hosts with a recent bosun heartbeat but no OpenClaw gateway
+//     paired yet — these are the "ready to run the pair-flow"
+//     candidates.
+//  2. Hosts with a paired gateway but no bridges registered — these
+//     are the "ready to deploy a bridge" candidates.
+//  3. Bridges in pending approval state — these are the "waiting on
+//     operator eyeballs" rows that FLEET-120's verify-modal handles.
 //
 // `wizard_actionable` collapses the three lists to one boolean so the
 // banner can render with a simple x-show. Admin-only.
@@ -41,10 +41,10 @@ type onboardingPendingRef struct {
 }
 
 type onboardingState struct {
-	HostsWithBosunNoGateway   []onboardingHostRef    `json:"hosts_with_bosun_no_gateway"`
-	HostsWithGatewayNoBridge  []onboardingGatewayRef `json:"hosts_with_gateway_no_bridge"`
-	GatewaysPendingApproval   []onboardingPendingRef `json:"gateways_pending_approval"`
-	WizardActionable          bool                   `json:"wizard_actionable"`
+	HostsWithBosunNoGateway  []onboardingHostRef    `json:"hosts_with_bosun_no_gateway"`
+	HostsWithGatewayNoBridge []onboardingGatewayRef `json:"hosts_with_gateway_no_bridge"`
+	GatewaysPendingApproval  []onboardingPendingRef `json:"gateways_pending_approval"`
+	WizardActionable         bool                   `json:"wizard_actionable"`
 }
 
 // OnboardingState handles GET /api/onboarding/state. Admin-only,
