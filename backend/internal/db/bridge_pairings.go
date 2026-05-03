@@ -455,19 +455,50 @@ func (s *Store) ClearConfirmationCode(host, agent string) error {
 	return err
 }
 
-// IncrementConfirmationAttempts bumps the per-row attempts counter and
-// returns the new value. Callers compare against MaxConfirmationAttempts
-// to decide whether to auto-reject.
-func (s *Store) IncrementConfirmationAttempts(host, agent string) (int, error) {
-	if _, err := s.DB.Exec(`
-		UPDATE bridge_pairings SET confirmation_attempts = confirmation_attempts + 1
-		WHERE host = ? AND agent = ?
-	`, host, agent); err != nil {
-		return 0, err
+// ConsumeConfirmationAttempt atomically reserves one brute-force slot.
+// Returns:
+//
+//	(newAttempts, true, nil)  — slot consumed, current count is newAttempts
+//	(0, false, nil)           — cap already reached or row gone (caller treats both as auto-reject)
+//	(0, false, err)           — storage error
+//
+// The atomic UPDATE-with-cap is critical for the rate limit: without it,
+// concurrent /approve requests can all read attempts < max, all execute
+// their constant-time compare (each one a brute-force probe), and only
+// afterward increment. Net effect would be parallelism-bounded brute
+// force, not 5-bounded. The WHERE confirmation_attempts < ? clause
+// serializes the increments through SQLite's row locks: any request
+// that finds the cap reached gets RowsAffected==0 and bails before
+// touching the cryptographic compare path.
+//
+// Callers MUST consume an attempt slot BEFORE doing the constant-time
+// compare. A successful match should follow with ClearConfirmationCode
+// to reset the counter for any future code mint.
+func (s *Store) ConsumeConfirmationAttempt(host, agent string) (newAttempts int, ok bool, err error) {
+	res, err := s.DB.Exec(`
+		UPDATE bridge_pairings
+		   SET confirmation_attempts = confirmation_attempts + 1
+		 WHERE host = ? AND agent = ?
+		   AND confirmation_attempts < ?
+	`, host, agent, MaxConfirmationAttempts)
+	if err != nil {
+		return 0, false, err
 	}
-	var n int
-	err := s.DB.QueryRow(`SELECT confirmation_attempts FROM bridge_pairings WHERE host = ? AND agent = ?`, host, agent).Scan(&n)
-	return n, err
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		// Cap already reached, OR the row disappeared (race with reject).
+		// Either way the caller should treat this as auto-reject.
+		return 0, false, nil
+	}
+	// Read back the post-increment value so the handler can format
+	// "<n>/<max>" feedback for the operator.
+	if err := s.DB.QueryRow(
+		`SELECT confirmation_attempts FROM bridge_pairings WHERE host = ? AND agent = ?`,
+		host, agent,
+	).Scan(&newAttempts); err != nil {
+		return 0, true, err
+	}
+	return newAttempts, true, nil
 }
 
 // AllBridgePairings returns every bridge row for the dashboard.

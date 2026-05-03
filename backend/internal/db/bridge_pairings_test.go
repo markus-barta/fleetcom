@@ -142,6 +142,54 @@ func TestSetGatewayPosture_UnknownName(t *testing.T) {
 	}
 }
 
+// QA-AUDIT — atomic rate-limit slot consumption. Concurrent /approve
+// requests must not be able to all probe the cap; the DB-side bound on
+// the UPDATE keeps brute-force at 5 even with N parallel callers.
+func TestConsumeConfirmationAttempt_CapEnforced(t *testing.T) {
+	store := newTestStore(t)
+	if err := store.RegisterBridge("dsc0", "merlin", "abcd1234", "PEM"); err != nil {
+		t.Fatalf("RegisterBridge: %v", err)
+	}
+
+	// 5 successive consumes succeed and report 1..5.
+	for want := 1; want <= MaxConfirmationAttempts; want++ {
+		got, ok, err := store.ConsumeConfirmationAttempt("dsc0", "merlin")
+		if err != nil {
+			t.Fatalf("attempt %d: err=%v", want, err)
+		}
+		if !ok {
+			t.Fatalf("attempt %d: ok=false (cap reached too early)", want)
+		}
+		if got != want {
+			t.Fatalf("attempt %d: counter=%d want %d", want, got, want)
+		}
+	}
+
+	// 6th must report cap reached.
+	n, ok, err := store.ConsumeConfirmationAttempt("dsc0", "merlin")
+	if err != nil {
+		t.Fatalf("6th attempt err=%v", err)
+	}
+	if ok {
+		t.Fatalf("6th attempt: ok=true (cap not enforced); n=%d", n)
+	}
+	if n != 0 {
+		t.Fatalf("6th attempt: expected n=0 on capped, got %d", n)
+	}
+}
+
+func TestConsumeConfirmationAttempt_NoRow(t *testing.T) {
+	store := newTestStore(t)
+	// No RegisterBridge — row doesn't exist.
+	_, ok, err := store.ConsumeConfirmationAttempt("ghost", "ocean")
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if ok {
+		t.Fatalf("ok=true on missing row (caller would treat as a probe)")
+	}
+}
+
 func TestSetGatewayPosture_NoSuchHost(t *testing.T) {
 	store := newTestStore(t)
 	// No seedGateway — host has no row.

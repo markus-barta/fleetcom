@@ -563,23 +563,45 @@ func ApproveBridge(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 				http.Error(w, "no active confirmation code — wait for the bridge to re-register", http.StatusGone)
 				return
 			}
-			if cc.Attempts >= db.MaxConfirmationAttempts {
-				_ = store.DeleteBridgePairing(host, agent)
-				broadcastBridges(store, hub)
-				http.Error(w, "too many confirmation attempts — pairing auto-rejected, bridge must re-register", http.StatusGone)
-				return
-			}
 			if cc.ExpiresAt != "" {
 				if t, perr := time.Parse(time.RFC3339, cc.ExpiresAt); perr == nil && time.Now().UTC().After(t) {
 					http.Error(w, "confirmation code expired — wait for the bridge to re-register", http.StatusGone)
 					return
 				}
 			}
+
+			// QA-AUDIT-FIX: consume one brute-force slot ATOMICALLY before
+			// the constant-time compare. Without this, N concurrent /approve
+			// requests with N different bad codes would all read attempts<5,
+			// all run the CTC (each a brute-force probe), and only afterward
+			// increment — making the effective rate limit parallelism-bound
+			// instead of 5/5. The DB-side `WHERE confirmation_attempts < ?`
+			// clause is the serialization point.
+			newAttempts, ok, err := store.ConsumeConfirmationAttempt(host, agent)
+			if err != nil {
+				log.Printf("warn: consume confirmation attempt %s/%s: %v", host, agent, err)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			if !ok {
+				// Cap already reached, OR row gone — auto-reject either way.
+				if err := store.DeleteBridgePairing(host, agent); err != nil {
+					log.Printf("warn: delete bridge pairing %s/%s after cap reached: %v", host, agent, err)
+				}
+				broadcastBridges(store, hub)
+				http.Error(w, "too many confirmation attempts — pairing auto-rejected, bridge must re-register", http.StatusGone)
+				return
+			}
+
 			expected := confirmationCodeHash(body.Code, cc.PubkeyFP)
 			if subtle.ConstantTimeCompare([]byte(expected), []byte(cc.Hash)) != 1 {
-				newAttempts, _ := store.IncrementConfirmationAttempts(host, agent)
+				// Mismatch — the slot has already been consumed. If that
+				// consumption put us at the cap, auto-reject; else surface
+				// the count to the operator as "X/N attempts".
 				if newAttempts >= db.MaxConfirmationAttempts {
-					_ = store.DeleteBridgePairing(host, agent)
+					if err := store.DeleteBridgePairing(host, agent); err != nil {
+						log.Printf("warn: delete bridge pairing %s/%s at cap: %v", host, agent, err)
+					}
 					broadcastBridges(store, hub)
 					http.Error(w, "too many confirmation attempts — pairing auto-rejected, bridge must re-register", http.StatusGone)
 					return
@@ -587,8 +609,11 @@ func ApproveBridge(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 				http.Error(w, fmt.Sprintf("confirmation code mismatch (%d/%d attempts)", newAttempts, db.MaxConfirmationAttempts), http.StatusUnauthorized)
 				return
 			}
-			// Match — clear the code so it cannot be replayed, then approve.
-			_ = store.ClearConfirmationCode(host, agent)
+			// Match — clear the code (also resets the attempts counter)
+			// so it cannot be replayed, then approve.
+			if err := store.ClearConfirmationCode(host, agent); err != nil {
+				log.Printf("warn: clear confirmation code %s/%s: %v", host, agent, err)
+			}
 		}
 
 		if err := store.MarkBridgeApprovedManual(host, agent); err != nil {
