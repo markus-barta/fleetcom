@@ -82,6 +82,26 @@ func Events(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 				fmt.Fprintf(w, "event: agents\ndata: %s\n\n", data)
 			}
 		}
+
+		// FLEET-111 hotfix: initial gateways + bridges snapshot for admins.
+		// Without this, the dashboard's gatewayForHost() and the FLEET-112
+		// pending-pair pill stay empty until either (a) an admin mutation
+		// triggers a broadcast, or (b) the openclaw manager reconcile loop
+		// fires (every 2 minutes). FLEET-377 stripped the page-init load and
+		// expected SSE deltas to fill the gap, but never wired up the initial
+		// snapshot on this endpoint — first-paint was always blank for
+		// gateway-related state. Restoring the same pattern as `hosts`/`agents`.
+		if isAdmin {
+			if gws, err := store.AllGateways(); err == nil {
+				data, _ := json.Marshal(gws)
+				fmt.Fprintf(w, "event: gateways\ndata: %s\n\n", data)
+			}
+			if bs, err := store.AllBridgePairings(); err == nil {
+				data, _ := json.Marshal(bs)
+				fmt.Fprintf(w, "event: bridges\ndata: %s\n\n", data)
+			}
+		}
+
 		flusher.Flush()
 
 		// Subscribe to updates
