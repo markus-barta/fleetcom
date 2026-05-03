@@ -13,6 +13,25 @@ const (
 	rateLimitMaxAttempts = 5
 )
 
+// scopeMaxAttempts overrides rateLimitMaxAttempts per scope. Scopes not
+// listed here use the default. Bumping a single scope is preferable to
+// raising the global default because it leaves browser-auth thresholds
+// untouched — they're tighter on purpose.
+var scopeMaxAttempts = map[string]int{
+	// FLEET-79: programmatic agents may legitimately retry more often than
+	// a human typing a password (token rotation, network blips, race with
+	// revocation). 10/10min is still well below brute-force territory for
+	// a 256-bit-equivalent token.
+	"api-token-auth": 10,
+}
+
+func maxAttemptsFor(scope string) int {
+	if v, ok := scopeMaxAttempts[scope]; ok {
+		return v
+	}
+	return rateLimitMaxAttempts
+}
+
 type rateLimitEntry struct {
 	Count       int
 	WindowStart time.Time
@@ -45,7 +64,7 @@ func AllowAttempt(scope string, r *http.Request, identity string) (bool, time.Du
 			delete(limiter.entries, key)
 			continue
 		}
-		if e.Count >= rateLimitMaxAttempts {
+		if e.Count >= maxAttemptsFor(scope) {
 			retryAfter := rateLimitWindow - now.Sub(e.WindowStart)
 			return false, retryAfter
 		}

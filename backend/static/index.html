@@ -3529,7 +3529,7 @@
                         <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'sharing' && 'active'" @click="settingsTab = 'sharing'; loadShares()">Sharing</button>
                         <button class="settings-tab" :class="settingsTab === 'ignored' && 'active'" @click="settingsTab = 'ignored'; loadIgnoredList()">Ignored</button>
                         <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'config' && 'active'" @click="settingsTab = 'config'">Config</button>
-                        <button class="settings-tab" :class="settingsTab === 'account' && 'active'" @click="settingsTab = 'account'; loadMySessions()">Account</button>
+                        <button class="settings-tab" :class="settingsTab === 'account' && 'active'" @click="settingsTab = 'account'; loadMySessions(); loadApiTokens()">Account</button>
                         <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'users' && 'active'" @click="settingsTab = 'users'; loadUsers()">Users</button>
                         <!-- FLEET-377: Settings → Gateways and Bridges tabs removed.
                              Pair / Unpair / auto-approve / Deploy agent-bridge / Revoke
@@ -3850,6 +3850,88 @@
                                     <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem" x-show="!s.current" @click="revokeSession(s.id)">Revoke</button>
                                 </div>
                             </template>
+
+                            <!-- FLEET-79: User-issued API tokens (read-only programmatic access). -->
+                            <h3 style="margin:2rem 0 0.5rem;color:var(--ink-dim)">API Tokens</h3>
+                            <p style="font-size:0.8rem;color:var(--ink-ghost);margin-bottom:1rem;line-height:1.5">
+                                Read-only bearer tokens for programmatic access (e.g. agents querying the fleet inventory).
+                                Inherits this account's host-access scope. Use:
+                                <code style="font-size:0.75rem;background:var(--bg-card,rgba(127,127,127,0.08));padding:0.1rem 0.3rem;border-radius:3px">curl&nbsp;-H&nbsp;'Authorization:&nbsp;Bearer&nbsp;fleet_pat_…'</code>
+                            </p>
+
+                            <template x-if="apiTokens.length === 0">
+                                <p style="color:var(--ink-dim);font-size:0.875rem;margin-bottom:1rem">No API tokens yet.</p>
+                            </template>
+                            <template x-if="apiTokens.length > 0">
+                                <table style="width:100%;border-collapse:collapse;font-size:0.8rem;margin-bottom:1.5rem">
+                                    <thead>
+                                        <tr style="border-bottom:1px solid var(--border);text-align:left;color:var(--ink-dim)">
+                                            <th style="padding:0.4rem 0.5rem">Label</th>
+                                            <th style="padding:0.4rem 0.5rem">Prefix</th>
+                                            <th style="padding:0.4rem 0.5rem">Scopes</th>
+                                            <th style="padding:0.4rem 0.5rem">Last used</th>
+                                            <th style="padding:0.4rem 0.5rem">Expires</th>
+                                            <th style="padding:0.4rem 0.5rem"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <template x-for="t in apiTokens" :key="t.id">
+                                            <tr style="border-bottom:1px solid var(--border)">
+                                                <td style="padding:0.4rem 0.5rem" x-text="t.label"></td>
+                                                <td style="padding:0.4rem 0.5rem;font-family:monospace;color:var(--ink-dim)" x-text="t.prefix + '…'"></td>
+                                                <td style="padding:0.4rem 0.5rem">
+                                                    <template x-for="sc in (t.scopes || [])" :key="sc">
+                                                        <span style="display:inline-block;font-size:0.7rem;background:var(--bg-card,rgba(127,127,127,0.08));border:1px solid var(--border);padding:0.05rem 0.35rem;border-radius:3px;margin-right:0.2rem;font-family:monospace" x-text="sc"></span>
+                                                    </template>
+                                                </td>
+                                                <td style="padding:0.4rem 0.5rem;color:var(--ink-dim)" x-text="t.last_used_at ? formatAgo(t.last_used_at) : '—'"></td>
+                                                <td style="padding:0.4rem 0.5rem;color:var(--ink-dim)" x-text="t.expires_at ? new Date(t.expires_at).toLocaleDateString() : 'never'"></td>
+                                                <td style="padding:0.4rem 0.5rem;text-align:right">
+                                                    <button class="btn" style="font-size:0.7rem;padding:0.2rem 0.5rem;background:var(--crit);color:#fff" @click="revokeApiToken(t)">Revoke</button>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </template>
+
+                            <h4 style="margin:1rem 0 0.5rem;color:var(--ink-dim);font-size:0.85rem">Create token</h4>
+                            <div style="display:flex;flex-direction:column;gap:0.6rem;max-width:520px">
+                                <input type="text" x-model="newApiTokenLabel" placeholder="Label (e.g. 'agents@dsc0')" maxlength="128"
+                                       style="padding:0.45rem 0.6rem;background:var(--bg-card,rgba(127,127,127,0.08));border:1px solid var(--border);border-radius:4px;color:var(--ink);font-size:0.85rem">
+                                <div style="display:flex;flex-wrap:wrap;gap:0.5rem;font-size:0.8rem">
+                                    <template x-for="sc in apiScopeOptions" :key="sc">
+                                        <label style="display:inline-flex;align-items:center;gap:0.3rem;cursor:pointer;font-family:monospace">
+                                            <input type="checkbox" :value="sc" x-model="newApiTokenScopes">
+                                            <span x-text="sc"></span>
+                                        </label>
+                                    </template>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:0.5rem">
+                                    <label style="font-size:0.8rem;color:var(--ink-dim)">Expires:</label>
+                                    <select x-model="newApiTokenExpiry"
+                                            style="padding:0.4rem 0.5rem;background:var(--bg-card,rgba(127,127,127,0.08));border:1px solid var(--border);border-radius:4px;color:var(--ink);font-size:0.8rem">
+                                        <option value="1d">24 hours</option>
+                                        <option value="30d">30 days</option>
+                                        <option value="90d">90 days</option>
+                                        <option value="365d">1 year</option>
+                                        <option value="never">Never</option>
+                                    </select>
+                                </div>
+                                <!-- GitHub-style warning when "Never" selected. -->
+                                <template x-if="newApiTokenExpiry === 'never'">
+                                    <div style="border-left:3px solid #d29922;background:rgba(210,153,34,0.08);padding:0.6rem 0.75rem;border-radius:3px;font-size:0.78rem;line-height:1.5;color:var(--ink)">
+                                        <strong style="color:#d29922">⚠ Tokens that never expire are strongly discouraged.</strong>
+                                        If this token is leaked, an attacker has indefinite access to your account's host scope.
+                                        Always set an expiry unless you have a documented operational reason not to.
+                                    </div>
+                                </template>
+                                <div>
+                                    <button class="btn btn-primary"
+                                            :disabled="!newApiTokenLabel.trim() || newApiTokenScopes.length === 0"
+                                            @click="createApiToken()">Create token</button>
+                                </div>
+                            </div>
                         </div>
                     </template>
 
@@ -4950,6 +5032,35 @@ WantedBy=multi-user.target</pre>
             </div>
         </div>
     </div>
+    <!-- FLEET-79: copy-once modal for the plaintext value of a freshly minted
+         API token. The plaintext lives only in apiTokenJustCreated.value;
+         dismissing the modal clears it from memory. -->
+    <div x-show="apiTokenJustCreated" x-cloak
+         @keydown.escape.window="apiTokenJustCreated = null"
+         class="modal-backdrop"
+         style="display:none">
+        <div class="modal-card" @click.stop style="max-width:560px">
+            <div class="modal-title" style="color:var(--ok);">API token created</div>
+            <p style="font-size:11px;color:var(--ink-dim);line-height:1.5;">
+                Copy this token now — it will not be shown again. If you lose it,
+                revoke it and create a new one.
+            </p>
+            <code x-text="apiTokenJustCreated && apiTokenJustCreated.value"
+                  @click="apiTokenJustCreated && copyToClipboard(apiTokenJustCreated.value, 'Token copied to clipboard')"
+                  title="Click to copy"
+                  style="display:block;margin:0.6rem 0;padding:0.6rem 0.75rem;background:var(--bg-0);border:1px solid var(--line);border-radius:3px;font-size:0.8rem;word-break:break-all;cursor:pointer;user-select:all;color:var(--accent);"></code>
+            <p style="font-size:10px;color:var(--ink-ghost);margin-top:0.3rem;">
+                Use with: <code style="font-size:0.7rem">curl -H 'Authorization: Bearer &lt;token&gt;' https://&lt;host&gt;/api/hosts</code>
+            </p>
+            <div class="modal-actions">
+                <button class="btn btn-ghost"
+                        @click="apiTokenJustCreated && copyToClipboard(apiTokenJustCreated.value, 'Token copied to clipboard')">Copy</button>
+                <button class="btn btn-primary"
+                        @click="apiTokenJustCreated = null">Done</button>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/lucide.min.js"></script>
     <script src="/static/alpine.min.js" defer></script>
     <script>
@@ -5053,6 +5164,15 @@ WantedBy=multi-user.target</pre>
                 pwCurrent: '', pwNew: '', pwMsg: '',
                 totpSetup: null, totpCode: '', totpDisablePw: '',
                 mySessions: [],
+                // FLEET-79: user-issued API tokens (Account tab).
+                apiTokens: [],
+                apiScopeOptions: ['read:hosts', 'read:agents', 'read:hardware'],
+                newApiTokenLabel: '',
+                newApiTokenScopes: ['read:hosts'],
+                newApiTokenExpiry: '90d',
+                // Holds {value} for the freshly minted token, or null. Plaintext
+                // value lives only in this field and is cleared on dismiss.
+                apiTokenJustCreated: null,
                 usersList: [],
                 newUserEmail: '', newUserPassword: '', newUserRole: 'user',
                 selectedUser: null, selectedUserHosts: [], allHostsList: [],
@@ -5304,6 +5424,63 @@ WantedBy=multi-user.target</pre>
                         await fetch('/api/auth/sessions/' + id, { method: 'DELETE' });
                         await this.loadMySessions();
                     } catch (_) {}
+                },
+
+                // FLEET-79: API token CRUD.
+                async loadApiTokens() {
+                    try {
+                        const res = await fetch('/api/auth/api-tokens');
+                        if (res.ok) this.apiTokens = await res.json() || [];
+                    } catch (_) {}
+                },
+
+                apiTokenExpiresAtISO() {
+                    if (this.newApiTokenExpiry === 'never') return null;
+                    const m = /^(\d+)d$/.exec(this.newApiTokenExpiry);
+                    if (!m) return null;
+                    const days = parseInt(m[1], 10);
+                    const t = new Date(Date.now() + days * 86400 * 1000);
+                    return t.toISOString();
+                },
+
+                async createApiToken() {
+                    const label = this.newApiTokenLabel.trim();
+                    if (!label) { this.toast('Label is required', 'err'); return; }
+                    if (this.newApiTokenScopes.length === 0) { this.toast('Pick at least one scope', 'err'); return; }
+                    try {
+                        const res = await fetch('/api/auth/api-tokens', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                label,
+                                scopes: this.newApiTokenScopes,
+                                expires_at: this.apiTokenExpiresAtISO(),
+                            }),
+                        });
+                        if (!res.ok) {
+                            this.toast(await res.text() || 'Create failed', 'err');
+                            return;
+                        }
+                        const created = await res.json();
+                        this.apiTokenJustCreated = { value: created.token };
+                        this.newApiTokenLabel = '';
+                        this.newApiTokenScopes = ['read:hosts'];
+                        this.newApiTokenExpiry = '90d';
+                        await this.loadApiTokens();
+                    } catch (_) { this.toast('Network error', 'err'); }
+                },
+
+                async revokeApiToken(t) {
+                    if (!confirm("Revoke token '" + t.label + "' (" + t.prefix + "…)? This cannot be undone.")) return;
+                    try {
+                        const res = await fetch('/api/auth/api-tokens/' + t.id, { method: 'DELETE' });
+                        if (res.ok || res.status === 204) {
+                            this.toast('Token revoked');
+                            await this.loadApiTokens();
+                        } else {
+                            this.toast(await res.text() || 'Revoke failed', 'err');
+                        }
+                    } catch (_) { this.toast('Network error', 'err'); }
                 },
 
                 async loadUsers() {

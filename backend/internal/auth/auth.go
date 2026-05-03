@@ -161,8 +161,15 @@ func (a *Auth) HandleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 // RequireSession is middleware that validates the session and puts the user in context.
+// FLEET-79: when MaybeAPIToken has already authenticated the request via a
+// fleet_pat_ token, this middleware short-circuits — the user is already
+// attached to the context and there's no cookie to validate.
 func (a *Auth) RequireSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if IsAPITokenAuth(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		cookie, err := r.Cookie(sessionCookie)
 		if err != nil {
 			http.Redirect(w, r, "/login", http.StatusSeeOther)
@@ -183,8 +190,16 @@ func (a *Auth) RequireSession(next http.Handler) http.Handler {
 // RequireTOTP is middleware that enforces TOTP setup.
 // Users without TOTP enabled are redirected to the setup page.
 // API requests get a 403 with a JSON hint.
+// FLEET-79: API-token-authenticated requests bypass this — TOTP is a
+// browser-session concern, and the user already proved possession via
+// the bearer token (which itself can only be created from a TOTP'd
+// session).
 func RequireTOTP(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if IsAPITokenAuth(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		u := GetUser(r)
 		if u != nil && !u.TOTPEnabled {
 			if strings.HasPrefix(r.URL.Path, "/api/") {
