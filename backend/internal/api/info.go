@@ -188,6 +188,8 @@ var EndpointCatalog = []EndpointInfo{
 		Description: "All registered agent-bridges."},
 	{Method: "DELETE", Path: "/api/bridges/{host}/{agent}", Auth: []string{"session"}, RequiresAdmin: true,
 		Description: "Revoke a bridge pairing."},
+	{Method: "GET", Path: "/api/bridges/suggestions/{host}", Auth: []string{"session"}, RequiresAdmin: true,
+		Description: "Smart-suggestion chip rails for the bridge-deploy modal: ON THIS HOST (existing bridges + heartbeat agents), SEEN IN YOUR FLEET (top 3 by frequency), COMMON DEFAULTS (merlin/nimue/percival). Cached 60s per host."},
 
 	// ---------- Admin: bosun command channel (FLEET-60) ----------
 	{Method: "POST", Path: "/api/hosts/{host}/commands", Auth: []string{"session"}, RequiresAdmin: true,

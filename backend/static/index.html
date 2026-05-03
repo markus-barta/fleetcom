@@ -5188,43 +5188,141 @@ WantedBy=multi-user.target</pre>
     <!-- FLEET-369.1: hostname-confirm modal for host.reboot. The destructive
          action requires the operator to type the hostname exactly — same
          pattern as `git push --force` to a release branch. -->
-    <!-- FLEET-100: deploy agent-bridge modal. Replaces the old hardcoded
-         `merlin,nimue` prompt(). Default agent names are derived from
-         existing bridges first, then heartbeat agents, then empty. -->
+    <!-- FLEET-100 + FLEET-109: deploy agent-bridge modal. The original
+         single text input is replaced with three additive chip rails
+         (ON THIS HOST / SEEN IN YOUR FLEET / COMMON DEFAULTS) populated
+         from /api/bridges/suggestions/{host}. Free-text input below for
+         one-offs; the union of selected chips + custom names goes to
+         the bridge.install command. -->
+    <style>
+        .chip-rails { display: flex; flex-direction: column; gap: 0.55rem; margin-top: 0.6rem; }
+        .chip-rail-label { font-size: 9px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-ghost); margin-bottom: 0.2rem; }
+        .chip-rail-row { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+        .agent-chip {
+            background: transparent;
+            border: 1px solid var(--line-2);
+            color: var(--ink-dim);
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+            font-size: 11px;
+            padding: 0.2rem 0.55rem;
+            cursor: pointer;
+            line-height: 1.3;
+            display: inline-flex;
+            align-items: baseline;
+            gap: 0.3rem;
+        }
+        .agent-chip:hover { border-color: var(--ink-dim); color: var(--ink); }
+        .agent-chip.is-on { border-color: var(--accent); color: var(--accent); background: rgba(106, 176, 255, 0.06); }
+        .agent-chip-marker { color: var(--ink-ghost); font-weight: 600; }
+        .agent-chip.is-on .agent-chip-marker { color: var(--accent); }
+        .selected-summary {
+            display: flex; flex-wrap: wrap; gap: 0.3rem;
+            margin-top: 0.6rem; padding-top: 0.5rem;
+            border-top: 1px solid var(--line);
+            font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px;
+            min-height: 1.6em;
+        }
+        .selected-summary-label { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-ghost); margin-right: 0.2rem; padding-top: 2px; }
+        .selected-pill { color: var(--accent); padding: 0.05rem 0.25rem; border-bottom: 1px solid var(--accent); }
+        .add-custom-row { display: flex; gap: 0.4rem; margin-top: 0.5rem; align-items: center; }
+        .add-custom-row .modal-input { margin-top: 0; }
+        .add-custom-row .add-custom-btn {
+            background: transparent;
+            border: 1px solid var(--line-2);
+            color: var(--ink-dim);
+            font-family: inherit; font-size: 10px;
+            letter-spacing: 0.06em; text-transform: uppercase;
+            padding: 0.3rem 0.6rem; cursor: pointer; white-space: nowrap;
+        }
+        .add-custom-row .add-custom-btn:hover { border-color: var(--accent); color: var(--accent); }
+    </style>
     <div x-show="bridgeDeploy.host" x-cloak
-         @keydown.escape.window="bridgeDeploy.host = ''; bridgeDeploy.names = ''; bridgeDeploy.source = ''"
+         @keydown.escape.window="closeBridgeDeploy()"
          class="modal-backdrop"
          style="display:none">
-        <div class="modal-card" @click.stop>
+        <div class="modal-card" @click.stop style="max-width:520px;">
             <div class="modal-title" style="color:var(--accent);">Deploy agent-bridge</div>
             <p style="font-size:11px;color:var(--ink-dim);line-height:1.5;">
                 The agent-bridge container will run on <strong x-text="bridgeDeploy.host"></strong>
                 and relay AI agent activity from the local OpenClaw gateway.
                 Needs a paired gateway with auto-approve on; otherwise registration is a no-op.
             </p>
-            <p style="font-size:10px;color:var(--ink-ghost);margin-top:0.6rem;">
-                AI agent names to relay (comma-separated):
-            </p>
-            <input type="text" class="modal-input"
-                   x-model="bridgeDeploy.names"
-                   placeholder="e.g. merlin, nimue, percival"
-                   @keydown.enter="(bridgeDeploy.names || '').trim() && submitBridgeDeploy()"
-                   x-init="$watch('bridgeDeploy.host', v => { if (v) $nextTick(() => $el.focus()); })">
-            <p style="font-size:9px;color:var(--ink-ghost);margin-top:0.3rem;font-style:italic;">
-                <template x-if="bridgeDeploy.source === 'bridges'">
-                    <span>Pre-filled from existing bridges on this host (redeploy or add).</span>
+
+            <div class="chip-rails">
+                <template x-if="bridgeDeploy.suggestions.on_host && bridgeDeploy.suggestions.on_host.length">
+                    <div>
+                        <div class="chip-rail-label">On this host</div>
+                        <div class="chip-rail-row">
+                            <template x-for="name in bridgeDeploy.suggestions.on_host" :key="'h:'+name">
+                                <button type="button" class="agent-chip" :class="bridgeDeploy.selected.includes(name) ? 'is-on' : ''" @click="toggleBridgeChip(name)">
+                                    <span class="agent-chip-marker" x-text="bridgeDeploy.selected.includes(name) ? '×' : '+'"></span>
+                                    <span x-text="name"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
                 </template>
-                <template x-if="bridgeDeploy.source === 'agents'">
-                    <span>Pre-filled from <code>FLEETCOM_AGENTS</code> in bosun's heartbeat.</span>
+                <template x-if="bridgeDeploy.suggestions.in_fleet && bridgeDeploy.suggestions.in_fleet.length">
+                    <div>
+                        <div class="chip-rail-label">Seen in your fleet</div>
+                        <div class="chip-rail-row">
+                            <template x-for="name in bridgeDeploy.suggestions.in_fleet" :key="'f:'+name">
+                                <button type="button" class="agent-chip" :class="bridgeDeploy.selected.includes(name) ? 'is-on' : ''" @click="toggleBridgeChip(name)">
+                                    <span class="agent-chip-marker" x-text="bridgeDeploy.selected.includes(name) ? '×' : '+'"></span>
+                                    <span x-text="name"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
                 </template>
-                <template x-if="bridgeDeploy.source === 'none'">
-                    <span>No agents detected — type the names manually.</span>
+                <template x-if="bridgeDeploy.suggestions.defaults && bridgeDeploy.suggestions.defaults.length">
+                    <div>
+                        <div class="chip-rail-label">Common defaults</div>
+                        <div class="chip-rail-row">
+                            <template x-for="name in bridgeDeploy.suggestions.defaults" :key="'d:'+name">
+                                <button type="button" class="agent-chip" :class="bridgeDeploy.selected.includes(name) ? 'is-on' : ''" @click="toggleBridgeChip(name)">
+                                    <span class="agent-chip-marker" x-text="bridgeDeploy.selected.includes(name) ? '×' : '+'"></span>
+                                    <span x-text="name"></span>
+                                </button>
+                            </template>
+                        </div>
+                    </div>
                 </template>
-            </p>
+                <!-- Empty-empty state: no suggestions at all (suggestions still loading or fleet truly empty) -->
+                <template x-if="!bridgeDeploy.suggestions.on_host?.length && !bridgeDeploy.suggestions.in_fleet?.length && !bridgeDeploy.suggestions.defaults?.length">
+                    <p style="font-size:10px;color:var(--ink-ghost);font-style:italic;">
+                        No suggestions yet — type names below.
+                        <a href="https://github.com/markus-barta/fleetcom/blob/main/docs/AGENT-BRIDGE-PAIRING.md" target="_blank" rel="noopener" style="color:var(--accent);">docs</a>
+                    </p>
+                </template>
+            </div>
+
+            <div class="add-custom-row">
+                <input type="text" class="modal-input"
+                       x-model="bridgeDeploy.custom"
+                       placeholder="add custom name…"
+                       @keydown.enter.prevent="addBridgeCustom()"
+                       style="flex:1;">
+                <button type="button" class="add-custom-btn"
+                        :disabled="!bridgeDeploy.custom.trim()"
+                        @click="addBridgeCustom()">+ ADD</button>
+            </div>
+
+            <div class="selected-summary">
+                <span class="selected-summary-label">Selected</span>
+                <template x-if="bridgeDeploy.selected.length === 0">
+                    <span style="color:var(--ink-ghost);font-style:italic;">none yet</span>
+                </template>
+                <template x-for="name in bridgeDeploy.selected" :key="'sel:'+name">
+                    <span class="selected-pill" x-text="name"></span>
+                </template>
+            </div>
+
             <div class="modal-actions">
-                <button class="btn btn-ghost" @click="bridgeDeploy.host = ''; bridgeDeploy.names = ''; bridgeDeploy.source = ''">Cancel</button>
+                <button class="btn btn-ghost" @click="closeBridgeDeploy()">Cancel</button>
                 <button class="btn btn-primary"
-                        :disabled="!(bridgeDeploy.names || '').trim()"
+                        :disabled="bridgeDeploy.selected.length === 0 || !!pending['submitBridgeDeploy:'+bridgeDeploy.host]"
+                        :data-pending="!!pending['submitBridgeDeploy:'+bridgeDeploy.host]"
                         @click="submitBridgeDeploy()">Deploy</button>
             </div>
         </div>
@@ -5349,7 +5447,10 @@ WantedBy=multi-user.target</pre>
                 // FLEET-100: state for the agent-bridge deploy modal. `source`
                 // is one of '' | 'bridges' | 'agents' | 'none' so the UI can
                 // tell the operator where the suggested names came from.
-                bridgeDeploy: { host: '', names: '', source: '' },
+                // FLEET-109: bridge-deploy modal state. selected[] is the
+                // canonical list of agent names that will be sent on Deploy.
+                // suggestions are filled by deployBridge() from the server.
+                bridgeDeploy: { host: '', selected: [], custom: '', suggestions: { on_host: [], in_fleet: [], defaults: [] } },
                 // FLEET-102: drag-to-resize state. `side` is one of
                 // '' | 'host' | 'activity' | 'agent'. When non-empty, a
                 // pointermove handler is updating the matching CSS var.
@@ -7632,49 +7733,95 @@ WantedBy=multi-user.target</pre>
                     return (this.bridges || []).some(b => b.host === host);
                 },
 
-                // FLEET-63 / FLEET-100: open the deploy-bridge modal.
-                // Defaults are derived in priority order:
-                //   1. existing bridges on this host (redeploy / add)
-                //   2. heartbeat agents reported via FLEETCOM_AGENTS
-                //   3. empty (operator types names manually)
-                deployBridge(host) {
-                    const existingBridges = this.bridgesForHost(host) || [];
-                    const heartbeatAgents = ((this.hostByName(host) || {}).agents) || [];
-                    let names = '';
-                    let source = 'none';
-                    if (existingBridges.length > 0) {
-                        names = existingBridges.map(b => b.agent).filter(Boolean).join(',');
-                        source = 'bridges';
-                    } else if (heartbeatAgents.length > 0) {
-                        names = heartbeatAgents.map(a => a.name).filter(Boolean).join(',');
-                        source = 'agents';
-                    }
-                    this.bridgeDeploy = { host, names, source };
+                // FLEET-63 / FLEET-100 / FLEET-109: open the deploy-bridge modal.
+                // Renders three additive chip rails (ON THIS HOST / SEEN IN
+                // YOUR FLEET / COMMON DEFAULTS) populated from
+                // /api/bridges/suggestions/{host}. The "ON THIS HOST" rail
+                // pre-selects existing bridges (redeploy/add semantics).
+                async deployBridge(host) {
+                    // Reset modal state and open with empty suggestions
+                    // (rails render lazy as the fetch resolves).
+                    this.bridgeDeploy = {
+                        host,
+                        selected: [],
+                        custom: '',
+                        suggestions: { on_host: [], in_fleet: [], defaults: [] },
+                    };
+                    try {
+                        const res = await fetch('/api/bridges/suggestions/' + encodeURIComponent(host));
+                        if (res.ok) {
+                            const s = await res.json();
+                            // Pre-select existing bridges for this host (redeploy
+                            // semantics) — operator can deselect any they don't
+                            // want to keep.
+                            const preselect = (s.on_host || []).filter(n => {
+                                return (this.bridgesForHost(host) || []).some(b => b.agent === n);
+                            });
+                            this.bridgeDeploy = {
+                                ...this.bridgeDeploy,
+                                suggestions: {
+                                    on_host:  s.on_host  || [],
+                                    in_fleet: s.in_fleet || [],
+                                    defaults: s.defaults || [],
+                                },
+                                selected: preselect,
+                            };
+                        }
+                    } catch (_) {} // silent: pure background load — modal still usable with defaults
                 },
 
-                // FLEET-100: submit handler for the deploy-bridge modal —
-                // mirrors the original POST flow (bosun reuses its own
-                // FLEETCOM_TOKEN + FLEETCOM_URL env; params only carry
-                // agent_names).
+                toggleBridgeChip(name) {
+                    const i = this.bridgeDeploy.selected.indexOf(name);
+                    if (i === -1) {
+                        this.bridgeDeploy.selected = [...this.bridgeDeploy.selected, name];
+                    } else {
+                        this.bridgeDeploy.selected = this.bridgeDeploy.selected.filter((_, j) => j !== i);
+                    }
+                },
+
+                addBridgeCustom() {
+                    const raw = (this.bridgeDeploy.custom || '').trim();
+                    if (!raw) return;
+                    // Allow comma-separated paste
+                    const names = raw.split(',').map(s => s.trim()).filter(Boolean);
+                    let next = [...this.bridgeDeploy.selected];
+                    for (const n of names) {
+                        if (!next.includes(n)) next.push(n);
+                    }
+                    this.bridgeDeploy = { ...this.bridgeDeploy, selected: next, custom: '' };
+                },
+
+                closeBridgeDeploy() {
+                    this.bridgeDeploy = { host: '', selected: [], custom: '', suggestions: { on_host: [], in_fleet: [], defaults: [] } };
+                },
+
+                // FLEET-100 / FLEET-109: submit handler. Sends the union of
+                // selected chips + free-text entries as comma-separated
+                // agent_names to the bridge.install command. Goes through
+                // busy() so the operator gets the standard pending state +
+                // toast + activity-log entry.
                 async submitBridgeDeploy() {
                     const host = this.bridgeDeploy.host;
-                    const clean = (this.bridgeDeploy.names || '').trim();
-                    if (!host || !clean) return;
-                    this.bridgeDeploy = { host: '', names: '', source: '' };
-                    try {
-                        const res = await fetch('/api/hosts/' + encodeURIComponent(host) + '/commands', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ kind: 'bridge.install', params: { agent_names: clean } })
-                        });
-                        if (res.ok) {
+                    if (!host) return;
+                    // Fold any unsubmitted free-text into selected first
+                    if ((this.bridgeDeploy.custom || '').trim()) this.addBridgeCustom();
+                    const names = [...this.bridgeDeploy.selected];
+                    if (names.length === 0) return;
+                    const agent_names = names.join(',');
+                    return this.busy('submitBridgeDeploy:' + host, 'agent-bridge install enqueued — watching command list',
+                        async () => {
+                            const res = await fetch('/api/hosts/' + encodeURIComponent(host) + '/commands', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ kind: 'bridge.install', params: { agent_names } })
+                            });
+                            await this._checkRes(res, 'Deploy failed');
                             const body = await res.json();
-                            this.toast('agent-bridge install enqueued — watching command #' + body.id);
+                            this.closeBridgeDeploy();
                             this.openHostDrawer(host, 'commands');
-                        } else {
-                            this.toast('Deploy failed: ' + (await res.text()).slice(0, 120), 'err');
-                        }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                            return body;
+                        },
+                        { verb: 'EXEC', target: 'commands/' + host + ':bridge.install' });
                 },
 
                 async unpairGateway(host) {
