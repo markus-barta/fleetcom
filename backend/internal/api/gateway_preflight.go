@@ -26,9 +26,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -128,7 +128,9 @@ func GatewayPreflight(store *db.Store) http.HandlerFunc {
 		// (We *could* still try, but the operator's first action should
 		// be "register the host," not "stare at a connection error.")
 		if !contains(result.Blockers, blockerHostUnknown) {
-			addr := fmt.Sprintf("%s:%d", host, gatewayPort)
+			// JoinHostPort handles IPv6 bracketing (`[::1]:18789`) — vet
+			// flags the naive Sprintf %s:%d form for this reason.
+			addr := net.JoinHostPort(host, strconv.Itoa(gatewayPort))
 
 			// Plain TCP dial first — distinguishes "OpenClaw isn't
 			// running" from "OpenClaw is running but TLS is broken."
