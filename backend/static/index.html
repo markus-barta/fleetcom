@@ -4956,7 +4956,6 @@ WantedBy=multi-user.target</pre>
              :style="sparkTip ? ('left:' + sparkTip.x + 'px;top:' + sparkTip.y + 'px') : ''"
              x-text="sparkTip ? sparkTip.text : ''"
              style="display:none"></div>
-    </div>
 
     <div class="toast-container" id="toasts"></div>
 
@@ -5060,6 +5059,7 @@ WantedBy=multi-user.target</pre>
             </div>
         </div>
     </div>
+    </div><!-- /x-data — modals must live inside Alpine scope for x-show/x-cloak to work -->
 
     <script src="/static/lucide.min.js"></script>
     <script src="/static/alpine.min.js" defer></script>
