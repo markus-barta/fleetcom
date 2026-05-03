@@ -2581,6 +2581,120 @@
         .oplog-toggle:hover { color: var(--accent); border-color: var(--accent); }
         .oplog-toggle.is-active { color: var(--accent); border-color: var(--accent); }
         .oplog-toggle .oplog-toggle-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: 1px; opacity: 0.85; }
+        /* FLEET-112: header pair-request counter. Same shell as .oplog-toggle
+           but always amber so it reads as "needs attention". Hidden when 0. */
+        .pair-toggle {
+            background: var(--warn-bg);
+            border: 1px solid var(--warn-border);
+            color: var(--warn);
+            font-family: inherit;
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 0.25rem 0.6rem;
+            cursor: pointer;
+            position: relative;
+            animation: pair-pulse 2.4s ease-in-out infinite;
+        }
+        .pair-toggle:hover { color: var(--warn); border-color: var(--warn); filter: brightness(1.15); }
+        .pair-toggle.is-active { animation: none; box-shadow: 0 0 0 1px var(--warn) inset; }
+        .pair-toggle .pair-count {
+            display: inline-block;
+            background: var(--warn);
+            color: var(--bg-0);
+            font-weight: 700;
+            font-size: 10px;
+            padding: 0 5px;
+            border-radius: 2px;
+            margin-left: 6px;
+            line-height: 1.4;
+        }
+        @keyframes pair-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 184, 77, 0.0); }
+            50%      { box-shadow: 0 0 0 2px rgba(255, 184, 77, 0.18); }
+        }
+        /* FLEET-112: state-aware Integrations row — amber banner that
+           replaces the plain "+ Deploy" button when a pair request is
+           waiting. Same visual weight as the pair-toggle in the header
+           so the operator's eye lands on the same hue both places. */
+        .pair-banner {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            background: var(--warn-bg);
+            border: 1px solid var(--warn-border);
+            border-left: 3px solid var(--warn);
+            padding: 0.55rem 0.75rem;
+            margin-top: 0.35rem;
+            font-size: 11px;
+            color: var(--ink-dim);
+        }
+        .pair-banner .pair-banner-headline {
+            color: var(--warn);
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+        .pair-banner .pair-banner-spacer { flex: 1; }
+        .pair-banner .btn-review {
+            background: var(--warn);
+            color: var(--bg-0);
+            border: none;
+            font-family: inherit;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 0.35rem 0.85rem;
+            cursor: pointer;
+        }
+        .pair-banner .btn-review:hover { filter: brightness(1.1); }
+        .pair-banner .btn-review.is-on { background: var(--ink); color: var(--bg-0); }
+        /* Inline pending list. Each row is an Approve/Reject pair. */
+        .pair-list {
+            margin-top: 0.4rem;
+            border: 1px solid var(--warn-border);
+            background: rgba(0, 0, 0, 0.18);
+        }
+        .pair-list-head {
+            font-size: 9px;
+            color: var(--warn);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            padding: 0.4rem 0.7rem;
+            border-bottom: 1px solid var(--line);
+            background: var(--warn-bg);
+        }
+        .pair-row {
+            display: grid;
+            grid-template-columns: minmax(110px, 1.4fr) minmax(0, 2fr) minmax(0, 1fr) auto;
+            gap: 0.7rem;
+            align-items: center;
+            padding: 0.55rem 0.75rem;
+            border-bottom: 1px solid var(--line);
+            font-size: 11px;
+        }
+        .pair-row:last-child { border-bottom: none; }
+        .pair-row .pair-agent { color: var(--ink); font-weight: 600; }
+        .pair-row .pair-fp { color: var(--ink-dim); font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0.04em; }
+        .pair-row .pair-meta { color: var(--ink-faint); font-size: 10px; }
+        .pair-row .pair-meta .pair-gw-paired   { color: var(--ok); }
+        .pair-row .pair-meta .pair-gw-unpaired { color: var(--warn); }
+        .pair-row .pair-meta .pair-gw-revoked  { color: var(--crit); }
+        .pair-row .pair-acts { display: flex; gap: 0.4rem; }
+        .pair-row .pair-acts .btn { font-size: 10px; padding: 0.25rem 0.65rem; }
+        .pair-row .pair-acts .btn-approve { background: var(--ok); color: var(--bg-0); border: none; }
+        .pair-row .pair-acts .btn-reject  { background: transparent; color: var(--crit); border: 1px solid var(--crit); }
+        .pair-row .pair-acts .btn-approve:hover { filter: brightness(1.1); }
+        .pair-row .pair-acts .btn-reject:hover  { background: var(--crit); color: var(--bg-0); }
+        .pair-tofu-help {
+            padding: 0.45rem 0.75rem;
+            font-size: 10px;
+            color: var(--ink-faint);
+            border-top: 1px solid var(--line);
+            background: rgba(0, 0, 0, 0.12);
+        }
+        .pair-tofu-help strong { color: var(--ink-dim); }
         .drawer.drawer-agent.drawer-with-activity { right: min(var(--fc-drawer-activity-w), 100vw); }
         .drawer.is-pinned { box-shadow: none; }
         .drawer.drawer-host.with-activity-pinned { right: min(var(--fc-drawer-activity-w), 100vw); }
@@ -3085,6 +3199,18 @@
                         x-show="!shared && currentUser">
                     <span class="oplog-toggle-dot" x-show="oplogOpen"></span>
                     OP·LOG
+                </button>
+                <!-- FLEET-112: header pending-pair counter. Hidden when 0;
+                     amber pulse when >0. Admin-only — non-admins can't
+                     act on pair requests, so the affordance would be
+                     visual noise. -->
+                <button class="pair-toggle"
+                        :class="pairDrawerOpen ? 'is-active' : ''"
+                        @click="togglePairDrawer()"
+                        :title="'Pending bridge pair requests — ' + totalPendingCount() + ' waiting for review'"
+                        x-show="!shared && currentUser && currentUser.role === 'admin' && totalPendingCount() > 0">
+                    PAIR
+                    <span class="pair-count" x-text="totalPendingCount()"></span>
                 </button>
                 <button class="theme-toggle" @click="cycleTheme()" :title="'Theme: ' + theme" style="background:none;border:1px solid var(--ink-faint);border-radius:4px;padding:2px 6px;cursor:pointer;color:var(--ink-dim);font-size:11px;font-family:inherit">
                     <span x-text="theme === 'dark' ? '&#9790;' : theme === 'light' ? '&#9788;' : '&#9681;'"></span>
@@ -5039,9 +5165,9 @@ WantedBy=multi-user.target</pre>
                                 <div class="drawer-integ-row">
                                     <div style="min-width:0;">
                                         <div class="k">Agent-bridges</div>
-                                        <template x-if="bridgesForHost(hostDrawerKey).length > 0">
+                                        <template x-if="approvedBridgesForHost(hostDrawerKey).length > 0">
                                             <div class="v">
-                                                <template x-for="b in bridgesForHost(hostDrawerKey)" :key="b.agent">
+                                                <template x-for="b in approvedBridgesForHost(hostDrawerKey)" :key="b.agent">
                                                     <span style="display:inline-block;margin-right:0.5rem;">
                                                         <span x-text="b.agent"></span>
                                                         <span style="color:var(--ink-ghost)" x-text="' · ' + ((b.status) || 'unknown')"></span>
@@ -5051,7 +5177,7 @@ WantedBy=multi-user.target</pre>
                                                 </template>
                                             </div>
                                         </template>
-                                        <template x-if="bridgesForHost(hostDrawerKey).length === 0">
+                                        <template x-if="approvedBridgesForHost(hostDrawerKey).length === 0 && pendingBridgesForHost(hostDrawerKey).length === 0">
                                             <div class="v" style="color:var(--ink-ghost);font-style:italic;">no agent-bridge deployed</div>
                                         </template>
                                     </div>
@@ -5059,6 +5185,54 @@ WantedBy=multi-user.target</pre>
                                         <button class="btn btn-primary" @click="deployBridge(hostDrawerKey)" title="Deploy the fleetcom-agent-bridge container on this host. The bridge relays AI agent turns + lifecycle events from the local OpenClaw gateway to FleetCom. Uses docker run with host network + bosun's own token. Idempotent — safe to click twice.">+ Deploy agent-bridge</button>
                                     </div>
                                 </div>
+                                <!-- FLEET-112: pending-pair affordance. Amber banner
+                                     surfaces the dsc0 symptom (Deploy clicked, bridge
+                                     registered, but auto-approve was off so the row
+                                     sits pending and the operator never knew).
+                                     Click REVIEW to expand the inline approval list. -->
+                                <template x-if="pendingBridgesForHost(hostDrawerKey).length > 0 && currentUser && currentUser.role === 'admin'">
+                                    <div>
+                                        <div class="pair-banner">
+                                            <span class="pair-banner-headline" x-text="pendingBridgesForHost(hostDrawerKey).length + ' pair request' + (pendingBridgesForHost(hostDrawerKey).length === 1 ? '' : 's') + ' waiting'"></span>
+                                            <span x-text="'Verify each fingerprint out-of-band before approving. The default posture is OFF — ' + (pendingBridgesForHost(hostDrawerKey).length === 1 ? 'this bridge needs' : 'these bridges need') + ' explicit operator review.'"></span>
+                                            <span class="pair-banner-spacer"></span>
+                                            <button class="btn-review"
+                                                    :class="pairListExpanded[hostDrawerKey] ? 'is-on' : ''"
+                                                    @click="togglePairList(hostDrawerKey)"
+                                                    x-text="pairListExpanded[hostDrawerKey] ? 'CLOSE' : 'REVIEW'"></button>
+                                        </div>
+                                        <template x-if="pairListExpanded[hostDrawerKey]">
+                                            <div class="pair-list">
+                                                <div class="pair-list-head">PENDING — verify fingerprint out-of-band before approving</div>
+                                                <template x-for="b in pendingBridgesForHost(hostDrawerKey)" :key="b.agent">
+                                                    <div class="pair-row">
+                                                        <span class="pair-agent" x-text="b.agent"></span>
+                                                        <span class="pair-fp" :title="'Full SHA-256: ' + (b.pubkey_fp || '')" x-text="fpHuman(b.pubkey_fp)"></span>
+                                                        <span class="pair-meta">
+                                                            <span x-text="pairAge(b.last_seen_at)"></span>
+                                                            <span> · gateway </span>
+                                                            <span :class="'pair-gw-' + ((gatewayForHost(hostDrawerKey) || {}).status || 'unpaired')"
+                                                                  x-text="((gatewayForHost(hostDrawerKey) || {}).status || 'not present')"></span>
+                                                        </span>
+                                                        <span class="pair-acts">
+                                                            <button class="btn btn-approve"
+                                                                    @click="approveBridge(hostDrawerKey, b.agent)"
+                                                                    :disabled="!!pending['approveBridge:'+hostDrawerKey+'/'+b.agent]"
+                                                                    :data-pending="!!pending['approveBridge:'+hostDrawerKey+'/'+b.agent]">APPROVE</button>
+                                                            <button class="btn btn-reject"
+                                                                    @click="rejectBridge(hostDrawerKey, b.agent)"
+                                                                    :disabled="!!pending['rejectBridge:'+hostDrawerKey+'/'+b.agent]"
+                                                                    :data-pending="!!pending['rejectBridge:'+hostDrawerKey+'/'+b.agent]">REJECT</button>
+                                                        </span>
+                                                    </div>
+                                                </template>
+                                                <div class="pair-tofu-help">
+                                                    <strong>TOFU model:</strong> the fingerprint above is the SHA-256 of the bridge's Ed25519 public key — first 8 bytes shown SSH-style. Only approve if the same value appears in the bridge's own log on the host.
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
                             </div>
                         </div>
 
@@ -5422,6 +5596,53 @@ WantedBy=multi-user.target</pre>
             </div>
         </div>
     </div>
+
+    <!-- FLEET-112: full-fleet pending pair-requests panel. Opened from
+         the header PAIR · N button. Each row is a click-jump back into
+         the host drawer where the inline approval list lives — keeps
+         the actual approve/reject affordance in one place. -->
+    <div x-show="pairDrawerOpen" x-cloak
+         @keydown.escape.window="pairDrawerOpen = false"
+         class="modal-backdrop"
+         @click="pairDrawerOpen = false"
+         style="display:none">
+        <div class="modal-card" @click.stop style="max-width:640px;">
+            <div class="modal-title" style="color:var(--warn);" x-text="'Pending pair requests · ' + pendingBridges().length"></div>
+            <p style="font-size:11px;color:var(--ink-dim);line-height:1.5;">
+                Each row is a bridge that registered with FleetCom while its host's gateway has auto-approve OFF. Click a row to jump to the host drawer and review the fingerprint inline.
+            </p>
+            <template x-if="pendingBridges().length === 0">
+                <div style="padding:1rem;color:var(--ink-ghost);font-style:italic;font-size:11px;">No pending pair requests.</div>
+            </template>
+            <div style="max-height:50vh;overflow:auto;border:1px solid var(--line);background:rgba(0,0,0,0.18);">
+                <template x-for="b in pendingBridges()" :key="b.host + '/' + b.agent">
+                    <div class="pair-row" style="cursor:pointer;" @click="jumpToPendingHost(b.host)">
+                        <span class="pair-agent" x-text="b.host + ' · ' + b.agent"></span>
+                        <span class="pair-fp" x-text="fpHuman(b.pubkey_fp)"></span>
+                        <span class="pair-meta">
+                            <span x-text="pairAge(b.last_seen_at)"></span>
+                            <span> · gateway </span>
+                            <span :class="'pair-gw-' + ((gatewayForHost(b.host) || {}).status || 'unpaired')"
+                                  x-text="((gatewayForHost(b.host) || {}).status || 'not present')"></span>
+                        </span>
+                        <span class="pair-acts" @click.stop>
+                            <button class="btn btn-approve"
+                                    @click="approveBridge(b.host, b.agent)"
+                                    :disabled="!!pending['approveBridge:'+b.host+'/'+b.agent]"
+                                    :data-pending="!!pending['approveBridge:'+b.host+'/'+b.agent]">APPROVE</button>
+                            <button class="btn btn-reject"
+                                    @click="rejectBridge(b.host, b.agent)"
+                                    :disabled="!!pending['rejectBridge:'+b.host+'/'+b.agent]"
+                                    :data-pending="!!pending['rejectBridge:'+b.host+'/'+b.agent]">REJECT</button>
+                        </span>
+                    </div>
+                </template>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" @click="pairDrawerOpen = false">Close</button>
+            </div>
+        </div>
+    </div>
     </div><!-- /x-data — modals must live inside Alpine scope for x-show/x-cloak to work -->
 
     <script src="/static/lucide.min.js"></script>
@@ -5555,6 +5776,11 @@ WantedBy=multi-user.target</pre>
                 oplogList: [],          // most-recent first; ring buffer of last 200
                 oplogFilter: 'ALL',     // ALL | OPS | ADMIN | ERR
                 _oplogSeq: 0,           // local id for synthetic entries before server confirms
+                // FLEET-112: secure-by-default agent-bridge pairing.
+                // pairListExpanded[host] = true → inline pending list shown
+                // in the host drawer Integrations row.
+                pairDrawerOpen: false,
+                pairListExpanded: {},
                 usersList: [],
                 newUserEmail: '', newUserPassword: '', newUserRole: 'user',
                 selectedUser: null, selectedUserHosts: [], allHostsList: [],
@@ -7535,15 +7761,95 @@ WantedBy=multi-user.target</pre>
                 },
 
                 async toggleAutoApprove(host, on) {
-                    try {
-                        const res = await fetch('/api/gateways/' + encodeURIComponent(host) + '/auto-approve/' + (on ? 'on' : 'off'), { method: 'POST' });
-                        if (res.ok) {
-                            this.toast('Auto-approve ' + (on ? 'enabled' : 'disabled') + ' for ' + host);
-                        } else {
-                            this.toast('Failed to toggle auto-approve', 'err');
+                    // FLEET-112: flipping ON downgrades the host's security
+                    // posture. Require an explicit confirmation. Flipping
+                    // OFF is the safe direction → no confirm.
+                    if (on) {
+                        const ok = await this.confirmModal({
+                            title: 'Enable auto-approve for ' + host + '?',
+                            body: 'Auto-approving every bridge registration bypasses the per-bridge fingerprint review. Recommended only for trusted dev hosts. The default is OFF for new gateways.\n\nAny bridge that obtains the host bearer token will be approved automatically — including a hijacked or misconfigured one.',
+                            confirmLabel: 'Enable auto-approve',
+                            level: 'warn',
+                        });
+                        if (!ok) {
+                            // Revert the optimistic checkbox flip.
                             this.loadGateways();
+                            return;
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    }
+                    return this.busy('autoApprove:' + host, 'Auto-approve ' + (on ? 'ENABLED' : 'disabled') + ' · ' + host,
+                        async () => {
+                            const res = await fetch('/api/gateways/' + encodeURIComponent(host) + '/auto-approve/' + (on ? 'on' : 'off'), { method: 'POST' });
+                            if (!res.ok) {
+                                this.loadGateways();
+                                await this._checkRes(res, 'Failed to toggle auto-approve');
+                            }
+                        },
+                        { verb: on ? 'AUTO_APPROVE_ON' : 'AUTO_APPROVE_OFF', target: 'gateway/' + host });
+                },
+
+                // FLEET-112: pending-bridge surface helpers.
+                pendingBridges() {
+                    return (this.bridges || []).filter(b => (b.status || '') === 'pending');
+                },
+                approvedBridgesForHost(host) {
+                    return (this.bridges || []).filter(b => b.host === host && (b.status || '') !== 'pending');
+                },
+                pendingBridgesForHost(host) {
+                    return (this.bridges || []).filter(b => b.host === host && (b.status || '') === 'pending');
+                },
+                totalPendingCount() { return this.pendingBridges().length; },
+                togglePairList(host) {
+                    this.pairListExpanded = { ...this.pairListExpanded, [host]: !this.pairListExpanded[host] };
+                },
+                togglePairDrawer() { this.pairDrawerOpen = !this.pairDrawerOpen; },
+                jumpToPendingHost(host) {
+                    this.pairDrawerOpen = false;
+                    this.pairListExpanded = { ...this.pairListExpanded, [host]: true };
+                    this.openHostDrawer(host);
+                },
+                // SHA-256 hex → SSH-style 8-byte fingerprint render.
+                // Frontend-only concern — server keeps storing bare hex.
+                fpHuman(hex) {
+                    const h = (hex || '').trim();
+                    if (h.length < 16) return h;
+                    return h.match(/.{1,2}/g).slice(0, 8).join(':');
+                },
+                // Compact relative-time renderer for the pair list. The
+                // operator log has its own oplogTime() — kept separate so
+                // the formats can diverge if needed.
+                pairAge(ts) {
+                    if (!ts) return '';
+                    const d = new Date(ts);
+                    if (isNaN(d.getTime())) return ts;
+                    const s = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+                    if (s < 60)        return s + 's ago';
+                    if (s < 3600)      return Math.floor(s / 60) + 'm ago';
+                    if (s < 86400)     return Math.floor(s / 3600) + 'h ago';
+                    return Math.floor(s / 86400) + 'd ago';
+                },
+                async approveBridge(host, agent) {
+                    return this.busy('approveBridge:' + host + '/' + agent, 'Bridge approved · ' + host + '/' + agent,
+                        async () => {
+                            const res = await fetch('/api/bridges/' + encodeURIComponent(host) + '/' + encodeURIComponent(agent) + '/approve', { method: 'POST' });
+                            await this._checkRes(res, 'Approve failed');
+                        },
+                        { verb: 'BRIDGE_APPROVE', target: 'bridge/' + host + '/' + agent });
+                },
+                async rejectBridge(host, agent) {
+                    const ok = await this.confirmModal({
+                        title: 'Reject pair request from ' + host + '/' + agent + '?',
+                        body: 'The pending registration row will be deleted. The bridge can re-register on its next attempt with a fresh keypair, but the operator should investigate why this fingerprint appeared if it was unexpected.',
+                        confirmLabel: 'Reject',
+                        level: 'warn',
+                    });
+                    if (!ok) return;
+                    return this.busy('rejectBridge:' + host + '/' + agent, 'Bridge rejected · ' + host + '/' + agent,
+                        async () => {
+                            const res = await fetch('/api/bridges/' + encodeURIComponent(host) + '/' + encodeURIComponent(agent) + '/reject', { method: 'POST' });
+                            await this._checkRes(res, 'Reject failed');
+                        },
+                        { verb: 'BRIDGE_REJECT', target: 'bridge/' + host + '/' + agent });
                 },
 
                 async loadPairableHosts() {

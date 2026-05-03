@@ -136,6 +136,10 @@ func newRouter(d *routerDeps) chi.Router {
 		r.With(auth.RequireAdmin).Delete("/api/bridges/{host}/{agent}", api.RevokeBridge(store, hub, ocMgr))
 		// FLEET-109: smart-suggestion chip rails for the bridge-deploy modal.
 		r.With(auth.RequireAdmin).Get("/api/bridges/suggestions/{host}", api.BridgeSuggestions(store))
+		// FLEET-112: pair-request approval surface.
+		r.With(auth.RequireAdmin).Get("/api/bridges/pending", api.ListPendingBridges(store))
+		r.With(auth.RequireAdmin).Post("/api/bridges/{host}/{agent}/approve", api.ApproveBridge(store, hub))
+		r.With(auth.RequireAdmin).Post("/api/bridges/{host}/{agent}/reject", api.RejectBridge(store, hub))
 
 		// FLEET-60: bosun command channel — admin issues work, bosun
 		// picks it up via heartbeat response, reports back here.
