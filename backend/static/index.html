@@ -5246,11 +5246,16 @@ WantedBy=multi-user.target</pre>
                                                         <span x-text="b.agent"></span>
                                                         <span style="color:var(--ink-ghost)" x-text="' · ' + ((b.status) || 'unknown')"></span>
                                                         <span style="color:var(--ink-faint);font-size:9px;font-family:ui-monospace,monospace;" :title="'Public key fingerprint: ' + (b.pubkey_fp || '')" x-text="' · fp ' + ((b.pubkey_fp || '').slice(0, 12))"></span>
-                                                        <!-- FLEET-114: attestation badge — verified | skipped | unknown. -->
-                                                        <span style="font-size:8px;padding:1px 4px;margin-left:0.3rem;letter-spacing:0.05em;text-transform:uppercase;border-radius:2px;"
-                                                              :style="attestationBadgeStyle(b.attestation_status)"
-                                                              :title="attestationBadgeTitle(b.attestation_status)"
-                                                              x-text="b.attestation_status || 'unknown'"></span>
+                                                        <!-- FLEET-114: attestation badge — only shown for verified/skipped
+                                                             (the rows that carry actionable security signal). 'unknown'
+                                                             is the universal default while the gateway-side OpenClaw RFC
+                                                             ships, so a grey badge on every row is just noise. -->
+                                                        <template x-if="b.attestation_status === 'verified' || b.attestation_status === 'skipped'">
+                                                            <span style="font-size:8px;padding:1px 4px;margin-left:0.3rem;letter-spacing:0.05em;text-transform:uppercase;border-radius:2px;"
+                                                                  :style="attestationBadgeStyle(b.attestation_status)"
+                                                                  :title="attestationBadgeTitle(b.attestation_status)"
+                                                                  x-text="b.attestation_status"></span>
+                                                        </template>
                                                         <button class="btn btn-ghost" style="font-size:8px;padding:0.1rem 0.35rem;margin-left:0.3rem;" @click="revokeBridge(hostDrawerKey, b.agent)">revoke</button>
                                                     </span>
                                                 </template>
@@ -5261,7 +5266,15 @@ WantedBy=multi-user.target</pre>
                                         </template>
                                     </div>
                                     <div>
-                                        <button class="btn btn-primary" @click="deployBridge(hostDrawerKey)" title="Deploy the fleetcom-agent-bridge container on this host. The bridge relays AI agent turns + lifecycle events from the local OpenClaw gateway to FleetCom. Uses docker run with host network + bosun's own token. Idempotent — safe to click twice.">+ Deploy agent-bridge</button>
+                                        <!-- FLEET-112 spec: button copy switches once at least one bridge
+                                             is approved on this host — the operator's mental model is
+                                             "first bridge" vs "another bridge" and the label should match. -->
+                                        <button class="btn btn-primary"
+                                                @click="deployBridge(hostDrawerKey)"
+                                                :title="approvedBridgesForHost(hostDrawerKey).length > 0
+                                                    ? 'Add another agent-bridge on this host. Each bridge is one-to-one with an AI agent — deploy a separate one per agent.'
+                                                    : 'Deploy the fleetcom-agent-bridge container on this host. The bridge relays AI agent turns + lifecycle events from the local OpenClaw gateway to FleetCom. Uses docker run with host network + bosun\'s own token. Idempotent — safe to click twice.'"
+                                                x-text="approvedBridgesForHost(hostDrawerKey).length > 0 ? '+ Add another bridge' : '+ Deploy agent-bridge'"></button>
                                     </div>
                                 </div>
                                 <!-- FLEET-112: pending-pair affordance. Amber banner
@@ -8136,13 +8149,19 @@ WantedBy=multi-user.target</pre>
                     }
                 },
                 attestationBadgeTitle(s) {
+                    // Operator-facing copy. "verified" = the gateway cryptographically
+                    // endorsed this bridge's identity (two-factor pairing). "skipped"
+                    // = attestation enforcement was off when this bridge registered;
+                    // operator should redeploy once the gateway is signing to upgrade
+                    // the row to verified.
                     switch (s) {
                         case 'verified':
-                            return 'Gateway-signed registration verified against the gateway pubkey (FLEET-114).';
+                            return 'Verified — the gateway signed this bridge\'s registration with its own key, and FleetCom checked the signature. Two-factor pairing in effect (bosun host token + gateway endorsement).';
                         case 'skipped':
-                            return 'Registration succeeded under attestation_skipped — either the env was loose, the per-gateway flag was OFF, or no signature was provided. Audit row in the operator log.';
+                            return 'No gateway signature on file — this bridge registered while attestation was off. Re-deploy the bridge after pasting the gateway pubkey (+ PUBKEY) and turning attestation on so the next registration upgrades to verified.';
                         default:
-                            return 'Pre-Phase-3 row OR attestation status not yet recorded.';
+                            // Not rendered — the template hides the badge for 'unknown'.
+                            return '';
                     }
                 },
                 async toggleOOBDelivery(host, on) {
