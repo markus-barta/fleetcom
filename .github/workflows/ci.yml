@@ -48,6 +48,19 @@ jobs:
           go install honnef.co/go/tools/cmd/staticcheck@2025.1.1
           staticcheck ./...
 
+      # FLEET-107: native confirm() ban — use this.confirmModal({...}) instead.
+      # The pattern matches `confirm(` not preceded by a letter (so confirmModal,
+      # confirmCtx, etc. are fine). Excludes the comment that explains the rule.
+      - name: ban-native-confirm
+        working-directory: backend
+        run: |
+          hits=$(grep -nE '[^a-zA-Z]confirm\(' static/index.html | grep -v 'replaces every native confirm()' || true)
+          if [ -n "$hits" ]; then
+            echo "Native confirm() is banned (FLEET-107). Use this.confirmModal({...}) instead."
+            echo "$hits"
+            exit 1
+          fi
+
   lint-agent:
     name: Lint Agent (gofmt + vet)
     runs-on: ubuntu-latest
