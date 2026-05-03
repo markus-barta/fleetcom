@@ -123,39 +123,43 @@ func GatewayPreflight(store *db.Store) http.HandlerFunc {
 			}
 		}
 
-		// 2 + 3. TCP dial then TLS handshake. Skip both if the host
-		// row is unknown — there's no DNS to resolve in a meaningful way.
-		// (We *could* still try, but the operator's first action should
-		// be "register the host," not "stare at a connection error.")
+		// 2 + 3. TCP dial then TLS handshake on the same connection.
+		// Skip both if the host row is unknown — there's no DNS to
+		// resolve in a meaningful way. (We *could* still try, but the
+		// operator's first action should be "register the host," not
+		// "stare at a connection error.")
+		//
+		// QA-AUDIT-FIX (PPM 1527): upgrade the existing TCP conn into
+		// TLS via tls.Client(conn, cfg).Handshake instead of dialing
+		// twice. Saves one round-trip + halves the worst-case wait if
+		// the host is slow but reachable. The TCP-level success is
+		// observed by completion of DialTimeout; "TLS broken on top of
+		// TCP" is then a clean second class of error.
 		if !contains(result.Blockers, blockerHostUnknown) {
 			// JoinHostPort handles IPv6 bracketing (`[::1]:18789`) — vet
 			// flags the naive Sprintf %s:%d form for this reason.
 			addr := net.JoinHostPort(host, strconv.Itoa(gatewayPort))
 
-			// Plain TCP dial first — distinguishes "OpenClaw isn't
-			// running" from "OpenClaw is running but TLS is broken."
 			tcpConn, dialErr := net.DialTimeout("tcp", addr, preflightProbeTimeout)
 			if dialErr != nil {
 				result.Blockers = append(result.Blockers, blockerGatewayUnreach)
 			} else {
-				_ = tcpConn.Close()
 				result.GatewayPortReachable = true
-
-				// Full TLS handshake — separate dial so a TCP-level
-				// reset during TLS doesn't double-count.
-				tlsCfg := &tls.Config{
+				// Set a deadline on the TLS handshake on the existing
+				// conn so a misbehaving peer can't hold us beyond the
+				// caller's tolerance.
+				_ = tcpConn.SetDeadline(time.Now().Add(preflightProbeTimeout))
+				tlsConn := tls.Client(tcpConn, &tls.Config{
 					ServerName: host,
 					MinVersion: tls.VersionTLS12,
-				}
-				dialer := &net.Dialer{Timeout: preflightProbeTimeout}
-				tlsConn, tlsErr := tls.DialWithDialer(dialer, "tcp", addr, tlsCfg)
-				if tlsErr != nil {
+				})
+				if tlsErr := tlsConn.Handshake(); tlsErr != nil {
 					result.TLSError = tlsErr.Error()
 					result.Blockers = append(result.Blockers, blockerTLSFailed)
 				} else {
-					_ = tlsConn.Close()
 					result.TLSOK = true
 				}
+				_ = tlsConn.Close() // also closes the underlying TCP conn
 			}
 		}
 

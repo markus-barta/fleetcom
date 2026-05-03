@@ -228,6 +228,37 @@ func scanHosts(rows *sql.Rows) ([]Host, error) {
 	return hosts, rows.Err()
 }
 
+// HostBare is the cheap projection of the hosts table — just the
+// columns the onboarding probe (FLEET-121) needs. AllHosts returns
+// the full struct + per-host containers + agents; that's overkill for
+// "do we have any host that's been seen recently?" which is all the
+// onboarding banner cares about.
+type HostBare struct {
+	Hostname string
+	LastSeen string
+}
+
+// HostsBareList returns one HostBare per row, ordered by hostname.
+// QA-AUDIT-FIX (FLEET-121 / PPM 1527): replaces AllHosts() in the
+// onboarding handler so we don't load containers + agents per host
+// just to read last_seen.
+func (s *Store) HostsBareList() ([]HostBare, error) {
+	rows, err := s.DB.Query(`SELECT hostname, last_seen FROM hosts ORDER BY hostname`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []HostBare{}
+	for rows.Next() {
+		var h HostBare
+		if err := rows.Scan(&h.Hostname, &h.LastSeen); err != nil {
+			return nil, err
+		}
+		out = append(out, h)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) AllHosts() ([]Host, error) {
 	rows, err := s.DB.Query(`SELECT id, hostname, os, kernel, uptime_seconds, agent_version, last_seen, hw_live, hw_live_at, created_at, update_requested_at, deployment_shape, boot_id, allow_reboot FROM hosts ORDER BY hostname`)
 	if err != nil {
