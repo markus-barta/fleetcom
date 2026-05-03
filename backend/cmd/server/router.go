@@ -155,6 +155,10 @@ func newRouter(d *routerDeps) chi.Router {
 		// handshake) so the wizard can render a checklist before the
 		// operator clicks Pair.
 		r.With(auth.RequireAdmin).Get("/api/gateways/{host}/preflight", api.GatewayPreflight(store))
+		// FLEET-121: cross-cutting wizard state — counts hosts needing
+		// gateway pairing, bridges to deploy, and bridges pending
+		// approval. Drives the first-run banner.
+		r.With(auth.RequireAdmin).Get("/api/onboarding/state", api.OnboardingState(store))
 
 		// FLEET-60: bosun command channel — admin issues work, bosun
 		// picks it up via heartbeat response, reports back here.

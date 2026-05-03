@@ -3109,6 +3109,55 @@
             padding: 0.15rem 0.3rem 0.4rem;
         }
 
+        /* FLEET-121: first-run banner. Renders above the host grid when
+           the onboarding endpoint reports actionable work. Admin-only.
+           Mission-console aesthetic: thin band, --warn left-bar, monospace
+           call-to-action, dismissible (signature-keyed in localStorage so
+           the banner re-appears when the actionable set changes). */
+        .fleet-banner {
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+            padding: 0.4rem 1rem;
+            background: var(--bg-1);
+            border-bottom: 1px solid var(--line);
+            border-left: 2px solid var(--warn);
+            font-size: 11px;
+            line-height: 1.4;
+            color: var(--ink-dim);
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+        }
+        .fleet-banner-flag {
+            color: var(--warn);
+            font-weight: 700;
+            letter-spacing: 0.04em;
+        }
+        .fleet-banner-msg {
+            flex: 1;
+            color: var(--ink);
+        }
+        .fleet-banner-msg strong { color: var(--accent); font-weight: 700; }
+        .fleet-banner button {
+            background: transparent;
+            border: 1px solid var(--line-2);
+            color: var(--ink-dim);
+            font-family: inherit;
+            font-size: 10px;
+            letter-spacing: 0.06em;
+            padding: 0.2rem 0.6rem;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+        .fleet-banner button.primary {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+        .fleet-banner button:hover { border-color: var(--ink); color: var(--ink); }
+        .fleet-banner button.primary:hover {
+            background: var(--accent);
+            color: var(--bg-0);
+        }
+
         /* FLEET-118: launch-sequence log. Used by the pair-flow modal
            (preflight + live pair progress). Reusable for FLEET-119
            command preview + future wizard steps. Rows render with a
@@ -3498,6 +3547,18 @@
                 </a>
             </div>
         </header>
+
+        <!-- FLEET-121: first-run banner. Renders only for admins when
+             the onboarding endpoint reports actionable work AND the
+             current state's signature isn't in the dismissed set. -->
+        <template x-if="currentUser && currentUser.role === 'admin' && onboarding.actionable && onboardingSignature() !== onboardingDismissedSig">
+            <div class="fleet-banner" x-cloak>
+                <span class="fleet-banner-flag">[!]</span>
+                <span class="fleet-banner-msg" x-html="onboardingBannerMessage()"></span>
+                <button class="primary" @click="startOnboarding()">Start setup →</button>
+                <button @click="dismissOnboarding()">Dismiss</button>
+            </div>
+        </template>
 
         <div class="sub-header" x-show="view === 'dashboard'">
             <div class="sub-header-center">
@@ -5822,10 +5883,16 @@ WantedBy=multi-user.target</pre>
          class="modal-backdrop"
          style="display:none">
         <div class="modal-card" @click.stop style="max-width:600px;">
-            <div class="modal-title" style="color:var(--accent);font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:0.04em;text-transform:uppercase;font-size:13px;">
-                Deploy agent-bridge
-                <span style="color:var(--ink-faint);font-weight:400;font-size:10px;letter-spacing:0.06em;margin-left:0.5rem;"
+            <div class="modal-title" style="color:var(--accent);font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:0.04em;text-transform:uppercase;font-size:13px;display:flex;align-items:center;gap:0.5rem;">
+                <span>Deploy agent-bridge</span>
+                <span style="color:var(--ink-faint);font-weight:400;font-size:10px;letter-spacing:0.06em;"
                       x-text="bridgeDeployPhaseLabel()"></span>
+                <button class="btn btn-ghost"
+                        style="font-size:9px;padding:0.15rem 0.4rem;margin-left:auto;display:inline-flex;align-items:center;gap:0.25rem;"
+                        @click="pairInfoDrawerOpen = true"
+                        title="Open the 3-layer security explainer + cheat-sheet table.">
+                    <i data-lucide="help-circle" style="width:11px;height:11px;"></i> Why?
+                </button>
             </div>
 
             <!-- PICK PHASE — chip rails + free-text + command preview -->
@@ -6126,10 +6193,16 @@ WantedBy=multi-user.target</pre>
          @click="pairFlowCtx && pairFlowCtx.phase !== 'pairing' && closePairFlow()"
          style="display:none">
         <div class="modal-card" @click.stop style="max-width:700px;">
-            <div class="modal-title" style="color:var(--ink);font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:0.04em;text-transform:uppercase;font-size:13px;">
+            <div class="modal-title" style="color:var(--ink);font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:0.04em;text-transform:uppercase;font-size:13px;display:flex;align-items:center;gap:0.5rem;">
                 <span x-text="pairFlowCtx ? ('PAIR HOST · ' + pairFlowCtx.host) : ''"></span>
-                <span style="color:var(--ink-faint);font-weight:400;font-size:10px;letter-spacing:0.06em;margin-left:0.5rem;"
+                <span style="color:var(--ink-faint);font-weight:400;font-size:10px;letter-spacing:0.06em;"
                       x-text="pairFlowCtx ? pairFlowPhaseLabel() : ''"></span>
+                <button class="btn btn-ghost"
+                        style="font-size:9px;padding:0.15rem 0.4rem;margin-left:auto;display:inline-flex;align-items:center;gap:0.25rem;"
+                        @click="pairInfoDrawerOpen = true"
+                        title="Open the 3-layer security explainer + cheat-sheet table.">
+                    <i data-lucide="help-circle" style="width:11px;height:11px;"></i> Why?
+                </button>
             </div>
 
             <!-- Preflight phase -->
@@ -6226,10 +6299,16 @@ WantedBy=multi-user.target</pre>
         <div class="modal-card" @click.stop style="max-width:780px;">
             <template x-if="pairApproveCtx">
                 <div>
-                    <div class="modal-title" style="color:var(--ink);font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:0.04em;text-transform:uppercase;font-size:13px;">
-                        Verify &amp; approve bridge
-                        <span style="color:var(--ink-faint);font-weight:400;font-size:10px;letter-spacing:0.06em;margin-left:0.5rem;"
+                    <div class="modal-title" style="color:var(--ink);font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:0.04em;text-transform:uppercase;font-size:13px;display:flex;align-items:center;gap:0.5rem;">
+                        <span>Verify &amp; approve bridge</span>
+                        <span style="color:var(--ink-faint);font-weight:400;font-size:10px;letter-spacing:0.06em;"
                               x-text="'· ' + pairApproveCtx.host + ' / ' + pairApproveCtx.agent"></span>
+                        <button class="btn btn-ghost"
+                                style="font-size:9px;padding:0.15rem 0.4rem;margin-left:auto;display:inline-flex;align-items:center;gap:0.25rem;"
+                                @click="pairInfoDrawerOpen = true"
+                                title="Open the 3-layer security explainer + cheat-sheet table.">
+                            <i data-lucide="help-circle" style="width:11px;height:11px;"></i> Why?
+                        </button>
                     </div>
                     <p style="font-size:11px;color:var(--ink-dim);line-height:1.55;margin:0.4rem 0 0.7rem;">
                         Confirm this bridge is genuine before approving. Compare the SSH-style fingerprint below against what the bridge container reports on the host.
@@ -6688,6 +6767,16 @@ WantedBy=multi-user.target</pre>
                 // updates (e.g. the row gets approved-then-removed) propagate
                 // naturally.
                 pairApproveCtx: null,
+                // FLEET-121: cross-cutting onboarding state. Snapshot of
+                // GET /api/onboarding/state. Drives the first-run banner
+                // above the fleet grid + the "what's the next thing this
+                // operator should do?" smart routing.
+                onboarding: { actionable: false, hostsNoGateway: [], hostsNoBridge: [], pending: [] },
+                // signature of the dismissed state, stored in localStorage
+                // as `fleetcom.onboarding.dismissedSig`. The banner re-appears
+                // when the signature changes (e.g. a new host joins, or a
+                // bridge enters pending state).
+                onboardingDismissedSig: '',
                 // FLEET-113: per-pending-row OOB code input. Keyed by
                 // `<host>/<agent>` so multiple rows in the same drawer can
                 // accumulate codes independently. Cleared on approve/reject.
@@ -6748,6 +6837,14 @@ WantedBy=multi-user.target</pre>
                     // the modal is closed or in pick phase; it only fires
                     // its progression logic during 'deploying'.
                     this.$watch('bridges', () => this.bridgeDeployWatchBridges());
+                    // FLEET-121: refresh the onboarding banner whenever
+                    // SSE pushes a relevant change. loadOnboarding is a
+                    // single GET; it's cheap and the banner is only
+                    // visible to admins.
+                    this.onboardingDismissedSig = localStorage.getItem('fleetcom.onboarding.dismissedSig') || '';
+                    this.$watch('hosts',    () => this.loadOnboarding());
+                    this.$watch('gateways', () => this.loadOnboarding());
+                    this.$watch('bridges',  () => this.loadOnboarding());
                     this.startStripRefresher();
                     document.addEventListener('visibilitychange', () => {
                         if (document.visibilityState === 'visible') this.kickIfStale();
@@ -6868,6 +6965,8 @@ WantedBy=multi-user.target</pre>
                             if (this.currentUser && this.currentUser.role === 'admin') {
                                 this.loadGateways();
                                 this.loadBridges();
+                                // FLEET-121: prime onboarding banner state.
+                                this.loadOnboarding();
                             }
                         }
                     } catch (_) {} // silent: pure background load
@@ -8999,6 +9098,88 @@ WantedBy=multi-user.target</pre>
                         },
                         { verb: 'POSTURE_' + name.toUpperCase().replace('-', '_'), target: 'gateway/' + host });
                 },
+                // FLEET-121: onboarding state — fetched by loadOnboarding()
+                // (init + post-deploy + post-approve) and refreshed by the
+                // bridges/gateways/hosts SSE watchers below. The signature
+                // we hash for dismissal is "what counts as the same state"
+                // — count + comma-joined sorted hostnames + count of pending
+                // approvals — so the banner re-appears when the actionable
+                // set actually changes (not on every re-render).
+                async loadOnboarding() {
+                    if (!this.currentUser || this.currentUser.role !== 'admin') return;
+                    try {
+                        const res = await fetch('/api/onboarding/state');
+                        if (!res.ok) return; // silent: banner just stays hidden
+                        const s = await res.json();
+                        this.onboarding = {
+                            actionable: !!s.wizard_actionable,
+                            hostsNoGateway: s.hosts_with_bosun_no_gateway || [],
+                            hostsNoBridge:  s.hosts_with_gateway_no_bridge || [],
+                            pending:        s.gateways_pending_approval || [],
+                        };
+                    } catch (_) { /* silent: banner stays hidden */ }
+                },
+                onboardingSignature() {
+                    const o = this.onboarding;
+                    if (!o.actionable) return '';
+                    const ng = o.hostsNoGateway.map(h => h.hostname).sort().join(',');
+                    const nb = o.hostsNoBridge.map(h => h.hostname).sort().join(',');
+                    const pa = o.pending.map(p => p.host + '/' + p.agent).sort().join(',');
+                    return 'ng=' + ng + '|nb=' + nb + '|pa=' + pa;
+                },
+                onboardingBannerMessage() {
+                    const o = this.onboarding;
+                    const parts = [];
+                    if (o.hostsNoGateway.length > 0) {
+                        parts.push('<strong>' + o.hostsNoGateway.length + '</strong> host' +
+                            (o.hostsNoGateway.length === 1 ? '' : 's') + ' need gateway pairing');
+                    }
+                    if (o.hostsNoBridge.length > 0) {
+                        parts.push('<strong>' + o.hostsNoBridge.length + '</strong> ready to deploy a bridge');
+                    }
+                    if (o.pending.length > 0) {
+                        parts.push('<strong>' + o.pending.length + '</strong> pending approval');
+                    }
+                    return parts.join(' · ') + ' — connect your AI agents.';
+                },
+                dismissOnboarding() {
+                    this.onboardingDismissedSig = this.onboardingSignature();
+                    localStorage.setItem('fleetcom.onboarding.dismissedSig', this.onboardingDismissedSig);
+                },
+                // Smart routing — pick the most actionable next step and
+                // hand off to the matching wizard surface (FLEET-117 → 120).
+                // Uses $nextTick where appropriate so drawer transitions
+                // run before the modal pops on top.
+                startOnboarding() {
+                    const o = this.onboarding;
+                    if (o.pending.length > 0) {
+                        // 1st priority: an operator with pending approvals
+                        // is two clicks from a paired bridge. Open the
+                        // host drawer + verify modal for the first.
+                        const p = o.pending[0];
+                        this.openHostDrawer(p.host);
+                        this.pairListExpanded = { ...this.pairListExpanded, [p.host]: true };
+                        this.$nextTick(() => this.openPairApprove(p.host, p.agent));
+                        return;
+                    }
+                    if (o.hostsNoBridge.length > 0) {
+                        // 2nd priority: gateway is paired but no bridge
+                        // running yet — open the deploy modal.
+                        const h = o.hostsNoBridge[0];
+                        this.openHostDrawer(h.hostname);
+                        this.$nextTick(() => this.deployBridge(h.hostname));
+                        return;
+                    }
+                    if (o.hostsNoGateway.length > 0) {
+                        // 3rd priority: bring up a gateway. Open the
+                        // pair-flow modal (FLEET-118).
+                        const h = o.hostsNoGateway[0];
+                        this.openHostDrawer(h.hostname);
+                        this.$nextTick(() => this.openPairFlow(h.hostname));
+                        return;
+                    }
+                },
+
                 // FLEET-118: pair-flow modal. Replaces the legacy native-prompt
                 // container picker and "jump to LOG tab" UX with a modal that
                 // surfaces preflight checks (bosun freshness + TCP dial + TLS
