@@ -5584,6 +5584,16 @@ WantedBy=multi-user.target</pre>
                                                                       x-text="((gatewayForHost(hostDrawerKey) || {}).status || 'not present')"></span>
                                                             </span>
                                                             <span class="pair-acts">
+                                                                <!-- FLEET-120: 'verify' opens the dignified
+                                                                     verify-first modal with side-by-side
+                                                                     fingerprint diff + copy verify command +
+                                                                     TOFU explainer. The inline APPROVE/REJECT
+                                                                     buttons remain as the quick path for
+                                                                     operators already confident. -->
+                                                                <button class="btn btn-ghost"
+                                                                        style="font-size:9px;padding:0.15rem 0.45rem;"
+                                                                        @click="openPairApprove(hostDrawerKey, b.agent)"
+                                                                        title="Open the verify-first approval flow: side-by-side fingerprint with copy-paste verify command + TOFU explainer.">verify</button>
                                                                 <button class="btn btn-approve"
                                                                         @click="approveBridge(hostDrawerKey, b.agent)"
                                                                         :disabled="!!pending['approveBridge:'+hostDrawerKey+'/'+b.agent] || (oobRequiredForHost(hostDrawerKey) && !codeReady(hostDrawerKey, b.agent))"
@@ -6203,6 +6213,143 @@ WantedBy=multi-user.target</pre>
         </div>
     </div>
 
+    <!-- FLEET-120: bridge-approve modal. The wizard's hero moment —
+         operator-friendly fingerprint comparison with copy-paste verify
+         command + plain-language TOFU explainer. Reuses fpHuman(),
+         oobRequiredForHost(), busy(), confirmModal(). The bridge row
+         is looked up live from this.bridges so SSE updates propagate. -->
+    <div x-show="pairApproveCtx" x-cloak
+         @keydown.escape.window="pairApproveCtx && closePairApprove()"
+         class="modal-backdrop"
+         @click="pairApproveCtx && closePairApprove()"
+         style="display:none">
+        <div class="modal-card" @click.stop style="max-width:780px;">
+            <template x-if="pairApproveCtx">
+                <div>
+                    <div class="modal-title" style="color:var(--ink);font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:0.04em;text-transform:uppercase;font-size:13px;">
+                        Verify &amp; approve bridge
+                        <span style="color:var(--ink-faint);font-weight:400;font-size:10px;letter-spacing:0.06em;margin-left:0.5rem;"
+                              x-text="'· ' + pairApproveCtx.host + ' / ' + pairApproveCtx.agent"></span>
+                    </div>
+                    <p style="font-size:11px;color:var(--ink-dim);line-height:1.55;margin:0.4rem 0 0.7rem;">
+                        Confirm this bridge is genuine before approving. Compare the SSH-style fingerprint below against what the bridge container reports on the host.
+                    </p>
+
+                    <!-- Two-column fingerprint diff -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;">
+                        <!-- Left: FleetCom received -->
+                        <div style="background:rgba(0,0,0,0.2);border:1px solid var(--line);padding:0.7rem 0.85rem;">
+                            <div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink);border-bottom:1px dashed var(--line);padding-bottom:0.35rem;margin-bottom:0.5rem;">
+                                FleetCom received
+                            </div>
+                            <div style="font-size:10px;color:var(--ink-faint);line-height:1.5;">Agent</div>
+                            <div style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;color:var(--ink);font-weight:600;letter-spacing:0.02em;margin-bottom:0.55rem;"
+                                 x-text="pairApproveCtx.agent"></div>
+                            <div style="font-size:10px;color:var(--ink-faint);line-height:1.5;">Host</div>
+                            <div style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;color:var(--ink);font-weight:600;letter-spacing:0.02em;margin-bottom:0.55rem;"
+                                 x-text="pairApproveCtx.host"></div>
+                            <div style="font-size:10px;color:var(--ink-faint);line-height:1.5;">Fingerprint <span style="color:var(--ink-ghost);">(8 bytes)</span></div>
+                            <div style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:18px;color:var(--accent);font-weight:700;letter-spacing:0.04em;line-height:1.4;"
+                                 x-text="fpHuman((pairApproveBridge() || {}).pubkey_fp || '')"></div>
+                            <div style="margin-top:0.5rem;">
+                                <button class="btn btn-ghost"
+                                        style="font-size:9px;padding:0.15rem 0.4rem;"
+                                        @click="pairApproveCtx = { ...pairApproveCtx, fullHashOpen: !pairApproveCtx.fullHashOpen }"
+                                        x-text="pairApproveCtx.fullHashOpen ? '▾ Show full hash' : '▸ Show full hash'"></button>
+                                <template x-if="pairApproveCtx.fullHashOpen">
+                                    <div style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:var(--ink-dim);background:rgba(0,0,0,0.25);padding:0.4rem 0.5rem;margin-top:0.35rem;word-break:break-all;line-height:1.5;"
+                                         x-text="(pairApproveBridge() || {}).pubkey_fp || ''"></div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- Right: Verify on host -->
+                        <div style="background:rgba(0,0,0,0.2);border:1px solid var(--line);padding:0.7rem 0.85rem;">
+                            <div style="font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink);border-bottom:1px dashed var(--line);padding-bottom:0.35rem;margin-bottom:0.5rem;">
+                                Verify on the host
+                            </div>
+                            <p style="font-size:10px;color:var(--ink-dim);line-height:1.5;margin:0 0 0.5rem;">
+                                Run this on a trusted shell to <strong x-text="pairApproveCtx.host"></strong>:
+                            </p>
+                            <pre style="background:rgba(0,0,0,0.35);border:1px solid var(--line-2);padding:0.5rem 0.6rem;font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;color:var(--ink-dim);white-space:pre-wrap;word-break:break-all;line-height:1.5;margin:0;"
+                                 x-text="pairApproveVerifyCommand()"></pre>
+                            <button class="btn btn-ghost"
+                                    style="font-size:9px;padding:0.2rem 0.55rem;margin-top:0.4rem;"
+                                    @click="pairApproveCopyCommand()">📋 Copy command</button>
+                            <p style="font-size:10px;color:var(--ink-dim);line-height:1.5;margin:0.55rem 0 0;">
+                                Look for a line like <code style="font-size:9px;">fp=&lt;hex&gt;</code> in the output. Eyeball-compare the first 16 hex chars (8 bytes) against the cyan value on the left.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- TOFU explainer disclosure -->
+                    <details style="margin-top:0.8rem;font-size:11px;color:var(--ink-dim);"
+                             :open="pairApproveCtx.tofuOpen">
+                        <summary style="cursor:pointer;list-style:none;font-size:10px;letter-spacing:0.04em;color:var(--ink-faint);padding:0.25rem 0;font-family:'JetBrains Mono',ui-monospace,monospace;">
+                            <span x-text="pairApproveCtx.tofuOpen ? '▾' : '▸'"></span>
+                            Why we verify · TOFU model
+                        </summary>
+                        <div style="line-height:1.6;padding:0.5rem 0.7rem;background:rgba(255,255,255,0.02);border-left:2px solid var(--line-2);margin-top:0.3rem;">
+                            <p style="margin:0 0 0.4rem;">
+                                <strong style="color:var(--ink);">TOFU = Trust On First Use.</strong> The host bearer token is one factor of trust — it proves a known host posted this registration. Verifying the fingerprint is the second factor: it proves the bridge running on the host has the key it claims to have.
+                            </p>
+                            <p style="margin:0;">
+                                Once you approve, FleetCom <strong>pins this fingerprint forever</strong>. The bridge can't change its identity without you noticing — any future registration with a different key will land here as a new pending row, not silently overwrite this one.
+                            </p>
+                        </div>
+                    </details>
+
+                    <!-- OOB code input (only when gateway has oob_delivery_enabled) -->
+                    <template x-if="oobRequiredForHost(pairApproveCtx.host)">
+                        <div style="margin-top:0.7rem;padding:0.55rem 0.7rem;border:1px solid var(--warn);background:rgba(255,180,0,0.04);">
+                            <div style="font-size:10px;letter-spacing:0.04em;color:var(--warn);font-weight:700;margin-bottom:0.3rem;">
+                                OOB enforced — enter the 6-digit code from the agent
+                            </div>
+                            <div style="display:flex;gap:0.5rem;align-items:center;">
+                                <input class="pair-oob-input"
+                                       type="text"
+                                       inputmode="numeric"
+                                       maxlength="6"
+                                       autocomplete="off"
+                                       placeholder="• • • • • •"
+                                       :value="pairCodes[pairApproveCtx.host + '/' + pairApproveCtx.agent] || ''"
+                                       @input="setPairCode(pairApproveCtx.host, pairApproveCtx.agent, $event.target.value)"
+                                       @keydown.enter="codeReady(pairApproveCtx.host, pairApproveCtx.agent) && pairApproveSubmit()"
+                                       style="flex:1;">
+                                <button class="pair-oob-skip"
+                                        @click="pairApproveSkipOOB()"
+                                        title="Bypass the OOB confirmation code. Audit row will carry verb=OOB_BYPASSED.">SKIP OOB</button>
+                            </div>
+                            <p style="font-size:9px;color:var(--ink-faint);font-style:italic;margin:0.35rem 0 0;line-height:1.45;">
+                                The gateway is configured to deliver a 6-digit code through the agent itself (e.g. an Ocean DM on Telegram). The code is salted with the fingerprint — a leaked code cannot approve a different bridge.
+                            </p>
+                        </div>
+                    </template>
+
+                    <!-- Big action buttons -->
+                    <div style="margin-top:0.85rem;display:grid;grid-template-columns:1fr 1fr;gap:0.7rem;">
+                        <button class="btn btn-danger"
+                                style="padding:0.7rem 1rem;font-size:12px;letter-spacing:0.04em;"
+                                @click="pairApproveReject()"
+                                :disabled="!!pending['rejectBridge:'+pairApproveCtx.host+'/'+pairApproveCtx.agent]">
+                            ✗ Don't match — REJECT
+                        </button>
+                        <button class="btn btn-approve"
+                                style="padding:0.7rem 1rem;font-size:12px;letter-spacing:0.04em;font-weight:700;"
+                                @click="pairApproveSubmit()"
+                                :disabled="!!pending['approveBridge:'+pairApproveCtx.host+'/'+pairApproveCtx.agent] || (oobRequiredForHost(pairApproveCtx.host) && !codeReady(pairApproveCtx.host, pairApproveCtx.agent))"
+                                :data-pending="!!pending['approveBridge:'+pairApproveCtx.host+'/'+pairApproveCtx.agent]">
+                            ✓ Match — APPROVE
+                        </button>
+                    </div>
+                    <div style="margin-top:0.5rem;text-align:right;">
+                        <button class="btn btn-ghost" style="font-size:10px;" @click="closePairApprove()">Close</button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+
     <!-- FLEET-116: 'What is this?' explainer drawer. Plain-language
          3-layer security explainer + 'today's right answer' cheat sheet.
          Opens from the host-drawer Integrations row (admin-only). Content
@@ -6535,6 +6682,12 @@ WantedBy=multi-user.target</pre>
                 // returned by GET /api/gateways/{host}/preflight. steps is the
                 // launch-sequence log (array of {ts, state, msg, elapsed}).
                 pairFlowCtx: null,
+                // FLEET-120: approval modal state. null = closed; otherwise
+                // {host, agent, oobCode, tofuOpen, fullHashOpen}. The bridge
+                // row itself is looked up live from this.bridges so SSE
+                // updates (e.g. the row gets approved-then-removed) propagate
+                // naturally.
+                pairApproveCtx: null,
                 // FLEET-113: per-pending-row OOB code input. Keyed by
                 // `<host>/<agent>` so multiple rows in the same drawer can
                 // accumulate codes independently. Cleared on approve/reject.
@@ -8625,8 +8778,79 @@ WantedBy=multi-user.target</pre>
                             await this._checkRes(res, 'Approve failed');
                             // Clear the cached code so a stale value can't carry into a re-registered row.
                             this.setPairCode(host, agent, '');
+                            // FLEET-120: if the verify-modal is open for this
+                            // bridge, close it on success.
+                            if (this.pairApproveCtx && this.pairApproveCtx.host === host && this.pairApproveCtx.agent === agent) {
+                                this.closePairApprove();
+                            }
                         },
                         { verb, target: 'bridge/' + k });
+                },
+
+                // FLEET-120: bridge-approve modal helpers. The modal is the
+                // dignified "verify-first" path — operator opens it via the
+                // `verify` link in the pending list (or from FLEET-119's
+                // post-deploy CTA), eyeballs the fingerprint diff, optionally
+                // expands the TOFU explainer, and clicks one of the two big
+                // outcome buttons. The inline APPROVE/REJECT in the pending
+                // list remains for operators who already trust the bridge.
+                openPairApprove(host, agent) {
+                    if (!host || !agent) return;
+                    this.pairApproveCtx = {
+                        host,
+                        agent,
+                        tofuOpen: false,
+                        fullHashOpen: false,
+                    };
+                },
+                closePairApprove() { this.pairApproveCtx = null; },
+                pairApproveBridge() {
+                    if (!this.pairApproveCtx) return null;
+                    return (this.bridges || []).find(b =>
+                        b.host === this.pairApproveCtx.host &&
+                        b.agent === this.pairApproveCtx.agent
+                    );
+                },
+                // The verify command operators run on the host. Mirrors the
+                // bridge container's own log line ("fleetcom register <agent>:
+                // ok (fp=...)" — agent-bridge/main.go:344) so eyeball-comparing
+                // is straightforward.
+                pairApproveVerifyCommand() {
+                    if (!this.pairApproveCtx) return '';
+                    const { host, agent } = this.pairApproveCtx;
+                    return 'ssh ' + host + " 'docker logs fleetcom-agent-bridge-" + agent + " 2>&1 | grep \"fleetcom register " + agent + "\" | head -1'";
+                },
+                async pairApproveCopyCommand() {
+                    const cmd = this.pairApproveVerifyCommand();
+                    if (!cmd) return;
+                    try {
+                        await navigator.clipboard.writeText(cmd);
+                        this.toast({ level: 'ok', verb: 'CLIPBOARD', target: 'verify-command', msg: 'Verify command copied to clipboard' });
+                    } catch (_) {
+                        this.toast({ level: 'warn', verb: 'CLIPBOARD', target: 'verify-command', msg: 'Clipboard access denied — select the command and copy manually' });
+                    }
+                },
+                pairApproveSubmit() {
+                    if (!this.pairApproveCtx) return;
+                    return this.approveBridge(this.pairApproveCtx.host, this.pairApproveCtx.agent);
+                },
+                pairApproveSkipOOB() {
+                    if (!this.pairApproveCtx) return;
+                    return this.approveBridgeSkipOOB(this.pairApproveCtx.host, this.pairApproveCtx.agent);
+                },
+                async pairApproveReject() {
+                    if (!this.pairApproveCtx) return;
+                    const { host, agent } = this.pairApproveCtx;
+                    const ok = await this.confirmModal({
+                        title: 'Reject bridge ' + host + '/' + agent + '?',
+                        body: 'Hard-deletes the pending row. The bridge can re-register on its next attempt — but if its fingerprint changed since you last saw it, that\'s a signal worth investigating.',
+                        confirmLabel: 'Reject',
+                        level: 'crit',
+                    });
+                    if (!ok) return;
+                    await this.rejectBridge(host, agent);
+                    // rejectBridge already closes via SSE; explicitly close the modal.
+                    this.closePairApprove();
                 },
                 // FLEET-113: typed-confirm bypass. confirmModal forces the
                 // operator to retype the hostname; the API also enforces it
@@ -9338,13 +9562,30 @@ WantedBy=multi-user.target</pre>
                 // FLEET-119: jump to the host drawer with the inline
                 // pending-pair list expanded so the operator can review
                 // and approve the just-registered bridge(s).
+                // FLEET-120: if there's exactly one pending bridge for this
+                // host that matches one of the agents we just deployed,
+                // open the verify-modal directly — saves a click and turns
+                // the wizard's "approve fingerprint" CTA into a clean
+                // hand-off into step 5.
                 approveFingerprintFromDeploy() {
                     const host = this.bridgeDeploy.host;
+                    const deployed = new Set(this.bridgeDeploy.selected || []);
                     this.closeBridgeDeploy();
-                    if (host) {
-                        this.openHostDrawer(host);
-                        this.pairListExpanded = { ...this.pairListExpanded, [host]: true };
+                    if (!host) return;
+                    this.openHostDrawer(host);
+                    this.pairListExpanded = { ...this.pairListExpanded, [host]: true };
+                    // Find pending rows for this host that match an agent
+                    // we just deployed.
+                    const candidates = (this.bridges || []).filter(b =>
+                        b.host === host && b.status === 'pending' && deployed.has(b.agent)
+                    );
+                    if (candidates.length === 1) {
+                        // Defer one tick so the host drawer transition runs
+                        // first; the modal pops on top once the drawer renders.
+                        this.$nextTick(() => this.openPairApprove(host, candidates[0].agent));
                     }
+                    // Multi-agent deployments: leave the operator at the
+                    // expanded pending list; they pick which to verify first.
                 },
 
                 // FLEET-119: timeout/retry — return to pick phase so the
