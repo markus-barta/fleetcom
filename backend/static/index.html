@@ -2986,6 +2986,152 @@
         }
         .drawer-integ-help strong { color: var(--ink); font-weight: 600; }
 
+        /* FLEET-117: posture cards. Three cards collapse the four
+           security toggles into one named decision. The factor stack
+           ([█][█][░]) is the wizard's signature primitive — reused later
+           in FLEET-121's docked-resume chip and first-run banner.
+           Aesthetic: 'mission console' — sharp corners, monospace,
+           no border-radius. See docs/WIZARD-DESIGN.md. */
+        .posture-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.55rem;
+            padding: 0.1rem 0;
+        }
+        .posture-card {
+            background: var(--bg-1);
+            border: 1px solid var(--line);
+            border-left: 2px solid var(--line);
+            padding: 0.65rem 0.75rem;
+            cursor: pointer;
+            transition: border-color 80ms ease, background 80ms ease;
+            position: relative;
+            font-family: inherit;
+        }
+        .posture-card:hover:not(.locked) {
+            border-color: var(--ink);
+            background: rgba(0, 200, 255, 0.04);
+        }
+        .posture-card.selected {
+            border-color: var(--accent);
+            border-left-color: var(--accent);
+            background: rgba(0, 200, 100, 0.07);
+            box-shadow: inset 0 0 0 1px var(--accent);
+        }
+        .posture-card.recommended:not(.selected) .posture-name {
+            color: var(--accent);
+        }
+        .posture-card.locked {
+            cursor: help;
+            opacity: 0.62;
+        }
+        .posture-card.locked:hover {
+            background: var(--bg-1);
+            border-color: var(--line);
+        }
+        .posture-head {
+            display: flex;
+            align-items: baseline;
+            gap: 0.4rem;
+            margin-bottom: 0.35rem;
+            min-height: 14px;
+        }
+        .posture-name {
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+            font-size: 11px;
+            letter-spacing: 0.06em;
+            color: var(--ink);
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .posture-rec {
+            font-size: 8px;
+            letter-spacing: 0.08em;
+            padding: 1px 5px;
+            background: var(--accent);
+            color: var(--bg-0);
+            font-weight: 700;
+        }
+        .posture-cur {
+            font-size: 8px;
+            letter-spacing: 0.08em;
+            padding: 1px 5px;
+            color: var(--accent);
+            border: 1px solid var(--accent);
+        }
+        .posture-lock {
+            font-size: 8px;
+            letter-spacing: 0.08em;
+            color: var(--warn);
+        }
+        .posture-stack {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            margin-bottom: 0.35rem;
+        }
+        .posture-seg {
+            display: inline-block;
+            width: 24px;
+            height: 6px;
+        }
+        .posture-seg.on  { background: var(--accent); }
+        .posture-seg.off { background: rgba(255, 255, 255, 0.08); }
+        .posture-seg.locked {
+            background-image: repeating-linear-gradient(
+                135deg, var(--warn) 0 1px, transparent 1px 4px);
+            background-color: rgba(255, 180, 0, 0.06);
+        }
+        .posture-count {
+            margin-left: 0.4rem;
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+            font-size: 9px;
+            color: var(--ink-dim);
+        }
+        .posture-desc {
+            font-size: 10px;
+            line-height: 1.4;
+            color: var(--ink-dim);
+            margin: 0 0 0.3rem;
+        }
+        .posture-foot {
+            font-size: 9px;
+            color: var(--ink-ghost);
+            border-top: 1px dashed var(--line);
+            padding-top: 0.3rem;
+            font-style: italic;
+        }
+        .posture-custom-note {
+            font-size: 9px;
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+            color: var(--warn);
+            letter-spacing: 0.04em;
+            padding: 0.15rem 0.3rem 0.4rem;
+        }
+
+        /* FLEET-117: 'Advanced toggles' disclosure. The original
+           4-toggle row from FLEET-111 lives inside this <details>;
+           the posture cards above are the recommended surface. */
+        .posture-advanced {
+            font-size: 10px;
+            color: var(--ink-ghost);
+        }
+        .posture-advanced > summary {
+            cursor: pointer;
+            list-style: none;
+            user-select: none;
+            padding: 0.25rem 0;
+            color: var(--ink-faint);
+            letter-spacing: 0.04em;
+        }
+        .posture-advanced > summary::-webkit-details-marker { display: none; }
+        .posture-advanced > summary::before {
+            content: '▸ ';
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+        }
+        .posture-advanced[open] > summary::before { content: '▾ '; }
+        .posture-advanced > summary:hover { color: var(--ink-dim); }
+
         /* Current turn span visualisation (user → LLM → tool → reply) */
         .turn-span {
             display: flex;
@@ -5185,6 +5331,53 @@ WantedBy=multi-user.target</pre>
                                         </button>
                                     </template>
                                 </div>
+                                <!-- FLEET-117: posture cards. Three cards collapse the
+                                     auto-approve / OOB / attestation toggles into one
+                                     named decision. The 4th toggle row is preserved
+                                     under "Advanced toggles" below for non-canonical
+                                     combinations and power-user overrides. Renders only
+                                     when the gateway is paired. -->
+                                <template x-if="gatewayForHost(hostDrawerKey)">
+                                    <div>
+                                        <template x-if="currentPosture(gatewayForHost(hostDrawerKey)) === 'custom'">
+                                            <div class="posture-custom-note">[!] CUSTOM TOGGLE COMBINATION — see "Advanced toggles" below</div>
+                                        </template>
+                                        <div class="posture-grid">
+                                            <template x-for="p in postureCards()" :key="p.key">
+                                                <div class="posture-card"
+                                                     :class="{
+                                                        selected:    p.key === currentPosture(gatewayForHost(hostDrawerKey)),
+                                                        recommended: p.key === 'reviewed',
+                                                        locked:      p.locked
+                                                     }"
+                                                     @click="!p.locked ? selectPosture(hostDrawerKey, p.key) : null"
+                                                     :title="p.locked ? p.lockReason : ''">
+                                                    <div class="posture-head">
+                                                        <span class="posture-name" x-text="p.name"></span>
+                                                        <template x-if="p.key === 'reviewed' && !p.locked && p.key !== currentPosture(gatewayForHost(hostDrawerKey))">
+                                                            <span class="posture-rec">RECOMMENDED</span>
+                                                        </template>
+                                                        <template x-if="p.key === currentPosture(gatewayForHost(hostDrawerKey))">
+                                                            <span class="posture-cur">CURRENT</span>
+                                                        </template>
+                                                        <template x-if="p.locked">
+                                                            <span class="posture-lock">[LOCKED]</span>
+                                                        </template>
+                                                    </div>
+                                                    <div class="posture-stack">
+                                                        <template x-for="i in 3" :key="i">
+                                                            <span class="posture-seg"
+                                                                  :class="i <= p.factors ? 'on' : (p.locked && i === 3 ? 'locked' : 'off')"></span>
+                                                        </template>
+                                                        <span class="posture-count" x-text="p.factors + '/3'"></span>
+                                                    </div>
+                                                    <p class="posture-desc" x-text="p.desc"></p>
+                                                    <div class="posture-foot" x-text="p.whenToUse"></div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
                                 <!-- Gateway row -->
                                 <div class="drawer-integ-row">
                                     <div style="min-width:0;">
@@ -5196,35 +5389,37 @@ WantedBy=multi-user.target</pre>
                                             <div class="v" style="color:var(--ink-ghost);font-style:italic;">not paired</div>
                                         </template>
                                     </div>
-                                    <div style="display:flex;gap:0.5rem;align-items:center;">
-                                        <!-- FLEET-377: auto-approve toggle migrated from Settings → Gateways tab. -->
+                                    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+                                        <!-- FLEET-117: the three FLEET-111 toggles moved into an
+                                             Advanced disclosure. The posture cards above are the
+                                             primary surface; the toggles remain as the escape hatch
+                                             for non-canonical combinations. + pubkey stays outside
+                                             the disclosure because it's a prerequisite for the
+                                             Hardened posture (the locked card is unlocked once it's set). -->
                                         <template x-if="gatewayForHost(hostDrawerKey)">
-                                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:10px;color:var(--ink-dim);cursor:pointer;" title="When ON, FleetCom auto-approves every new bridge once the host bearer token checks out. When OFF (recommended), each new bridge sits in 'pending' until you click APPROVE after eyeballing its fingerprint. Default OFF for new gateways.">
-                                                <input type="checkbox" :checked="(gatewayForHost(hostDrawerKey) || {}).auto_approve_bridges"
-                                                       @change="toggleAutoApprove(hostDrawerKey, $event.target.checked)">
-                                                auto-approve
-                                            </label>
-                                        </template>
-                                        <!-- FLEET-113: per-gateway OOB-delivery toggle. ON enables strict
-                                             /approve enforcement and requires the 6-digit code generated
-                                             from the agent itself. OFF (default) keeps Phase-1 fallback. -->
-                                        <template x-if="gatewayForHost(hostDrawerKey)">
-                                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:10px;color:var(--ink-dim);cursor:pointer;" title="Out-of-band confirmation code (Signal-style). When ON, /approve requires a 6-digit code that the gateway delivers through the agent itself (e.g. Ocean DMs you on Telegram). Currently dormant — needs the gateway-side OpenClaw signing endpoint to ship.">
-                                                <input type="checkbox" :checked="(gatewayForHost(hostDrawerKey) || {}).oob_delivery_enabled"
-                                                       @change="toggleOOBDelivery(hostDrawerKey, $event.target.checked)">
-                                                OOB code
-                                            </label>
-                                        </template>
-                                        <!-- FLEET-114: per-gateway attestation toggle + paste-pubkey link.
-                                             Effective enforcement = env AND per-gateway. Pubkey is required
-                                             before strict enforcement can succeed; pasting it directly
-                                             surfaces the requirement. -->
-                                        <template x-if="gatewayForHost(hostDrawerKey)">
-                                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:10px;color:var(--ink-dim);cursor:pointer;" title="Cryptographic gateway endorsement. When ON (and the global env flag is also ON), bridge registrations must include a gateway-signed body. Closes the 'leaked host token' attack: a stolen token alone is no longer enough.">
-                                                <input type="checkbox" :checked="(gatewayForHost(hostDrawerKey) || {}).attestation_required"
-                                                       @change="toggleAttestation(hostDrawerKey, $event.target.checked)">
-                                                attest
-                                            </label>
+                                            <details class="posture-advanced">
+                                                <summary>Advanced toggles</summary>
+                                                <div style="display:flex;gap:0.5rem;align-items:center;padding-top:0.3rem;flex-wrap:wrap;">
+                                                    <!-- FLEET-377: auto-approve toggle migrated from Settings → Gateways tab. -->
+                                                    <label style="display:flex;align-items:center;gap:0.3rem;font-size:10px;color:var(--ink-dim);cursor:pointer;" title="When ON, FleetCom auto-approves every new bridge once the host bearer token checks out. When OFF (recommended), each new bridge sits in 'pending' until you click APPROVE after eyeballing its fingerprint. Default OFF for new gateways.">
+                                                        <input type="checkbox" :checked="(gatewayForHost(hostDrawerKey) || {}).auto_approve_bridges"
+                                                               @change="toggleAutoApprove(hostDrawerKey, $event.target.checked)">
+                                                        auto-approve
+                                                    </label>
+                                                    <!-- FLEET-113: per-gateway OOB-delivery toggle. -->
+                                                    <label style="display:flex;align-items:center;gap:0.3rem;font-size:10px;color:var(--ink-dim);cursor:pointer;" title="Out-of-band confirmation code (Signal-style). When ON, /approve requires a 6-digit code that the gateway delivers through the agent itself (e.g. Ocean DMs you on Telegram). Currently dormant — needs the gateway-side OpenClaw signing endpoint to ship.">
+                                                        <input type="checkbox" :checked="(gatewayForHost(hostDrawerKey) || {}).oob_delivery_enabled"
+                                                               @change="toggleOOBDelivery(hostDrawerKey, $event.target.checked)">
+                                                        OOB code
+                                                    </label>
+                                                    <!-- FLEET-114: per-gateway attestation toggle. -->
+                                                    <label style="display:flex;align-items:center;gap:0.3rem;font-size:10px;color:var(--ink-dim);cursor:pointer;" title="Cryptographic gateway endorsement. When ON (and the global env flag is also ON), bridge registrations must include a gateway-signed body. Closes the 'leaked host token' attack: a stolen token alone is no longer enough.">
+                                                        <input type="checkbox" :checked="(gatewayForHost(hostDrawerKey) || {}).attestation_required"
+                                                               @change="toggleAttestation(hostDrawerKey, $event.target.checked)">
+                                                        attest
+                                                    </label>
+                                                </div>
+                                            </details>
                                         </template>
                                         <template x-if="gatewayForHost(hostDrawerKey)">
                                             <button class="btn btn-ghost"
@@ -5883,7 +6078,7 @@ WantedBy=multi-user.target</pre>
                     </tbody>
                 </table>
                 <p style="font-size:10px;color:var(--ink-ghost);line-height:1.55;margin:0.5rem 0 0;">
-                    A guided assistant (FLEET-115) will collapse this into 3 named postures (Auto-pair / Reviewed / Hardened) once the gateway-side endpoints land. For now, the toggles above are the canonical surface.
+                    The three posture cards above the toggles are the recommended way to set your gateway's stance — one click flips the right combination of flags atomically. <strong>Reviewed</strong> is the default for production today; <strong>Hardened</strong> unlocks once you paste the gateway's public key. The Advanced toggles disclosure remains for non-canonical combinations.
                 </p>
             </div>
 
@@ -8230,6 +8425,91 @@ WantedBy=multi-user.target</pre>
                             }
                         },
                         { verb: on ? 'ATTESTATION_ON' : 'ATTESTATION_OFF', target: 'gateway/' + host });
+                },
+                // FLEET-117: posture cards.
+                //
+                // currentPosture(g) reads the three FLEET-111 flags off
+                // a gateway row and returns one of the canonical posture
+                // names — or 'custom' when the operator has flipped a
+                // non-canonical combination via the Advanced toggles.
+                // Mirrors the server-side mapping in
+                // db.SetGatewayPosture (PostureAutoPair / Reviewed /
+                // Hardened constants); keep them in sync.
+                currentPosture(g) {
+                    if (!g) return null;
+                    const aa = !!g.auto_approve_bridges;
+                    const oo = !!g.oob_delivery_enabled;
+                    const at = !!g.attestation_required;
+                    if (aa && !oo && !at) return 'auto-pair';
+                    if (!aa && !oo && at)  return 'reviewed';
+                    if (!aa && oo && at)   return 'hardened';
+                    return 'custom';
+                },
+                // postureCards(): 3-card model surfaced in the host drawer.
+                // Hardened is locked until the gateway pubkey is captured
+                // (without it, FleetCom can't actually verify the
+                // attestation signatures the posture promises — server
+                // returns 422 if you try, but locking the card surfaces
+                // the prerequisite up front).
+                postureCards() {
+                    const g = this.gatewayForHost(this.hostDrawerKey);
+                    const hasPubkey = !!(g && g.gateway_pubkey_b64);
+                    return [
+                        {
+                            key: 'auto-pair',
+                            name: 'AUTO-PAIR',
+                            factors: 1,
+                            desc: 'FleetCom auto-approves every new bridge once the host bearer token checks out.',
+                            whenToUse: 'Lab/dev. Restricted token distribution.',
+                            locked: false,
+                        },
+                        {
+                            key: 'reviewed',
+                            name: 'REVIEWED',
+                            factors: 2,
+                            desc: 'Each new bridge sits pending until you click APPROVE after eyeballing its fingerprint.',
+                            whenToUse: 'Production today. Default for new gateways.',
+                            locked: false,
+                        },
+                        {
+                            key: 'hardened',
+                            name: 'HARDENED',
+                            factors: 3,
+                            desc: 'Bridge must present a gateway signature + an out-of-band code from the agent itself.',
+                            whenToUse: 'Once OpenClaw RFC ships and the gateway pubkey is captured.',
+                            locked: !hasPubkey,
+                            lockReason: hasPubkey
+                                ? ''
+                                : 'Paste the gateway\'s public key first (+ pubkey) — without it, FleetCom can\'t verify attestation signatures.',
+                        },
+                    ];
+                },
+                async selectPosture(host, name) {
+                    if (!host || !name) return;
+                    return this.busy('posture:' + host, 'Posture → ' + name + ' · ' + host,
+                        async () => {
+                            const res = await fetch('/api/gateways/' + encodeURIComponent(host) + '/posture/' + encodeURIComponent(name), {
+                                method: 'POST',
+                            });
+                            if (!res.ok) {
+                                if (res.status === 422) {
+                                    // Server-side lock (e.g. Hardened
+                                    // requested but the gateway pubkey
+                                    // is empty). The card UI already
+                                    // shows [LOCKED] for this case but
+                                    // surface the precise reason in case
+                                    // the operator clicked anyway.
+                                    const txt = (await res.text()).trim();
+                                    throw new Error(txt || 'Posture is locked — see card hint');
+                                }
+                                this.loadGateways();
+                                await this._checkRes(res, 'Failed to set posture');
+                            }
+                            // SSE 'gateways' broadcast updates the row
+                            // — the card's :class binding will flip the
+                            // selected/recommended state automatically.
+                        },
+                        { verb: 'POSTURE_' + name.toUpperCase().replace('-', '_'), target: 'gateway/' + host });
                 },
                 // FLEET-114 operator paste of the gateway's raw Ed25519
                 // pubkey. Opens the paste modal (no native prompt — keeps
