@@ -5808,18 +5808,26 @@ WantedBy=multi-user.target</pre>
         .add-custom-row .add-custom-btn:hover { border-color: var(--accent); color: var(--accent); }
     </style>
     <div x-show="bridgeDeploy.host" x-cloak
-         @keydown.escape.window="closeBridgeDeploy()"
+         @keydown.escape.window="bridgeDeploy.phase !== 'deploying' && closeBridgeDeploy()"
          class="modal-backdrop"
          style="display:none">
-        <div class="modal-card" @click.stop style="max-width:520px;">
-            <div class="modal-title" style="color:var(--accent);">Deploy agent-bridge</div>
-            <p style="font-size:11px;color:var(--ink-dim);line-height:1.5;">
-                The agent-bridge container will run on <strong x-text="bridgeDeploy.host"></strong>
-                and relay AI agent activity from the local OpenClaw gateway.
-                Needs a paired gateway with auto-approve on; otherwise registration is a no-op.
-            </p>
+        <div class="modal-card" @click.stop style="max-width:600px;">
+            <div class="modal-title" style="color:var(--accent);font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:0.04em;text-transform:uppercase;font-size:13px;">
+                Deploy agent-bridge
+                <span style="color:var(--ink-faint);font-weight:400;font-size:10px;letter-spacing:0.06em;margin-left:0.5rem;"
+                      x-text="bridgeDeployPhaseLabel()"></span>
+            </div>
 
-            <div class="chip-rails">
+            <!-- PICK PHASE — chip rails + free-text + command preview -->
+            <template x-if="bridgeDeploy.phase === 'pick'">
+                <div>
+                    <p style="font-size:11px;color:var(--ink-dim);line-height:1.5;">
+                        The agent-bridge container will run on <strong x-text="bridgeDeploy.host"></strong>
+                        and relay AI agent activity from the local OpenClaw gateway.
+                        Needs a paired gateway; if auto-approve is OFF (Reviewed posture or stricter), each bridge will sit pending until you click APPROVE.
+                    </p>
+
+                    <div class="chip-rails">
                 <template x-if="bridgeDeploy.suggestions.on_host && bridgeDeploy.suggestions.on_host.length">
                     <div>
                         <div class="chip-rail-label">On this host</div>
@@ -5879,23 +5887,86 @@ WantedBy=multi-user.target</pre>
                         @click="addBridgeCustom()">+ ADD</button>
             </div>
 
-            <div class="selected-summary">
-                <span class="selected-summary-label">Selected</span>
-                <template x-if="bridgeDeploy.selected.length === 0">
-                    <span style="color:var(--ink-ghost);font-style:italic;">none yet</span>
-                </template>
-                <template x-for="name in bridgeDeploy.selected" :key="'sel:'+name">
-                    <span class="selected-pill" x-text="name"></span>
-                </template>
-            </div>
+                    <div class="selected-summary">
+                        <span class="selected-summary-label">Selected</span>
+                        <template x-if="bridgeDeploy.selected.length === 0">
+                            <span style="color:var(--ink-ghost);font-style:italic;">none yet</span>
+                        </template>
+                        <template x-for="name in bridgeDeploy.selected" :key="'sel:'+name">
+                            <span class="selected-pill" x-text="name"></span>
+                        </template>
+                    </div>
 
-            <div class="modal-actions">
-                <button class="btn btn-ghost" @click="closeBridgeDeploy()">Cancel</button>
-                <button class="btn btn-primary"
-                        :disabled="bridgeDeploy.selected.length === 0 || !!pending['submitBridgeDeploy:'+bridgeDeploy.host]"
-                        :data-pending="!!pending['submitBridgeDeploy:'+bridgeDeploy.host]"
-                        @click="submitBridgeDeploy()">Deploy</button>
-            </div>
+                    <!-- FLEET-119: command preview. Reactive — updates as
+                         the operator picks chips. The token line shows a
+                         placeholder because bosun fills in the real value
+                         from its host-side env; FleetCom never sees it. -->
+                    <template x-if="bridgeDeploy.selected.length > 0">
+                        <div style="margin-top:0.85rem;">
+                            <div class="chip-rail-label" style="margin-bottom:0.25rem;">Bosun will run</div>
+                            <pre class="seq" style="white-space:pre-wrap;word-break:break-all;line-height:1.55;padding:0.7rem 0.85rem;font-size:10px;color:var(--ink-dim);" x-html="bridgeDeployCommandPreview()"></pre>
+                            <p style="font-size:9px;color:var(--ink-ghost);font-style:italic;margin-top:0.25rem;">
+                                Token is filled in by bosun on the host (it's never sent over the wire from FleetCom). One <code>docker run</code> per agent.
+                            </p>
+                        </div>
+                    </template>
+
+                    <div class="modal-actions">
+                        <button class="btn btn-ghost" @click="closeBridgeDeploy()">Cancel</button>
+                        <button class="btn btn-primary"
+                                :disabled="bridgeDeploy.selected.length === 0 || !!pending['submitBridgeDeploy:'+bridgeDeploy.host]"
+                                :data-pending="!!pending['submitBridgeDeploy:'+bridgeDeploy.host]"
+                                @click="submitBridgeDeploy()">Deploy</button>
+                    </div>
+                </div>
+            </template>
+
+            <!-- FLEET-119: DEPLOYING / DONE / TIMEOUT — launch-sequence
+                 log + status copy. Auto-advances to DONE when SSE 'bridges'
+                 pushes a pending row for each selected agent; falls back to
+                 TIMEOUT after 90s if any are missing. -->
+            <template x-if="bridgeDeploy.phase !== 'pick'">
+                <div>
+                    <p style="font-size:11px;color:var(--ink-dim);line-height:1.5;">
+                        <span x-show="bridgeDeploy.phase === 'deploying'">
+                            Bosun is pulling and running the bridge container on <strong x-text="bridgeDeploy.host"></strong>. Each agent registers via <code style="font-size:9px;">/api/bridges/register</code> as soon as the container's first heartbeat fires.
+                        </span>
+                        <span x-show="bridgeDeploy.phase === 'done'" style="color:var(--ok);">
+                            All <span x-text="bridgeDeploy.selected.length"></span> bridge<span x-text="bridgeDeploy.selected.length === 1 ? '' : 's'"></span> registered. Click APPROVE FINGERPRINT below to review and approve them in the host drawer.
+                        </span>
+                        <span x-show="bridgeDeploy.phase === 'timeout'" style="color:var(--warn);">
+                            Some bridges haven't registered after 90s. Inspect with <code style="font-size:9px;">ssh <span x-text="bridgeDeploy.host"></span> 'docker logs fleetcom-agent-bridge-&lt;agent&gt;'</code> — likely the gateway hasn't paired yet, or the bridge image failed to pull.
+                        </span>
+                    </p>
+                    <div class="seq">
+                        <template x-for="row in bridgeDeploy.steps" :key="row.id">
+                            <div>
+                                <div class="seq-row" :class="row.state">
+                                    <span class="seq-ts" x-text="row.ts"></span>
+                                    <span class="seq-flag" x-text="seqFlag(row.state)"></span>
+                                    <span class="seq-msg" x-text="row.msg"></span>
+                                    <span class="seq-elapsed" x-text="row.elapsed || ''"></span>
+                                </div>
+                                <template x-if="row.hint">
+                                    <div class="seq-hint" x-text="row.hint"></div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="modal-actions" style="margin-top:0.85rem;">
+                        <button class="btn btn-ghost"
+                                @click="closeBridgeDeploy()"
+                                :disabled="bridgeDeploy.phase === 'deploying'"
+                                x-text="bridgeDeploy.phase === 'done' ? 'Close' : 'Cancel'"></button>
+                        <template x-if="bridgeDeploy.phase === 'done'">
+                            <button class="btn btn-primary" @click="approveFingerprintFromDeploy()">Approve fingerprint →</button>
+                        </template>
+                        <template x-if="bridgeDeploy.phase === 'timeout'">
+                            <button class="btn btn-primary" @click="retryBridgeDeploy()">Retry</button>
+                        </template>
+                    </div>
+                </div>
+            </template>
         </div>
     </div>
 
@@ -6331,7 +6402,19 @@ WantedBy=multi-user.target</pre>
                 // FLEET-109: bridge-deploy modal state. selected[] is the
                 // canonical list of agent names that will be sent on Deploy.
                 // suggestions are filled by deployBridge() from the server.
-                bridgeDeploy: { host: '', selected: [], custom: '', suggestions: { on_host: [], in_fleet: [], defaults: [] } },
+                // FLEET-119: phase machine + steps log so the modal can
+                // transition from chip-pick → command preview → live SSE
+                // wait → auto-advance to approval. waiting[] is the set of
+                // selected agents we haven't seen pair-requests for yet.
+                bridgeDeploy: {
+                    host: '', selected: [], custom: '',
+                    suggestions: { on_host: [], in_fleet: [], defaults: [] },
+                    phase: 'pick',     // pick | deploying | done | timeout
+                    steps: [],         // launch-sequence rows (FLEET-118 .seq primitive)
+                    waiting: [],       // agents whose pair-request hasn't arrived yet
+                    timer: null,       // setTimeout handle for the 90s fallback
+                    seenAt: 0,         // bridges array length when we entered deploying (delta watch)
+                },
                 // FLEET-102: drag-to-resize state. `side` is one of
                 // '' | 'host' | 'activity' | 'agent'. When non-empty, a
                 // pointermove handler is updating the matching CSS var.
@@ -6507,6 +6590,11 @@ WantedBy=multi-user.target</pre>
                     this.initTheme();
                     this.connect();
                     this.startConnWatchdog();
+                    // FLEET-119: auto-advance the deploy modal when SSE
+                    // pushes a new bridge row. The watcher is no-op when
+                    // the modal is closed or in pick phase; it only fires
+                    // its progression logic during 'deploying'.
+                    this.$watch('bridges', () => this.bridgeDeployWatchBridges());
                     this.startStripRefresher();
                     document.addEventListener('visibilitychange', () => {
                         if (document.visibilityState === 'visible') this.kickIfStale();
@@ -9155,13 +9243,21 @@ WantedBy=multi-user.target</pre>
                 // /api/bridges/suggestions/{host}. The "ON THIS HOST" rail
                 // pre-selects existing bridges (redeploy/add semantics).
                 async deployBridge(host) {
-                    // Reset modal state and open with empty suggestions
-                    // (rails render lazy as the fetch resolves).
+                    // FLEET-119: clear any prior deploy timer + reset to
+                    // pick phase. Suggestions render lazy as fetch resolves.
+                    if (this.bridgeDeploy.timer) {
+                        clearTimeout(this.bridgeDeploy.timer);
+                    }
                     this.bridgeDeploy = {
                         host,
                         selected: [],
                         custom: '',
                         suggestions: { on_host: [], in_fleet: [], defaults: [] },
+                        phase: 'pick',
+                        steps: [],
+                        waiting: [],
+                        timer: null,
+                        seenAt: 0,
                     };
                     try {
                         const res = await fetch('/api/bridges/suggestions/' + encodeURIComponent(host));
@@ -9186,6 +9282,88 @@ WantedBy=multi-user.target</pre>
                     } catch (_) {} // silent: pure background load — modal still usable with defaults
                 },
 
+                // FLEET-119: tag for the wizard step indicator in the modal title.
+                bridgeDeployPhaseLabel() {
+                    switch (this.bridgeDeploy.phase) {
+                        case 'pick':      return '· step 1 of 2 · pick agents';
+                        case 'deploying': return '· step 2 of 2 · waiting for register';
+                        case 'done':      return '· complete';
+                        case 'timeout':   return '· timed out';
+                        default:          return '';
+                    }
+                },
+
+                // FLEET-119: reactive command preview. Renders one
+                // syntax-highlighted `docker run` block per selected
+                // agent — that's what bosun's bridge.install handler
+                // actually does (one container per agent name). The
+                // token line is masked because bosun fills it in from
+                // its host-side env; FleetCom never sees the value.
+                bridgeDeployCommandPreview() {
+                    const host = this.bridgeDeploy.host;
+                    if (!host || this.bridgeDeploy.selected.length === 0) return '';
+                    const fleetUrl = location.origin;
+                    const lines = [];
+                    for (const agent of this.bridgeDeploy.selected) {
+                        if (lines.length > 0) lines.push('');
+                        lines.push(this._dockerRunForAgent(host, agent, fleetUrl));
+                    }
+                    return lines.join('\n');
+                },
+                // Internal — returns a single agent's docker-run as
+                // syntax-highlighted HTML. Escapes operator-controlled
+                // strings (host, agent) — they originate from chip data
+                // we already trust, but defensive escaping is cheap.
+                _dockerRunForAgent(host, agent, fleetUrl) {
+                    const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({
+                        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+                    })[c]);
+                    const vEnv = (k, v) =>
+                        '  <span style="color:var(--ink-faint);">-e</span> ' +
+                        '<span style="color:var(--ink);">' + esc(k) + '</span>=' +
+                        '<span style="color:var(--ink-dim);">' + esc(v) + '</span> \\';
+                    const h = esc(host), a = esc(agent), u = esc(fleetUrl);
+                    return [
+                        '<span style="color:var(--accent);">docker run</span> -d \\',
+                        '  <span style="color:var(--ink-faint);">--name</span> <span style="color:var(--ink);">fleetcom-agent-bridge-' + a + '</span> \\',
+                        '  <span style="color:var(--ink-faint);">--restart</span> unless-stopped \\',
+                        vEnv('FLEETCOM_URL',      u),
+                        vEnv('FLEETCOM_HOSTNAME', h),
+                        vEnv('FLEETCOM_TOKEN',    '$BOSUN_TOKEN'),
+                        vEnv('BRIDGE_AGENT_NAMES', a),
+                        '  <span style="color:var(--accent);">ghcr.io/markus-barta/fleetcom-agent-bridge:latest</span>',
+                    ].join('\n');
+                },
+
+                // FLEET-119: jump to the host drawer with the inline
+                // pending-pair list expanded so the operator can review
+                // and approve the just-registered bridge(s).
+                approveFingerprintFromDeploy() {
+                    const host = this.bridgeDeploy.host;
+                    this.closeBridgeDeploy();
+                    if (host) {
+                        this.openHostDrawer(host);
+                        this.pairListExpanded = { ...this.pairListExpanded, [host]: true };
+                    }
+                },
+
+                // FLEET-119: timeout/retry — return to pick phase so the
+                // operator can deselect / re-pick / re-deploy without
+                // re-opening the modal.
+                retryBridgeDeploy() {
+                    if (this.bridgeDeploy.timer) {
+                        clearTimeout(this.bridgeDeploy.timer);
+                    }
+                    this.bridgeDeploy = {
+                        ...this.bridgeDeploy,
+                        phase: 'pick',
+                        steps: [],
+                        waiting: [],
+                        timer: null,
+                        seenAt: 0,
+                    };
+                },
+
                 toggleBridgeChip(name) {
                     const i = this.bridgeDeploy.selected.indexOf(name);
                     if (i === -1) {
@@ -9208,7 +9386,13 @@ WantedBy=multi-user.target</pre>
                 },
 
                 closeBridgeDeploy() {
-                    this.bridgeDeploy = { host: '', selected: [], custom: '', suggestions: { on_host: [], in_fleet: [], defaults: [] } };
+                    if (this.bridgeDeploy.phase === 'deploying') return; // guard during in-flight
+                    if (this.bridgeDeploy.timer) clearTimeout(this.bridgeDeploy.timer);
+                    this.bridgeDeploy = {
+                        host: '', selected: [], custom: '',
+                        suggestions: { on_host: [], in_fleet: [], defaults: [] },
+                        phase: 'pick', steps: [], waiting: [], timer: null, seenAt: 0,
+                    };
                 },
 
                 // FLEET-100 / FLEET-109: submit handler. Sends the union of
@@ -9216,6 +9400,11 @@ WantedBy=multi-user.target</pre>
                 // agent_names to the bridge.install command. Goes through
                 // busy() so the operator gets the standard pending state +
                 // toast + activity-log entry.
+                //
+                // FLEET-119: transitions the modal to a launch-sequence
+                // log on click; arms a 90s watchdog; the bridges-array
+                // watcher (see bridgeDeployWatchBridges) auto-advances to
+                // 'done' when SSE pushes a pending row for each agent.
                 async submitBridgeDeploy() {
                     const host = this.bridgeDeploy.host;
                     if (!host) return;
@@ -9224,20 +9413,114 @@ WantedBy=multi-user.target</pre>
                     const names = [...this.bridgeDeploy.selected];
                     if (names.length === 0) return;
                     const agent_names = names.join(',');
-                    return this.busy('submitBridgeDeploy:' + host, 'agent-bridge install enqueued — watching command list',
+
+                    // Snapshot current bridges length so the watcher can
+                    // detect newly-arrived rows without false positives
+                    // from existing pending entries unrelated to this run.
+                    const seenAt = (this.bridges || []).length;
+                    let nextId = 1;
+                    const steps = [];
+                    const pushRow = (state, msg, hint) => {
+                        steps.push({ id: nextId++, ts: this.seqNow(), state, msg, hint });
+                        this.bridgeDeploy = { ...this.bridgeDeploy, steps: [...steps] };
+                    };
+
+                    this.bridgeDeploy = {
+                        ...this.bridgeDeploy,
+                        phase: 'deploying',
+                        waiting: [...names],
+                        seenAt,
+                        steps,
+                    };
+                    pushRow('done',    'Selected ' + names.length + ' agent(s): ' + names.join(', '));
+                    pushRow('pending', 'Enqueueing bridge.install command for bosun');
+
+                    return this.busy('submitBridgeDeploy:' + host, 'agent-bridge install enqueued',
                         async () => {
                             const res = await fetch('/api/hosts/' + encodeURIComponent(host) + '/commands', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ kind: 'bridge.install', params: { agent_names } })
                             });
-                            await this._checkRes(res, 'Deploy failed');
+                            if (!res.ok) {
+                                const txt = (await res.text()).trim();
+                                steps[steps.length - 1] = { ...steps[steps.length - 1], state: 'error',
+                                    msg: 'Server rejected bridge.install', hint: txt || 'HTTP ' + res.status };
+                                this.bridgeDeploy = { ...this.bridgeDeploy, phase: 'timeout', steps: [...steps] };
+                                throw new Error('Deploy failed: ' + (txt || 'HTTP ' + res.status));
+                            }
                             const body = await res.json();
-                            this.closeBridgeDeploy();
-                            this.openHostDrawer(host, 'commands');
+                            // Resolve the spinner row, then pivot to "wait for
+                            // SSE pair-request" state.
+                            steps[steps.length - 1] = { ...steps[steps.length - 1], state: 'done',
+                                msg: 'Command #' + body.id + ' enqueued for bosun (bridge.install)' };
+                            this.bridgeDeploy = { ...this.bridgeDeploy, steps: [...steps] };
+                            pushRow('pending', 'Waiting for ' + names.length + ' bridge(s) to register…',
+                                'Bridges register the moment their container starts and reads $FLEETCOM_TOKEN. Auto-advance on SSE pair-request.');
+                            // Arm the 90s watchdog.
+                            this.bridgeDeploy.timer = setTimeout(() => this._bridgeDeployTimeout(), 90 * 1000);
                             return body;
                         },
-                        { verb: 'EXEC', target: 'commands/' + host + ':bridge.install' });
+                        { verb: 'EXEC', target: 'commands/' + host + ':bridge.install', oplog: false });
+                },
+
+                // FLEET-119: bridges-array watcher. Bound to this.bridges
+                // via $watch in init (see initSSE). When phase==='deploying'
+                // and we see a new pending row matching our host+agent,
+                // mark that agent done. When all agents are done, transition
+                // to phase='done' and disarm the watchdog.
+                bridgeDeployWatchBridges() {
+                    if (this.bridgeDeploy.phase !== 'deploying') return;
+                    const host = this.bridgeDeploy.host;
+                    const waiting = [...(this.bridgeDeploy.waiting || [])];
+                    if (waiting.length === 0) return;
+                    let progressed = false;
+                    const stillWaiting = [];
+                    for (const agent of waiting) {
+                        const found = (this.bridges || []).find(b =>
+                            b.host === host && b.agent === agent
+                        );
+                        if (found) {
+                            this.bridgeDeploy.steps = [
+                                ...this.bridgeDeploy.steps,
+                                { id: this.bridgeDeploy.steps.length + 100,
+                                  ts: this.seqNow(), state: 'sse',
+                                  msg: 'SSE bridges · ' + agent + ' registered (' + (found.status || '?') + ')' },
+                            ];
+                            progressed = true;
+                        } else {
+                            stillWaiting.push(agent);
+                        }
+                    }
+                    if (!progressed) return;
+                    this.bridgeDeploy = { ...this.bridgeDeploy, waiting: stillWaiting };
+                    if (stillWaiting.length === 0) {
+                        if (this.bridgeDeploy.timer) clearTimeout(this.bridgeDeploy.timer);
+                        this.bridgeDeploy = {
+                            ...this.bridgeDeploy,
+                            phase: 'done',
+                            timer: null,
+                            steps: [
+                                ...this.bridgeDeploy.steps,
+                                { id: 999, ts: this.seqNow(), state: 'done',
+                                  msg: 'All bridges registered — ready to approve fingerprints' },
+                            ],
+                        };
+                        this.toast('All bridges registered for ' + host, 'ok');
+                    }
+                },
+                _bridgeDeployTimeout() {
+                    if (this.bridgeDeploy.phase !== 'deploying') return; // raced with done
+                    this.bridgeDeploy = {
+                        ...this.bridgeDeploy,
+                        phase: 'timeout',
+                        steps: [
+                            ...this.bridgeDeploy.steps,
+                            { id: 998, ts: this.seqNow(), state: 'warn',
+                              msg: '90s elapsed; ' + this.bridgeDeploy.waiting.length + ' agent(s) still missing',
+                              hint: 'Missing: ' + this.bridgeDeploy.waiting.join(', ') + '. Check bosun + bridge container logs on the host.' },
+                        ],
+                    };
                 },
 
                 async unpairGateway(host) {
