@@ -5705,6 +5705,46 @@ WantedBy=multi-user.target</pre>
         </div>
     </div>
 
+    <!-- FLEET-114: gateway pubkey paste modal. Lives inside x-data so
+         x-show actually fires (FLEET-104 lesson). Validates b64url length
+         client-side before submit; server re-validates. -->
+    <div x-show="gatewayPubkeyCtx" x-cloak
+         @keydown.escape.window="gatewayPubkeyCtx && cancelGatewayPubkey()"
+         class="modal-backdrop"
+         @click="cancelGatewayPubkey()"
+         style="display:none">
+        <div class="modal-card" @click.stop style="max-width:560px;">
+            <div class="modal-title" style="color:var(--warn);"
+                 x-text="'Gateway pubkey · ' + (gatewayPubkeyCtx ? gatewayPubkeyCtx.host : '')"></div>
+            <p style="font-size:11px;color:var(--ink-dim);line-height:1.5;">
+                Paste the gateway's raw Ed25519 public key (b64url-no-padding, 43 characters). Required for FLEET-114 attestation verification. Leave empty to clear.
+            </p>
+            <p style="font-size:10px;color:var(--ink-faint);line-height:1.5;font-family:'JetBrains Mono',ui-monospace,monospace;background:rgba(0,0,0,0.18);padding:0.5rem 0.7rem;border-left:2px solid var(--line-2);">
+                Find it on the gateway host:<br>
+                <span style="color:var(--ink-dim);">cat /var/lib/openclaw/keys/public.pem</span><br>
+                then run <span style="color:var(--ink-dim);">openssl ec -pubin … -outform DER</span> + b64url, OR ask the gateway operator for the value emitted in pair-time logs.
+            </p>
+            <input type="text"
+                   class="modal-input"
+                   :value="gatewayPubkeyCtx ? gatewayPubkeyCtx.value : ''"
+                   @input="gatewayPubkeyCtx = { ...gatewayPubkeyCtx, value: $event.target.value, error: '' }"
+                   placeholder="abcdEFGH1234_…  (43 chars)"
+                   spellcheck="false"
+                   autocomplete="off"
+                   style="font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;letter-spacing:0.02em;"
+                   x-init="$watch('gatewayPubkeyCtx', v => { if (v) $nextTick(() => $el.focus()); })">
+            <template x-if="gatewayPubkeyCtx && gatewayPubkeyCtx.error">
+                <p style="font-size:10px;color:var(--crit);margin-top:0.4rem;" x-text="gatewayPubkeyCtx.error"></p>
+            </template>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" @click="cancelGatewayPubkey()">Cancel</button>
+                <button class="btn btn-primary"
+                        @click="submitGatewayPubkey()"
+                        x-text="(gatewayPubkeyCtx && gatewayPubkeyCtx.value && gatewayPubkeyCtx.value.trim()) ? 'Save' : 'Clear pubkey'"></button>
+            </div>
+        </div>
+    </div>
+
     <!-- FLEET-112: full-fleet pending pair-requests panel. Opened from
          the header PAIR · N button. Each row is a click-jump back into
          the host drawer where the inline approval list lives — keeps
@@ -5893,6 +5933,10 @@ WantedBy=multi-user.target</pre>
                 // `<host>/<agent>` so multiple rows in the same drawer can
                 // accumulate codes independently. Cleared on approve/reject.
                 pairCodes: {},
+                // FLEET-114: gateway-pubkey paste modal state. Set to
+                // {host, value, error} when open; null when closed. The
+                // modal lives inside the x-data root (FLEET-104 lesson).
+                gatewayPubkeyCtx: null,
                 usersList: [],
                 newUserEmail: '', newUserPassword: '', newUserRole: 'user',
                 selectedUser: null, selectedUserHosts: [], allHostsList: [],
@@ -7986,7 +8030,10 @@ WantedBy=multi-user.target</pre>
                             await this._checkRes(res, 'Skip-OOB approve failed');
                             this.setPairCode(host, agent, '');
                         },
-                        { verb: 'OOB_BYPASSED', target: 'bridge/' + k, level: 'warn' });
+                        // oplog: false — the server-side handler writes the
+                        // canonical OOB_BYPASSED audit row (FLEET-113), so
+                        // skipping the frontend record avoids duplication.
+                        { verb: 'OOB_BYPASSED', target: 'bridge/' + k, level: 'warn', oplog: false });
                 },
                 // OOB code helpers — keyed by `host/agent`.
                 oobRequiredForHost(host) {
@@ -8022,20 +8069,35 @@ WantedBy=multi-user.target</pre>
                         },
                         { verb: on ? 'ATTESTATION_ON' : 'ATTESTATION_OFF', target: 'gateway/' + host });
                 },
-                // Operator paste of the gateway's own raw Ed25519 pubkey.
-                // Uses the existing confirmModal with a typed input — same
-                // UX pattern as requireType but for free-text instead of
-                // echo. Stays simple; no separate modal needed.
-                async openGatewayPubkeyPrompt(host) {
+                // FLEET-114 operator paste of the gateway's raw Ed25519
+                // pubkey. Opens the paste modal (no native prompt — keeps
+                // the dark-aesthetic console feel and validates length /
+                // format before submit).
+                openGatewayPubkeyPrompt(host) {
                     const current = (this.gatewayForHost(host) || {}).gateway_pubkey_b64 || '';
-                    // Native prompt would violate ban-native-confirm spirit;
-                    // use a one-shot reactive input via the existing modal.
-                    const value = window.prompt(
-                        'Paste the gateway pubkey for ' + host + ' (base64url-no-padding of the raw 32-byte Ed25519 public key).\n\nLeave empty to clear.',
-                        current,
-                    );
-                    if (value === null) return; // cancelled
-                    const trimmed = value.trim();
+                    this.gatewayPubkeyCtx = { host, value: current, error: '' };
+                },
+                // Lightweight client-side format check so the operator gets
+                // feedback before the round-trip. Server still re-validates.
+                gatewayPubkeyValidate(value) {
+                    const v = (value || '').trim();
+                    if (v === '') return ''; // empty resets — allowed
+                    // 32-byte raw key → b64url-no-padding length 43 chars.
+                    if (!/^[A-Za-z0-9_-]{43}$/.test(v)) {
+                        return 'Must be base64url (no padding) of a 32-byte key — 43 characters of [A-Za-z0-9_-].';
+                    }
+                    return '';
+                },
+                async submitGatewayPubkey() {
+                    if (!this.gatewayPubkeyCtx) return;
+                    const { host } = this.gatewayPubkeyCtx;
+                    const trimmed = (this.gatewayPubkeyCtx.value || '').trim();
+                    const localErr = this.gatewayPubkeyValidate(trimmed);
+                    if (localErr) {
+                        this.gatewayPubkeyCtx = { ...this.gatewayPubkeyCtx, error: localErr };
+                        return;
+                    }
+                    this.gatewayPubkeyCtx = null;
                     return this.busy('setGatewayPubkey:' + host, trimmed ? 'Gateway pubkey saved · ' + host : 'Gateway pubkey cleared · ' + host,
                         async () => {
                             const res = await fetch('/api/gateways/' + encodeURIComponent(host) + '/pubkey', {
@@ -8047,6 +8109,7 @@ WantedBy=multi-user.target</pre>
                         },
                         { verb: trimmed ? 'GATEWAY_PUBKEY_SET' : 'GATEWAY_PUBKEY_CLEARED', target: 'gateway/' + host });
                 },
+                cancelGatewayPubkey() { this.gatewayPubkeyCtx = null; },
                 // Attestation badge styling — operators read this at a
                 // glance, so the colors map to outcome severity:
                 //   verified → ok green
@@ -8963,13 +9026,19 @@ WantedBy=multi-user.target</pre>
                         // FLEET-108: record to operator log. Fire-and-forget;
                         // log errors here go to console only — the busy() result
                         // toast is already on screen.
-                        this.recordOplog({
-                            verb:        opts.verb || (outcome === 'err' ? 'FAIL' : 'OK'),
-                            target:      opts.target || '',
-                            outcome,
-                            duration_ms: ms,
-                            error:       errMsg,
-                        });
+                        // FLEET-113: opts.oplog === false opts out — used when
+                        // the server is the canonical audit writer (e.g.
+                        // OOB_BYPASSED), so the row appears exactly once.
+                        // Failures still record so we can see what didn't land.
+                        if (opts.oplog !== false || outcome === 'err') {
+                            this.recordOplog({
+                                verb:        opts.verb || (outcome === 'err' ? 'FAIL' : 'OK'),
+                                target:      opts.target || '',
+                                outcome,
+                                duration_ms: ms,
+                                error:       errMsg,
+                            });
+                        }
                     }
                 },
 

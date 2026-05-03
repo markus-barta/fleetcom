@@ -139,10 +139,16 @@ func (s *Store) SetGatewayPubkey(host, pubkeyB64 string) error {
 	return nil
 }
 
-// SetBridgeAttestationStatus persists the per-row outcome.
+// SetBridgeAttestationStatus persists the per-row outcome. Filters on
+// status='pending' so a re-registration with the same fp (which keeps
+// the row at status='approved') cannot downgrade an already-verified
+// row's badge — an attacker with the bosun token would otherwise be
+// able to wipe the audit signal by re-posting without a signature.
+// Once the row flips to approved, attestation_status is frozen.
 func (s *Store) SetBridgeAttestationStatus(host, agent, status string) error {
 	_, err := s.DB.Exec(
-		`UPDATE bridge_pairings SET attestation_status = ? WHERE host = ? AND agent = ?`,
+		`UPDATE bridge_pairings SET attestation_status = ?
+		 WHERE host = ? AND agent = ? AND status = 'pending'`,
 		status, host, agent,
 	)
 	return err

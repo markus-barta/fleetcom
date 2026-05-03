@@ -534,6 +534,18 @@ func ApproveBridge(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 		_ = json.NewDecoder(r.Body).Decode(&body) // body is optional; ignore decode error
 		body.Code = strings.TrimSpace(body.Code)
 
+		// Idempotency probe: SSE racing between approve clicks (or a
+		// double-submit) can land here after the row has already flipped
+		// to 'approved'. Treat the action as a successful no-op rather
+		// than returning a confusing "no pending bridge" 404.
+		if existing, _ := store.BridgeByHostAgent(host, agent); existing == nil {
+			http.Error(w, "no bridge pairing for "+host+"/"+agent, http.StatusNotFound)
+			return
+		} else if existing.Status == "approved" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
 		oobOn := gatewayOOBEnabled(store, host)
 
 		if oobOn {
@@ -597,7 +609,11 @@ type approveBridgeSkipOOBRequest struct {
 
 // ApproveBridgeSkipOOB handles POST /api/bridges/{host}/{agent}/approve-skip-oob.
 // Server-side typed-confirm: body must be `{"confirm":"<hostname>"}`.
-// Always loud-audited (the operator log row carries verb=OOB_BYPASSED).
+// Always loud-audited at the SERVER level — the activity_events row is
+// written here, not relied on the frontend's busy() recordOplog. That
+// way curl-driven bypasses (intentional or scripted) are still captured
+// in the audit trail. The frontend opts out of its own oplog write for
+// this verb so the row appears exactly once.
 func ApproveBridgeSkipOOB(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host := chi.URLParam(r, "host")
@@ -615,11 +631,36 @@ func ApproveBridgeSkipOOB(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			http.Error(w, "typed-confirm mismatch — body.confirm must equal the hostname", http.StatusBadRequest)
 			return
 		}
+		// Idempotency probe — same as ApproveBridge.
+		if existing, _ := store.BridgeByHostAgent(host, agent); existing == nil {
+			http.Error(w, "no bridge pairing for "+host+"/"+agent, http.StatusNotFound)
+			return
+		} else if existing.Status == "approved" {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
 		if err := store.MarkBridgeApprovedManual(host, agent); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
 		_ = store.ClearConfirmationCode(host, agent)
+
+		// Canonical audit row — written here regardless of whether the
+		// caller is the dashboard or curl. user_id from the session
+		// (admin middleware guarantees it's set).
+		var userID int64
+		if u := auth.GetUser(r); u != nil {
+			userID = u.ID
+		}
+		_, _ = store.RecordActivity(db.ActivityEvent{
+			UserID:     userID,
+			Verb:       "OOB_BYPASSED",
+			TargetType: "bridge",
+			TargetKey:  host + "/" + agent,
+			Outcome:    "ok",
+		})
+
 		broadcastBridges(store, hub)
 		w.WriteHeader(http.StatusNoContent)
 	}

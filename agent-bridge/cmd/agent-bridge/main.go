@@ -257,20 +257,79 @@ func (c *fleetcomClient) post(path string, body interface{}, reply interface{}) 
 	return nil
 }
 
+// fetchGatewaySignature (FLEET-114) asks the local OpenClaw gateway to
+// endorse the (host, agent, fingerprint) tuple by signing it with its
+// own Ed25519 key. The gateway-side endpoint is the OpenClaw RFC
+// `/v1/bridge/sign-registration`; until that ships, the env var stays
+// unset and this function returns "" silently → /api/bridges/register
+// falls through to attestation_skipped on the server side.
+//
+// Configurable via BRIDGE_GATEWAY_SIGN_URL (e.g. "http://localhost:18790/v1/bridge/sign-registration").
+// Any error (DNS, 404, timeout, decode) is logged at warn-level and the
+// caller proceeds without a signature — never block registration.
+func fetchGatewaySignature(ctx context.Context, host, agent, fp string) string {
+	url := strings.TrimSpace(os.Getenv("BRIDGE_GATEWAY_SIGN_URL"))
+	if url == "" {
+		return ""
+	}
+	body, _ := json.Marshal(map[string]string{
+		"host":      host,
+		"agent":     agent,
+		"pubkey_fp": fp,
+	})
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		log.Printf("warn: gateway sign-registration build req: %v — registering without signature", err)
+		return ""
+	}
+	req.Header.Set("Content-Type", "application/json")
+	cli := &http.Client{Timeout: 5 * time.Second}
+	resp, err := cli.Do(req)
+	if err != nil {
+		log.Printf("warn: gateway sign-registration call: %v — registering without signature", err)
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		log.Printf("warn: gateway sign-registration → %d — registering without signature", resp.StatusCode)
+		return ""
+	}
+	var reply struct {
+		SignatureB64 string `json:"signature_b64"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 4096)).Decode(&reply); err != nil {
+		log.Printf("warn: gateway sign-registration decode: %v — registering without signature", err)
+		return ""
+	}
+	return strings.TrimSpace(reply.SignatureB64)
+}
+
 // registerLoop POSTs /api/bridges/register once for each agent we
 // serve. FleetCom uses the (host, agent) pair to dedupe, so re-calling
 // is idempotent. Retry forever — the operator might be starting the
 // stack one service at a time.
+//
+// FLEET-114: includes gateway_signature_b64 when BRIDGE_GATEWAY_SIGN_URL
+// is set and the gateway returns a signature. Without it, the server
+// records ATTESTATION_SKIPPED in its activity log when env=false, or
+// rejects with 401 when env=true (operator decides).
 func registerLoop(ctx context.Context, fc *fleetcomClient, host string, agents []string, id *openclaw.Identity) {
 	pubPEM, _ := os.ReadFile(filepath.Join(getenv("BRIDGE_KEY_DIR", "/var/lib/fleetcom-agent-bridge"), "public.pem"))
+	fp := id.DeviceID // sha256(rawPubkey) hex — same format the server computes
 	for _, agent := range agents {
-		body := map[string]string{
-			"agent":      agent,
-			"pubkey_pem": string(pubPEM),
-		}
 		for {
 			if ctx.Err() != nil {
 				return
+			}
+			// Best-effort signature fetch on every retry — the gateway
+			// might have come up between attempts. No-op when env unset.
+			sig := fetchGatewaySignature(ctx, host, agent, fp)
+			body := map[string]string{
+				"agent":      agent,
+				"pubkey_pem": string(pubPEM),
+			}
+			if sig != "" {
+				body["gateway_signature_b64"] = sig
 			}
 			var reply map[string]any
 			if err := fc.post("/api/bridges/register", body, &reply); err != nil {
@@ -282,7 +341,7 @@ func registerLoop(ctx context.Context, fc *fleetcomClient, host string, agents [
 				}
 				continue
 			}
-			log.Printf("fleetcom register %s: ok (fp=%v auto_approve=%v)", agent, reply["fingerprint"], reply["auto_approve"])
+			log.Printf("fleetcom register %s: ok (fp=%v auto_approve=%v attestation=%v)", agent, reply["fingerprint"], reply["auto_approve"], reply["attestation_status"])
 			break
 		}
 	}
