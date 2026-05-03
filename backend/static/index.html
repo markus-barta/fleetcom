@@ -1509,6 +1509,31 @@
         }
         .btn-ghost:hover { opacity: 1; background: var(--bg-1); }
 
+        /* FLEET-106: in-flight indicator. Spinners belong on SaaS dashboards;
+           this is a console — use a 1px scanline that sweeps left-to-right.
+           Activated by binding :data-pending="!!pending['<key>']" on any button
+           wrapped by busy(). The :disabled binding pairs naturally so
+           double-clicks are impossible while the call is in flight. */
+        .btn[data-pending="true"] {
+            color: var(--ink-dim);
+            cursor: wait;
+            position: relative;
+            overflow: hidden;
+        }
+        .btn[data-pending="true"]:disabled { opacity: 1; }
+        .btn[data-pending="true"]::after {
+            content: "";
+            position: absolute; left: 0; bottom: 0;
+            height: 1px; width: 30%;
+            background: linear-gradient(90deg, transparent, var(--accent), transparent);
+            animation: btn-scan 0.9s linear infinite;
+            pointer-events: none;
+        }
+        @keyframes btn-scan {
+            from { transform: translateX(-120%); }
+            to   { transform: translateX(420%); }
+        }
+
         .token-list { list-style: none; }
         .token-list li {
             display: flex;
@@ -3790,13 +3815,20 @@
                                         <label style="font-size:11px;color:var(--ink-dim)">Instance Label</label>
                                         <div style="display:flex;gap:0.5rem">
                                             <input type="text" x-model="configInstanceLabel" placeholder="e.g. BYTEPOETS" style="flex:1">
-                                            <button class="btn btn-primary" @click="saveInstanceLabel()">Save</button>
+                                            <button class="btn btn-primary"
+                                                    :data-pending="!!pending['saveInstanceLabel']"
+                                                    :disabled="!!pending['saveInstanceLabel']"
+                                                    @click="saveInstanceLabel()">Save</button>
                                         </div>
                                         <label style="font-size:11px;color:var(--ink-dim);margin-top:0.5rem">Org Logo</label>
                                         <div style="display:flex;gap:0.5rem;align-items:center">
                                             <img x-show="orgLogoURL" :src="orgLogoURL" style="height:32px;border-radius:4px">
                                             <input type="file" accept="image/*" @change="uploadOrgLogo($event)" style="font-size:11px">
-                                            <button class="btn" x-show="orgLogoURL" style="font-size:0.75rem;padding:0.25rem 0.5rem;background:var(--crit)" @click="deleteOrgLogo()">Remove</button>
+                                            <button class="btn" x-show="orgLogoURL"
+                                                    :data-pending="!!pending['deleteOrgLogo']"
+                                                    :disabled="!!pending['deleteOrgLogo']"
+                                                    style="font-size:0.75rem;padding:0.25rem 0.5rem;background:var(--crit)"
+                                                    @click="deleteOrgLogo()">Remove</button>
                                         </div>
                                     </div>
                                 </div>
@@ -3833,7 +3865,11 @@
                             <div class="form-row" style="flex-direction:column;gap:0.5rem;max-width:360px">
                                 <input type="password" x-model="pwCurrent" placeholder="Current password">
                                 <input type="password" x-model="pwNew" placeholder="New password (min 6 chars)">
-                                <button class="btn btn-primary" @click="changePassword()" x-text="pwMsg || 'Change Password'" :disabled="!pwCurrent || !pwNew || pwNew.length < 6"></button>
+                                <button class="btn btn-primary"
+                                        @click="changePassword()"
+                                        x-text="pending['changePassword'] ? 'Changing…' : 'Change Password'"
+                                        :data-pending="!!pending['changePassword']"
+                                        :disabled="!pwCurrent || !pwNew || pwNew.length < 6 || !!pending['changePassword']"></button>
                             </div>
 
                             <h3 style="margin:2rem 0 1rem;color:var(--ink-dim)">Two-Factor Authentication</h3>
@@ -3855,7 +3891,10 @@
                                           title="Click to copy"></code>
                                     <div class="form-row" style="gap:0.5rem">
                                         <input type="text" x-model="totpCode" placeholder="6-digit code" maxlength="6" inputmode="numeric" style="max-width:160px">
-                                        <button class="btn btn-primary" @click="enableTOTP()">Verify & Enable</button>
+                                        <button class="btn btn-primary"
+                                                :data-pending="!!pending['enableTOTP']"
+                                                :disabled="!!pending['enableTOTP']"
+                                                @click="enableTOTP()">Verify & Enable</button>
                                     </div>
                                 </div>
                             </template>
@@ -3864,7 +3903,11 @@
                                     <p style="color:var(--ok);margin-bottom:0.5rem;font-size:0.875rem">2FA is enabled.</p>
                                     <div class="form-row" style="gap:0.5rem">
                                         <input type="password" x-model="totpDisablePw" placeholder="Password to disable">
-                                        <button class="btn" style="background:var(--crit)" @click="disableTOTP()">Disable 2FA</button>
+                                        <button class="btn"
+                                                :data-pending="!!pending['disableTOTP']"
+                                                :disabled="!!pending['disableTOTP']"
+                                                style="background:var(--crit)"
+                                                @click="disableTOTP()">Disable 2FA</button>
                                     </div>
                                 </div>
                             </template>
@@ -3879,7 +3922,10 @@
                                         <span x-text="new Date(s.created_at).toLocaleString()"></span>
                                         <template x-if="s.current"><span style="color:var(--ok);margin-left:0.5rem;font-size:0.75rem">(current)</span></template>
                                     </span>
-                                    <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem" x-show="!s.current" @click="revokeSession(s.id)">Revoke</button>
+                                    <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem" x-show="!s.current"
+                                            :data-pending="!!pending['revokeSession:'+s.id]"
+                                            :disabled="!!pending['revokeSession:'+s.id]"
+                                            @click="revokeSession(s.id)">Revoke</button>
                                 </div>
                             </template>
 
@@ -3978,7 +4024,10 @@
                                     <option value="user">User</option>
                                     <option value="admin">Admin</option>
                                 </select>
-                                <button class="btn btn-primary" @click="createUser()">Add User</button>
+                                <button class="btn btn-primary"
+                                        :data-pending="!!pending['createUser']"
+                                        :disabled="!!pending['createUser'] || !newUserEmail || !newUserPassword"
+                                        @click="createUser()">Add User</button>
                             </div>
 
                             <h3 style="margin:2rem 0 1rem;color:var(--ink-dim)">Users</h3>
@@ -4005,6 +4054,8 @@
                                                 <template x-if="u.id !== currentUser.id">
                                                     <span style="display:flex;gap:0.4rem;flex-wrap:wrap">
                                                         <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem"
+                                                                :data-pending="!!pending['toggleUserStatus:'+u.id]"
+                                                                :disabled="!!pending['toggleUserStatus:'+u.id]"
                                                                 @click="toggleUserStatus(u)"
                                                                 x-text="u.status === 'active' ? 'Disable' : 'Activate'"></button>
                                                         <button class="btn" style="font-size:0.75rem;padding:0.25rem 0.5rem"
@@ -4050,7 +4101,11 @@
                                             <template x-for="h in selectedUserHosts" :key="h.id">
                                                 <div style="display:flex;justify-content:space-between;align-items:center;padding:0.375rem 0;border-bottom:1px solid var(--border)">
                                                     <span style="font-size:0.875rem" x-text="h.hostname"></span>
-                                                    <button class="btn" style="font-size:0.7rem;padding:0.2rem 0.4rem;background:var(--crit);color:#fff" @click="revokeHostAccess(h.id)">Revoke</button>
+                                                    <button class="btn"
+                                                            :data-pending="!!pending['revokeHostAccess:'+selectedUser.id+':'+h.id]"
+                                                            :disabled="!!pending['revokeHostAccess:'+selectedUser.id+':'+h.id]"
+                                                            style="font-size:0.7rem;padding:0.2rem 0.4rem;background:var(--crit);color:#fff"
+                                                            @click="revokeHostAccess(h.id)">Revoke</button>
                                                 </div>
                                             </template>
                                         </div>
@@ -4067,7 +4122,11 @@
                                             <template x-for="h in availableHosts" :key="h.id">
                                                 <div style="display:flex;justify-content:space-between;align-items:center;padding:0.375rem 0;border-bottom:1px solid var(--border)">
                                                     <span style="font-size:0.875rem" x-text="h.hostname"></span>
-                                                    <button class="btn btn-primary" style="font-size:0.7rem;padding:0.2rem 0.4rem" @click="grantHostAccess(h.id)">Grant</button>
+                                                    <button class="btn btn-primary"
+                                                            :data-pending="!!pending['grantHostAccess:'+selectedUser.id+':'+h.id]"
+                                                            :disabled="!!pending['grantHostAccess:'+selectedUser.id+':'+h.id]"
+                                                            style="font-size:0.7rem;padding:0.2rem 0.4rem"
+                                                            @click="grantHostAccess(h.id)">Grant</button>
                                                 </div>
                                             </template>
                                         </div>
@@ -5249,6 +5308,11 @@ WantedBy=multi-user.target</pre>
                 //  onConfirm, onCancel} when open. Created by confirmModal()
                 //  which returns a Promise<boolean>.
                 confirmCtx: null,
+                // FLEET-106: in-flight operations. busy() sets pending[key] = true
+                // for the duration of an async call; buttons bind
+                // :data-pending="!!pending['<key>']" :disabled="!!pending['<key>']"
+                // to render the scanline animation and prevent double-clicks.
+                pending: {},
                 usersList: [],
                 newUserEmail: '', newUserPassword: '', newUserRole: 'user',
                 selectedUser: null, selectedUserHosts: [], allHostsList: [],
@@ -5395,7 +5459,7 @@ WantedBy=multi-user.target</pre>
                         const v = await res.json();
                         v.build_time_display = this.formatBuildTime(v.build_time);
                         this.ver = v;
-                    } catch (_) {}
+                    } catch (_) {} // silent: pure background load
                 },
 
                 async loadMe() {
@@ -5408,7 +5472,7 @@ WantedBy=multi-user.target</pre>
                                 this.settingsTab = 'account';
                             }
                         }
-                    } catch (_) {}
+                    } catch (_) {} // silent: pure background load
                 },
 
                 initTheme() {
@@ -5436,70 +5500,74 @@ WantedBy=multi-user.target</pre>
                 },
 
                 async changePassword() {
-                    try {
-                        const res = await fetch('/api/auth/password', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ current_password: this.pwCurrent, new_password: this.pwNew })
-                        });
-                        if (res.ok) {
-                            this.pwMsg = 'Password changed';
+                    return this.busy('changePassword', 'Password changed',
+                        async () => {
+                            const res = await fetch('/api/auth/password', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ current_password: this.pwCurrent, new_password: this.pwNew })
+                            });
+                            await this._checkRes(res, 'Password change failed');
                             this.pwCurrent = ''; this.pwNew = '';
-                            setTimeout(() => this.pwMsg = '', 3000);
-                        } else {
-                            this.pwMsg = await res.text();
-                            setTimeout(() => this.pwMsg = '', 3000);
-                        }
-                    } catch (e) { this.pwMsg = 'Error'; }
+                        },
+                        { verb: 'UPDATE', target: 'auth/password' });
                 },
 
                 async setupTOTP() {
-                    try {
-                        const res = await fetch('/api/auth/totp/setup');
-                        if (res.ok) this.totpSetup = await res.json();
-                    } catch (_) {}
+                    return this.busy('setupTOTP', '2FA enrollment ready',
+                        async () => {
+                            const res = await fetch('/api/auth/totp/setup');
+                            await this._checkRes(res, 'TOTP setup failed');
+                            this.totpSetup = await res.json();
+                        },
+                        { verb: 'SETUP', target: 'auth/totp', toast: false, idempotent: true });
                 },
 
                 async enableTOTP() {
-                    try {
-                        const res = await fetch('/api/auth/totp/enable', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ code: this.totpCode })
-                        });
-                        if (res.ok) {
+                    return this.busy('enableTOTP', '2FA enabled',
+                        async () => {
+                            const res = await fetch('/api/auth/totp/enable', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ code: this.totpCode })
+                            });
+                            await this._checkRes(res, 'TOTP enable failed');
                             this.totpSetup = null; this.totpCode = '';
                             await this.loadMe();
-                        } else { alert(await res.text()); }
-                    } catch (_) {}
+                        },
+                        { verb: 'ENABLE', target: 'auth/totp' });
                 },
 
                 async disableTOTP() {
-                    try {
-                        const res = await fetch('/api/auth/totp/disable', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ password: this.totpDisablePw })
-                        });
-                        if (res.ok) {
+                    return this.busy('disableTOTP', '2FA disabled',
+                        async () => {
+                            const res = await fetch('/api/auth/totp/disable', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ password: this.totpDisablePw })
+                            });
+                            await this._checkRes(res, 'TOTP disable failed');
                             this.totpDisablePw = '';
                             await this.loadMe();
-                        } else { alert(await res.text()); }
-                    } catch (_) {}
+                        },
+                        { verb: 'DISABLE', target: 'auth/totp' });
                 },
 
                 async loadMySessions() {
                     try {
                         const res = await fetch('/api/auth/sessions');
                         if (res.ok) this.mySessions = await res.json() || [];
-                    } catch (_) {}
+                    } catch (_) {} // silent: pure background load, retried on next nav
                 },
 
                 async revokeSession(id) {
-                    try {
-                        await fetch('/api/auth/sessions/' + id, { method: 'DELETE' });
-                        await this.loadMySessions();
-                    } catch (_) {}
+                    return this.busy('revokeSession:' + id, 'Session revoked',
+                        async () => {
+                            const res = await fetch('/api/auth/sessions/' + id, { method: 'DELETE' });
+                            if (!res.ok && res.status !== 204) await this._checkRes(res, 'Session revoke failed');
+                            await this.loadMySessions();
+                        },
+                        { verb: 'REVOKE', target: 'sessions/' + id });
                 },
 
                 // FLEET-79: API token CRUD.
@@ -5507,7 +5575,7 @@ WantedBy=multi-user.target</pre>
                     try {
                         const res = await fetch('/api/auth/api-tokens');
                         if (res.ok) this.apiTokens = await res.json() || [];
-                    } catch (_) {}
+                    } catch (_) {} // silent: pure background load
                 },
 
                 apiTokenExpiresAtISO() {
@@ -5567,34 +5635,39 @@ WantedBy=multi-user.target</pre>
                     try {
                         const res = await fetch('/api/users');
                         if (res.ok) this.usersList = await res.json() || [];
-                    } catch (_) {}
+                    } catch (_) {} // silent: pure background load
                 },
 
                 async createUser() {
                     if (!this.newUserEmail || !this.newUserPassword) return;
-                    try {
-                        const res = await fetch('/api/users', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ email: this.newUserEmail, password: this.newUserPassword, role: this.newUserRole })
-                        });
-                        if (res.ok) {
+                    const email = this.newUserEmail;
+                    return this.busy('createUser', 'User created: ' + email,
+                        async () => {
+                            const res = await fetch('/api/users', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ email, password: this.newUserPassword, role: this.newUserRole })
+                            });
+                            await this._checkRes(res, 'User create failed');
                             this.newUserEmail = ''; this.newUserPassword = ''; this.newUserRole = 'user';
                             await this.loadUsers();
-                        } else { alert(await res.text()); }
-                    } catch (_) {}
+                        },
+                        { verb: 'CREATE', target: 'users/' + email });
                 },
 
                 async toggleUserStatus(u) {
                     const newStatus = u.status === 'active' ? 'inactive' : 'active';
-                    try {
-                        await fetch('/api/users/' + u.id + '/status', {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ status: newStatus })
-                        });
-                        await this.loadUsers();
-                    } catch (_) {}
+                    return this.busy('toggleUserStatus:' + u.id, 'User ' + u.email + ' → ' + newStatus,
+                        async () => {
+                            const res = await fetch('/api/users/' + u.id + '/status', {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ status: newStatus })
+                            });
+                            await this._checkRes(res, 'Status update failed');
+                            await this.loadUsers();
+                        },
+                        { verb: 'UPDATE', target: 'users/' + u.email });
                 },
 
                 async disableUserTOTP(u) {
@@ -5665,34 +5738,44 @@ WantedBy=multi-user.target</pre>
                     try {
                         const res = await fetch('/api/users/' + this.selectedUser.id + '/hosts');
                         if (res.ok) this.selectedUserHosts = await res.json() || [];
-                    } catch (_) {}
+                    } catch (_) {} // silent: pure background load
                 },
 
                 async loadAllHosts() {
                     try {
                         const res = await fetch('/api/hosts/all');
                         if (res.ok) this.allHostsList = await res.json() || [];
-                    } catch (_) {}
+                    } catch (_) {} // silent: pure background load
                 },
 
                 async grantHostAccess(hostId) {
                     if (!this.selectedUser) return;
-                    try {
-                        await fetch('/api/users/' + this.selectedUser.id + '/hosts', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ host_id: hostId })
-                        });
-                        await this.loadUserHosts();
-                    } catch (_) {}
+                    const u = this.selectedUser;
+                    const host = (this.allHostsList.find(h => h.id === hostId) || {}).hostname || ('host#' + hostId);
+                    return this.busy('grantHostAccess:' + u.id + ':' + hostId, 'Granted ' + host + ' to ' + u.email,
+                        async () => {
+                            const res = await fetch('/api/users/' + u.id + '/hosts', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ host_id: hostId })
+                            });
+                            await this._checkRes(res, 'Grant failed');
+                            await this.loadUserHosts();
+                        },
+                        { verb: 'GRANT', target: u.email + '→' + host });
                 },
 
                 async revokeHostAccess(hostId) {
                     if (!this.selectedUser) return;
-                    try {
-                        await fetch('/api/users/' + this.selectedUser.id + '/hosts/' + hostId, { method: 'DELETE' });
-                        await this.loadUserHosts();
-                    } catch (_) {}
+                    const u = this.selectedUser;
+                    const host = (this.selectedUserHosts.find(h => h.id === hostId) || {}).hostname || ('host#' + hostId);
+                    return this.busy('revokeHostAccess:' + u.id + ':' + hostId, 'Revoked ' + host + ' from ' + u.email,
+                        async () => {
+                            const res = await fetch('/api/users/' + u.id + '/hosts/' + hostId, { method: 'DELETE' });
+                            if (!res.ok && res.status !== 204) await this._checkRes(res, 'Revoke failed');
+                            await this.loadUserHosts();
+                        },
+                        { verb: 'REVOKE', target: u.email + '→' + host });
                 },
 
                 async grantAllHostAccess() {
@@ -5726,13 +5809,16 @@ WantedBy=multi-user.target</pre>
                 configInstanceLabel: '',
 
                 async saveInstanceLabel() {
-                    try {
-                        await fetch('/api/settings', {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ instance_label: this.configInstanceLabel })
-                        });
-                    } catch (_) {}
+                    return this.busy('saveInstanceLabel', 'Instance label saved',
+                        async () => {
+                            const res = await fetch('/api/settings', {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ instance_label: this.configInstanceLabel })
+                            });
+                            await this._checkRes(res, 'Save failed');
+                        },
+                        { verb: 'UPDATE', target: 'settings/instance_label' });
                 },
 
                 async uploadOrgLogo(event) {
@@ -5740,15 +5826,21 @@ WantedBy=multi-user.target</pre>
                     if (!file) return;
                     const form = new FormData();
                     form.append('file', file);
-                    try {
-                        await fetch('/api/org-logo', { method: 'POST', body: form });
-                    } catch (_) {}
+                    return this.busy('uploadOrgLogo', 'Org logo uploaded',
+                        async () => {
+                            const res = await fetch('/api/org-logo', { method: 'POST', body: form });
+                            await this._checkRes(res, 'Upload failed');
+                        },
+                        { verb: 'UPLOAD', target: 'settings/org_logo' });
                 },
 
                 async deleteOrgLogo() {
-                    try {
-                        await fetch('/api/org-logo', { method: 'DELETE' });
-                    } catch (_) {}
+                    return this.busy('deleteOrgLogo', 'Org logo removed',
+                        async () => {
+                            const res = await fetch('/api/org-logo', { method: 'DELETE' });
+                            if (!res.ok && res.status !== 204) await this._checkRes(res, 'Delete failed');
+                        },
+                        { verb: 'DELETE', target: 'settings/org_logo' });
                 },
 
                 formatBuildTime(iso) {
@@ -5949,7 +6041,7 @@ WantedBy=multi-user.target</pre>
 
                 openStream() {
                     if (this.es) {
-                        try { this.es.close(); } catch (_) {}
+                        try { this.es.close(); } catch (_) {} // silent: pure background load
                     }
                     try {
                         this.es = new EventSource(this.streamURL());
@@ -5972,19 +6064,19 @@ WantedBy=multi-user.target</pre>
                                 return;
                             }
                             if (cfg.commit) this._serverCommit = cfg.commit;
-                        } catch (_) {}
+                        } catch (_) {} // silent: pure background load
                     });
 
                     this.es.addEventListener('ignored', (e) => {
                         try {
                             this.ignoredSet = JSON.parse(e.data) || {};
-                        } catch (_) {}
+                        } catch (_) {} // silent: pure background load
                     });
 
                     this.es.addEventListener('host-configs', (e) => {
                         try {
                             this.hostConfigs = JSON.parse(e.data) || {};
-                        } catch (_) {}
+                        } catch (_) {} // silent: pure background load
                     });
 
                     this.es.addEventListener('hosts', (e) => {
@@ -6003,19 +6095,19 @@ WantedBy=multi-user.target</pre>
                             if (p && p.host) {
                                 this.commandsByHost = { ...this.commandsByHost, [p.host]: p.commands || [] };
                             }
-                        } catch (_) {}
+                        } catch (_) {} // silent: pure background load
                     });
 
                     this.es.addEventListener('gateways', (e) => {
                         try {
                             this.gateways = JSON.parse(e.data) || [];
-                        } catch (_) {}
+                        } catch (_) {} // silent: pure background load
                     });
 
                     this.es.addEventListener('bridges', (e) => {
                         try {
                             this.bridges = JSON.parse(e.data) || [];
-                        } catch (_) {}
+                        } catch (_) {} // silent: pure background load
                     });
 
                     this.es.addEventListener('agents', (e) => {
@@ -6233,7 +6325,7 @@ WantedBy=multi-user.target</pre>
                     try {
                         const res = await fetch('/api/ignored');
                         if (res.ok) this.ignoredList = await res.json() || [];
-                    } catch (_) {}
+                    } catch (_) {} // silent: pure background load
                 },
 
                 // ---------- context menu ----------
@@ -6755,7 +6847,7 @@ WantedBy=multi-user.target</pre>
                     try {
                         const res = await fetch('/api/image-presets');
                         if (res.ok) this.imagePresets = await res.json() || [];
-                    } catch (_) {}
+                    } catch (_) {} // silent: pure background load
                 },
 
                 async uploadPreset(ev) {
@@ -6980,7 +7072,7 @@ WantedBy=multi-user.target</pre>
                         const json = await res.json();
                         ctrl.data = json;
                         this.drawStrip(ctrl);
-                    } catch (_) {}
+                    } catch (_) {} // silent: pure background load
                 },
 
                 drawStrip(ctrl) {
@@ -7953,6 +8045,83 @@ WantedBy=multi-user.target</pre>
                             onCancel:  () => { this.confirmCtx = null; resolve(false); },
                         };
                     });
+                },
+
+                // ---------- FLEET-106 busy() helper ----------
+                // Single funnel for every async user-initiated action. Replaces
+                // the 21 silent error swallows and the 12 mutating actions
+                // without success/error toasts (see audit on FLEET-103). Usage:
+                //
+                //   await this.busy('createUser', 'User created',
+                //     async () => {
+                //       const r = await fetch('/api/users', { method: 'POST', ... });
+                //       if (!r.ok) throw new Error(await r.text() || 'HTTP ' + r.status);
+                //       await this.loadUsers();
+                //     },
+                //     { verb: 'CREATE', target: 'users/' + email });
+                //
+                // Behavior:
+                //   - sets pending[key] for the duration so buttons can bind
+                //     :data-pending="!!pending['<key>']" :disabled="..."
+                //   - on success: toasts {level:'ok', verb, target, msg:label}
+                //     unless opts.toast === false
+                //   - on error  : toasts sticky err with the error message;
+                //     adds a RETRY action button if opts.idempotent === true
+                //   - re-entry guard: a second busy() call with the same key
+                //     while one is in flight is dropped (prevents double-click
+                //     races)
+                //   - re-throws so the caller can do additional cleanup if it
+                //     wants; callers that don't care can ignore the rejection
+                async busy(key, label, fn, opts = {}) {
+                    if (this.pending[key]) return; // double-click guard
+                    // Object-replacement so Alpine reactivity always sees the change
+                    this.pending = { ...this.pending, [key]: true };
+                    try {
+                        const res = await fn();
+                        if (opts.toast !== false) {
+                            this.toast({
+                                level: opts.level || 'ok',
+                                verb:  opts.verb  || 'OK',
+                                target: opts.target,
+                                msg:   label,
+                            });
+                        }
+                        return res;
+                    } catch (e) {
+                        const msg = (e && e.message) || (typeof e === 'string' ? e : 'Operation failed');
+                        const actions = [];
+                        if (opts.idempotent === true) {
+                            actions.push({ label: 'RETRY', onClick: () => this.busy(key, label, fn, opts) });
+                        }
+                        this.toast({
+                            level:  'err',
+                            verb:   opts.verb || 'FAIL',
+                            target: opts.target,
+                            msg,
+                            actions,
+                        });
+                        // Don't throw — most callers don't care to handle it,
+                        // and an unhandled rejection would just produce a console
+                        // warning that adds noise. The error toast is the audit.
+                        return undefined;
+                    } finally {
+                        const next = { ...this.pending };
+                        delete next[key];
+                        this.pending = next;
+                    }
+                },
+
+                // Helper for fetch responses: throw an Error with the response
+                // body as the message if !res.ok. Lets busy()'s catch surface
+                // the server's error text directly in the toast.
+                async _checkRes(res, fallback) {
+                    if (res.ok) return res;
+                    let msg = fallback || ('HTTP ' + res.status);
+                    try {
+                        const text = await res.text();
+                        if (text) msg = text.length > 200 ? text.slice(0, 197) + '…' : text;
+                    } catch (_) {} // silent: pure background load
+                    throw new Error(msg);
                 },
 
                 async copyToClipboard(text, okMsg = 'Copied to clipboard') {
