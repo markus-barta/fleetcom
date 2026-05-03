@@ -5091,6 +5091,45 @@ WantedBy=multi-user.target</pre>
             </div>
         </div>
     </div>
+
+    <!-- FLEET-107: generic confirm modal — replaces every native confirm()
+         in the codebase. Two modes: one-click (level=warn|crit) and typed
+         (set requireType=<exact string operator must type>). Title and
+         body are operator-facing; level controls the title color and the
+         primary-button styling (warn=primary blue, crit=red danger).
+         Lives inside x-data so x-show actually fires (FLEET-104). -->
+    <div x-show="confirmCtx" x-cloak
+         @keydown.escape.window="confirmCtx && confirmCtx.onCancel()"
+         class="modal-backdrop"
+         style="display:none">
+        <div class="modal-card" @click.stop>
+            <div class="modal-title"
+                 :style="confirmCtx && confirmCtx.level === 'crit' ? 'color:var(--crit);' : 'color:var(--warn);'"
+                 x-text="confirmCtx && confirmCtx.title"></div>
+            <p style="font-size:11px;color:var(--ink-dim);line-height:1.5;white-space:pre-wrap;"
+               x-text="confirmCtx && confirmCtx.body"></p>
+            <template x-if="confirmCtx && confirmCtx.requireType">
+                <div>
+                    <p style="font-size:10px;color:var(--ink-ghost);margin-top:0.6rem;">
+                        Type <code x-text="confirmCtx.requireType" style="font-family:'JetBrains Mono',monospace;color:var(--ink);"></code> to confirm:
+                    </p>
+                    <input type="text" class="modal-input"
+                           x-model="confirmCtx.typed"
+                           :placeholder="confirmCtx.requireType"
+                           @keydown.enter="confirmCtx.typed === confirmCtx.requireType && confirmCtx.onConfirm()"
+                           x-init="$watch('confirmCtx', v => { if (v && v.requireType) $nextTick(() => $el.focus()); })">
+                </div>
+            </template>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" @click="confirmCtx.onCancel()">Cancel</button>
+                <button class="btn"
+                        :class="confirmCtx && confirmCtx.level === 'crit' ? 'btn-danger' : 'btn-primary'"
+                        :disabled="confirmCtx && confirmCtx.requireType && confirmCtx.typed !== confirmCtx.requireType"
+                        @click="confirmCtx.onConfirm()"
+                        x-text="confirmCtx && confirmCtx.confirmLabel"></button>
+            </div>
+        </div>
+    </div>
     </div><!-- /x-data — modals must live inside Alpine scope for x-show/x-cloak to work -->
 
     <script src="/static/lucide.min.js"></script>
@@ -5205,6 +5244,11 @@ WantedBy=multi-user.target</pre>
                 // Holds {value} for the freshly minted token, or null. Plaintext
                 // value lives only in this field and is cleared on dismiss.
                 apiTokenJustCreated: null,
+                // FLEET-107: generic confirm modal context. null when closed;
+                // {title, body, confirmLabel, level, requireType, typed,
+                //  onConfirm, onCancel} when open. Created by confirmModal()
+                //  which returns a Promise<boolean>.
+                confirmCtx: null,
                 usersList: [],
                 newUserEmail: '', newUserPassword: '', newUserRole: 'user',
                 selectedUser: null, selectedUserHosts: [], allHostsList: [],
@@ -5503,7 +5547,11 @@ WantedBy=multi-user.target</pre>
                 },
 
                 async revokeApiToken(t) {
-                    if (!confirm("Revoke token '" + t.label + "' (" + t.prefix + "…)? This cannot be undone.")) return;
+                    if (!await this.confirmModal({
+                        title: 'Revoke API token',
+                        body: "Revoke '" + t.label + "' (" + t.prefix + "…)?\nThis cannot be undone.",
+                        confirmLabel: 'Revoke', level: 'crit',
+                    })) return;
                     try {
                         const res = await fetch('/api/auth/api-tokens/' + t.id, { method: 'DELETE' });
                         if (res.ok || res.status === 204) {
@@ -5550,7 +5598,11 @@ WantedBy=multi-user.target</pre>
                 },
 
                 async disableUserTOTP(u) {
-                    if (!confirm('Disable 2FA for ' + u.email + '?\nThey will be prompted to set up a new authenticator on next login.')) return;
+                    if (!await this.confirmModal({
+                        title: 'Disable 2FA',
+                        body: 'Disable 2FA for ' + u.email + '?\nThey will be prompted to set up a new authenticator on next login.',
+                        confirmLabel: 'Disable 2FA', level: 'warn',
+                    })) return;
                     try {
                         const res = await fetch('/api/users/' + u.id + '/reset-totp', { method: 'POST' });
                         if (res.ok) { this.toast('2FA disabled for ' + u.email); await this.loadUsers(); }
@@ -5574,7 +5626,12 @@ WantedBy=multi-user.target</pre>
                 },
 
                 async deleteUser(u) {
-                    if (!confirm('Delete user ' + u.email + '?\nThis cannot be undone from the UI.')) return;
+                    if (!await this.confirmModal({
+                        title: 'Delete user',
+                        body: 'Delete user ' + u.email + '?\nThis cannot be undone from the UI.',
+                        confirmLabel: 'Delete', level: 'crit',
+                        requireType: u.email,
+                    })) return;
                     try {
                         const res = await fetch('/api/users/' + u.id, { method: 'DELETE' });
                         if (res.ok) {
@@ -5652,7 +5709,11 @@ WantedBy=multi-user.target</pre>
 
                 async revokeAllHostAccess() {
                     if (!this.selectedUser) return;
-                    if (!confirm('Revoke ALL host access for ' + this.selectedUser.email + '?')) return;
+                    if (!await this.confirmModal({
+                        title: 'Revoke all host access',
+                        body: 'Revoke ALL host access for ' + this.selectedUser.email + '?',
+                        confirmLabel: 'Revoke all', level: 'crit',
+                    })) return;
                     try {
                         const res = await fetch('/api/users/' + this.selectedUser.id + '/hosts', { method: 'DELETE' });
                         if (res.ok) {
@@ -6071,7 +6132,12 @@ WantedBy=multi-user.target</pre>
                 },
 
                 async regenerateToken(hostname) {
-                    if (!confirm('Regenerate token for ' + hostname + '?\n\nThe old token stops working IMMEDIATELY. You will need to update agenix (secrets/fleetcom-token-' + hostname + '.age) and recreate the bosun container on that host before it can heartbeat again.')) {
+                    if (!await this.confirmModal({
+                        title: 'Regenerate host token',
+                        body: 'The old token stops working IMMEDIATELY for ' + hostname + '. You will need to update agenix (secrets/fleetcom-token-' + hostname + '.age) and recreate the bosun container on that host before it can heartbeat again.',
+                        confirmLabel: 'Regenerate', level: 'crit',
+                        requireType: hostname,
+                    })) {
                         return;
                     }
                     try {
@@ -6710,7 +6776,11 @@ WantedBy=multi-user.target</pre>
                 },
 
                 async deletePreset(id) {
-                    if (!confirm('Delete this icon?')) return;
+                    if (!await this.confirmModal({
+                        title: 'Delete icon',
+                        body: 'Delete this icon preset? Hosts using it will fall back to the default icon.',
+                        confirmLabel: 'Delete', level: 'warn',
+                    })) return;
                     try {
                         const res = await fetch('/api/image-presets/' + id, { method: 'DELETE' });
                         if (res.ok) { this.loadImagePresets(); this.toast('Icon deleted'); }
@@ -7096,7 +7166,12 @@ WantedBy=multi-user.target</pre>
                 },
 
                 async removeHost(hostname) {
-                    if (!confirm('Remove ' + hostname + '? Its agent will stop authenticating.')) return;
+                    if (!await this.confirmModal({
+                        title: 'Remove host',
+                        body: 'Remove ' + hostname + '? Its agent will stop authenticating immediately. Heartbeat history and container records cascade-delete.',
+                        confirmLabel: 'Remove', level: 'crit',
+                        requireType: hostname,
+                    })) return;
                     try {
                         const res = await fetch('/api/hosts?hostname=' + encodeURIComponent(hostname), { method: 'DELETE' });
                         if (res.ok) {
@@ -7237,7 +7312,11 @@ WantedBy=multi-user.target</pre>
                     if (sep === -1) return;
                     const host = key.slice(0, sep);
                     const name = key.slice(sep + 1);
-                    if (!confirm('Restart container "' + name + '" on ' + host + '?\n\nBosun will call `docker restart` on its next heartbeat. The container will be unavailable for a few seconds while it restarts.')) return;
+                    if (!await this.confirmModal({
+                        title: 'Restart container',
+                        body: 'Restart "' + name + '" on ' + host + '?\n\nBosun will call docker restart on its next heartbeat. The container will be unavailable for a few seconds.',
+                        confirmLabel: 'Restart', level: 'warn',
+                    })) return;
                     try {
                         const res = await fetch('/api/hosts/' + encodeURIComponent(host) + '/commands', {
                             method: 'POST',
@@ -7299,7 +7378,11 @@ WantedBy=multi-user.target</pre>
                 },
 
                 async cancelCommand(id) {
-                    if (!confirm('Cancel pending command #' + id + '?')) return;
+                    if (!await this.confirmModal({
+                        title: 'Cancel command',
+                        body: 'Cancel pending command #' + id + '? It will be marked cancelled and bosun will skip it.',
+                        confirmLabel: 'Cancel command', level: 'warn',
+                    })) return;
                     try {
                         const res = await fetch('/api/commands/' + id + '/cancel', { method: 'POST' });
                         if (res.ok || res.status === 204) {
@@ -7362,7 +7445,11 @@ WantedBy=multi-user.target</pre>
                 },
 
                 async unpairGateway(host) {
-                    if (!confirm('Unpair gateway ' + host + '? Drops FleetCom-side keys + the row. The host-side paired.json entry for this instance stays until manually removed.')) return;
+                    if (!await this.confirmModal({
+                        title: 'Unpair gateway',
+                        body: 'Unpair gateway on ' + host + '? Drops FleetCom-side keys + the row. The host-side paired.json entry for this instance stays until manually removed.',
+                        confirmLabel: 'Unpair', level: 'crit',
+                    })) return;
                     try {
                         const res = await fetch('/api/gateways/' + encodeURIComponent(host), { method: 'DELETE' });
                         if (res.ok || res.status === 204) {
@@ -7375,7 +7462,11 @@ WantedBy=multi-user.target</pre>
                 },
 
                 async revokeBridge(host, agent) {
-                    if (!confirm('Revoke bridge ' + agent + ' on ' + host + '? The bridge will re-register on next boot.')) return;
+                    if (!await this.confirmModal({
+                        title: 'Revoke bridge',
+                        body: 'Revoke bridge ' + agent + ' on ' + host + '?\nThe bridge will re-register on next boot.',
+                        confirmLabel: 'Revoke', level: 'warn',
+                    })) return;
                     try {
                         const res = await fetch('/api/bridges/' + encodeURIComponent(host) + '/' + encodeURIComponent(agent), { method: 'DELETE' });
                         if (res.ok || res.status === 204) {
@@ -7405,7 +7496,11 @@ WantedBy=multi-user.target</pre>
                 },
 
                 async deleteShare(id) {
-                    if (!confirm('Revoke this share link?')) return;
+                    if (!await this.confirmModal({
+                        title: 'Revoke share link',
+                        body: 'Revoke this share link? Anyone with the URL loses access immediately.',
+                        confirmLabel: 'Revoke', level: 'warn',
+                    })) return;
                     try {
                         const res = await fetch('/api/shares?id=' + id, { method: 'DELETE' });
                         if (res.ok) { this.loadShares(); this.toast('Share link revoked'); }
@@ -7615,7 +7710,11 @@ WantedBy=multi-user.target</pre>
                         return;
                     }
                     // FLEET-86/87 path — agent.update command via FLEET-59 channel.
-                    if (!confirm('Update bosun on ' + hostname + ' to latest?\n\nThis will briefly disconnect monitoring while the new bosun starts.')) return;
+                    if (!await this.confirmModal({
+                        title: 'Update bosun',
+                        body: 'Update bosun on ' + hostname + ' to latest?\n\nThis will briefly disconnect monitoring while the new bosun starts.',
+                        confirmLabel: 'Update', level: 'warn',
+                    })) return;
                     try {
                         const res = await fetch('/api/hosts/' + encodeURIComponent(hostname) + '/commands', {
                             method: 'POST',
@@ -7631,7 +7730,11 @@ WantedBy=multi-user.target</pre>
                     } catch (_) { this.toast('Network error', 'err'); }
                 },
                 async requestUpdateAll() {
-                    if (!confirm('Request an agent update on every host in your scope?')) return;
+                    if (!await this.confirmModal({
+                        title: 'Update all hosts',
+                        body: 'Request a bosun update on every host in your scope? Each host will briefly disconnect monitoring while the new bosun starts.',
+                        confirmLabel: 'Update all', level: 'warn',
+                    })) return;
                     try {
                         const res = await fetch('/api/hosts/update-all', { method: 'POST' });
                         if (res.ok) {
@@ -7830,6 +7933,26 @@ WantedBy=multi-user.target</pre>
                         }
                     }
                     setTimeout(() => el.remove(), 200);
+                },
+
+                // ---------- FLEET-107 generic confirm modal ----------
+                // Returns a Promise<boolean> — true if the operator confirmed,
+                // false if they cancelled (Cancel button or Escape). Use:
+                //   if (!await this.confirmModal({ title, body, confirmLabel, level, requireType })) return;
+                //
+                // level    : 'warn' (default) tints title amber + primary blue button
+                //          : 'crit' tints title red + danger red button
+                // requireType: when set (e.g. hostname), operator must type the
+                //              exact value to enable the Confirm button. Use for
+                //              irreversible destructive actions only.
+                confirmModal({ title, body = '', confirmLabel = 'Confirm', level = 'warn', requireType = null }) {
+                    return new Promise(resolve => {
+                        this.confirmCtx = {
+                            title, body, confirmLabel, level, requireType, typed: '',
+                            onConfirm: () => { this.confirmCtx = null; resolve(true); },
+                            onCancel:  () => { this.confirmCtx = null; resolve(false); },
+                        };
+                    });
                 },
 
                 async copyToClipboard(text, okMsg = 'Copied to clipboard') {
