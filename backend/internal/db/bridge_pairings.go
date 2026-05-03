@@ -20,8 +20,17 @@ type OpenClawGateway struct {
 	// RPC to the gateway WS on bridge registration AND requires the OOB
 	// code on /approve. When false (default until the gateway-side
 	// OpenClaw RFC ships), /approve is permitted without a code.
-	OOBDeliveryEnabled bool   `json:"oob_delivery_enabled"`
-	CreatedAt          string `json:"created_at,omitempty"`
+	OOBDeliveryEnabled bool `json:"oob_delivery_enabled"`
+	// FLEET-114: per-gateway attestation enforcement. Combined with the
+	// FLEETCOM_REGISTER_ATTESTATION_REQUIRED env (effective = env AND
+	// per-gateway flag) so a single misbehaving gateway can be downgraded
+	// without flipping the global env.
+	AttestationRequired bool `json:"attestation_required"`
+	// FLEET-114: gateway's own raw Ed25519 pubkey (b64url-no-padding).
+	// Empty until captured (operator paste OR future pair-time exchange).
+	// Verification falls through to "skipped" when empty.
+	GatewayPubkeyB64 string `json:"gateway_pubkey_b64,omitempty"`
+	CreatedAt        string `json:"created_at,omitempty"`
 }
 
 // BridgePairing represents one agent-bridge instance paired (or pending)
@@ -36,6 +45,10 @@ type BridgePairing struct {
 	ApprovedAt string `json:"approved_at,omitempty"`
 	RequestID  string `json:"request_id,omitempty"`
 	LastSeenAt string `json:"last_seen_at,omitempty"`
+	// FLEET-114: per-row attestation outcome — unknown | verified | skipped.
+	// Renders as a small badge on the bridge row so operators can spot
+	// rows that came in under attestation_skipped (post-rollout audit).
+	AttestationStatus string `json:"attestation_status,omitempty"`
 }
 
 // UpsertGateway is called when a new OpenClaw gateway is detected on a
@@ -66,7 +79,9 @@ func (s *Store) MarkGatewayPaired(host, pubkeyB64, tokenHash string) error {
 // AllGateways returns every gateway row. Admin-only consumer.
 func (s *Store) AllGateways() ([]OpenClawGateway, error) {
 	rows, err := s.DB.Query(`
-		SELECT id, host, url, fc_pubkey_b64, paired_at, status, auto_approve_bridges, oob_delivery_enabled, created_at
+		SELECT id, host, url, fc_pubkey_b64, paired_at, status,
+		       auto_approve_bridges, oob_delivery_enabled,
+		       attestation_required, gateway_pubkey_b64, created_at
 		FROM openclaw_gateways ORDER BY host
 	`)
 	if err != nil {
@@ -76,15 +91,61 @@ func (s *Store) AllGateways() ([]OpenClawGateway, error) {
 	out := []OpenClawGateway{}
 	for rows.Next() {
 		var g OpenClawGateway
-		var auto, oob int
-		if err := rows.Scan(&g.ID, &g.Host, &g.URL, &g.FCPubkeyB64, &g.PairedAt, &g.Status, &auto, &oob, &g.CreatedAt); err != nil {
+		var auto, oob, att int
+		if err := rows.Scan(&g.ID, &g.Host, &g.URL, &g.FCPubkeyB64, &g.PairedAt, &g.Status,
+			&auto, &oob, &att, &g.GatewayPubkeyB64, &g.CreatedAt); err != nil {
 			return nil, err
 		}
 		g.AutoApproveBridges = auto != 0
 		g.OOBDeliveryEnabled = oob != 0
+		g.AttestationRequired = att != 0
 		out = append(out, g)
 	}
 	return out, rows.Err()
+}
+
+// SetGatewayAttestationRequired flips the per-gateway attestation flag.
+// Combined with the env via AND so flipping it OFF on a single gateway
+// is enough to skip enforcement just for that one (the env stays ON).
+func (s *Store) SetGatewayAttestationRequired(host string, on bool) error {
+	val := 0
+	if on {
+		val = 1
+	}
+	res, err := s.DB.Exec(`UPDATE openclaw_gateways SET attestation_required = ? WHERE host = ?`, val, host)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("gateway not found: %s", host)
+	}
+	return nil
+}
+
+// SetGatewayPubkey stores the gateway's raw Ed25519 pubkey (b64url-no-padding).
+// Caller validates the format upstream — store is policy-free. Empty value
+// is allowed (resets to "no key captured", verification falls through to
+// skipped).
+func (s *Store) SetGatewayPubkey(host, pubkeyB64 string) error {
+	res, err := s.DB.Exec(`UPDATE openclaw_gateways SET gateway_pubkey_b64 = ? WHERE host = ?`, pubkeyB64, host)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("gateway not found: %s", host)
+	}
+	return nil
+}
+
+// SetBridgeAttestationStatus persists the per-row outcome.
+func (s *Store) SetBridgeAttestationStatus(host, agent, status string) error {
+	_, err := s.DB.Exec(
+		`UPDATE bridge_pairings SET attestation_status = ? WHERE host = ? AND agent = ?`,
+		status, host, agent,
+	)
+	return err
 }
 
 // SetOOBDelivery flips the per-gateway oob_delivery_enabled flag. When
@@ -154,11 +215,11 @@ func (s *Store) RegisterBridge(host, agent, pubkeyFP, pubkeyPEM string) error {
 // key. Returns (nil, nil) when no row matches.
 func (s *Store) BridgeByHostAgent(host, agent string) (*BridgePairing, error) {
 	row := s.DB.QueryRow(`
-		SELECT id, host, agent, pubkey_fp, pubkey_pem, status, approved_at, request_id, last_seen_at
+		SELECT id, host, agent, pubkey_fp, pubkey_pem, status, approved_at, request_id, last_seen_at, attestation_status
 		FROM bridge_pairings WHERE host = ? AND agent = ?
 	`, host, agent)
 	var b BridgePairing
-	err := row.Scan(&b.ID, &b.Host, &b.Agent, &b.PubkeyFP, &b.PubkeyPEM, &b.Status, &b.ApprovedAt, &b.RequestID, &b.LastSeenAt)
+	err := row.Scan(&b.ID, &b.Host, &b.Agent, &b.PubkeyFP, &b.PubkeyPEM, &b.Status, &b.ApprovedAt, &b.RequestID, &b.LastSeenAt, &b.AttestationStatus)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -169,11 +230,11 @@ func (s *Store) BridgeByHostAgent(host, agent string) (*BridgePairing, error) {
 // scoped to one host. Returns nil when no match.
 func (s *Store) BridgeByFingerprint(host, fp string) (*BridgePairing, error) {
 	row := s.DB.QueryRow(`
-		SELECT id, host, agent, pubkey_fp, pubkey_pem, status, approved_at, request_id, last_seen_at
+		SELECT id, host, agent, pubkey_fp, pubkey_pem, status, approved_at, request_id, last_seen_at, attestation_status
 		FROM bridge_pairings WHERE host = ? AND pubkey_fp = ?
 	`, host, fp)
 	var b BridgePairing
-	err := row.Scan(&b.ID, &b.Host, &b.Agent, &b.PubkeyFP, &b.PubkeyPEM, &b.Status, &b.ApprovedAt, &b.RequestID, &b.LastSeenAt)
+	err := row.Scan(&b.ID, &b.Host, &b.Agent, &b.PubkeyFP, &b.PubkeyPEM, &b.Status, &b.ApprovedAt, &b.RequestID, &b.LastSeenAt, &b.AttestationStatus)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -203,7 +264,7 @@ func (s *Store) MarkBridgeApproved(host, agent, requestID string) error {
 // not fleet size.
 func (s *Store) PendingBridges() ([]BridgePairing, error) {
 	rows, err := s.DB.Query(`
-		SELECT id, host, agent, pubkey_fp, pubkey_pem, status, approved_at, request_id, last_seen_at
+		SELECT id, host, agent, pubkey_fp, pubkey_pem, status, approved_at, request_id, last_seen_at, attestation_status
 		FROM bridge_pairings WHERE status = 'pending' ORDER BY created_at DESC, host, agent
 	`)
 	if err != nil {
@@ -213,7 +274,7 @@ func (s *Store) PendingBridges() ([]BridgePairing, error) {
 	out := []BridgePairing{}
 	for rows.Next() {
 		var b BridgePairing
-		if err := rows.Scan(&b.ID, &b.Host, &b.Agent, &b.PubkeyFP, &b.PubkeyPEM, &b.Status, &b.ApprovedAt, &b.RequestID, &b.LastSeenAt); err != nil {
+		if err := rows.Scan(&b.ID, &b.Host, &b.Agent, &b.PubkeyFP, &b.PubkeyPEM, &b.Status, &b.ApprovedAt, &b.RequestID, &b.LastSeenAt, &b.AttestationStatus); err != nil {
 			return nil, err
 		}
 		out = append(out, b)
@@ -323,7 +384,7 @@ func (s *Store) IncrementConfirmationAttempts(host, agent string) (int, error) {
 // AllBridgePairings returns every bridge row for the dashboard.
 func (s *Store) AllBridgePairings() ([]BridgePairing, error) {
 	rows, err := s.DB.Query(`
-		SELECT id, host, agent, pubkey_fp, pubkey_pem, status, approved_at, request_id, last_seen_at
+		SELECT id, host, agent, pubkey_fp, pubkey_pem, status, approved_at, request_id, last_seen_at, attestation_status
 		FROM bridge_pairings ORDER BY host, agent
 	`)
 	if err != nil {
@@ -333,7 +394,7 @@ func (s *Store) AllBridgePairings() ([]BridgePairing, error) {
 	out := []BridgePairing{}
 	for rows.Next() {
 		var b BridgePairing
-		if err := rows.Scan(&b.ID, &b.Host, &b.Agent, &b.PubkeyFP, &b.PubkeyPEM, &b.Status, &b.ApprovedAt, &b.RequestID, &b.LastSeenAt); err != nil {
+		if err := rows.Scan(&b.ID, &b.Host, &b.Agent, &b.PubkeyFP, &b.PubkeyPEM, &b.Status, &b.ApprovedAt, &b.RequestID, &b.LastSeenAt, &b.AttestationStatus); err != nil {
 			return nil, err
 		}
 		out = append(out, b)

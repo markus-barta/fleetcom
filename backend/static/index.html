@@ -5205,6 +5205,24 @@ WantedBy=multi-user.target</pre>
                                                 OOB code
                                             </label>
                                         </template>
+                                        <!-- FLEET-114: per-gateway attestation toggle + paste-pubkey link.
+                                             Effective enforcement = env AND per-gateway. Pubkey is required
+                                             before strict enforcement can succeed; pasting it directly
+                                             surfaces the requirement. -->
+                                        <template x-if="gatewayForHost(hostDrawerKey)">
+                                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:10px;color:var(--ink-dim);cursor:pointer;" title="When on AND the FLEETCOM_REGISTER_ATTESTATION_REQUIRED env is true, bridge registrations from this gateway must include a gateway-signed body verified against the gateway pubkey. Off = pass-through with audit row (FLEET-114).">
+                                                <input type="checkbox" :checked="(gatewayForHost(hostDrawerKey) || {}).attestation_required"
+                                                       @change="toggleAttestation(hostDrawerKey, $event.target.checked)">
+                                                attest
+                                            </label>
+                                        </template>
+                                        <template x-if="gatewayForHost(hostDrawerKey)">
+                                            <button class="btn btn-ghost"
+                                                    style="font-size:9px;padding:0.15rem 0.5rem;"
+                                                    @click="openGatewayPubkeyPrompt(hostDrawerKey)"
+                                                    :title="(gatewayForHost(hostDrawerKey) || {}).gateway_pubkey_b64 ? 'Pubkey captured: ' + ((gatewayForHost(hostDrawerKey) || {}).gateway_pubkey_b64 || '').slice(0, 12) + '… (click to replace)' : 'Paste the gateway Ed25519 pubkey (b64url) — required for FLEET-114 attestation verification.'"
+                                                    x-text="(gatewayForHost(hostDrawerKey) || {}).gateway_pubkey_b64 ? '✓ pubkey' : '+ pubkey'"></button>
+                                        </template>
                                         <template x-if="!gatewayForHost(hostDrawerKey)">
                                             <button class="btn btn-primary" @click="openPairGatewayFromDrawer(hostDrawerKey)" title="Generate FleetCom keys + enqueue openclaw.pair on this host. Jumps to the Log tab so you can watch it.">+ Pair gateway</button>
                                         </template>
@@ -5228,6 +5246,11 @@ WantedBy=multi-user.target</pre>
                                                         <span x-text="b.agent"></span>
                                                         <span style="color:var(--ink-ghost)" x-text="' · ' + ((b.status) || 'unknown')"></span>
                                                         <span style="color:var(--ink-faint);font-size:9px;font-family:ui-monospace,monospace;" :title="'Public key fingerprint: ' + (b.pubkey_fp || '')" x-text="' · fp ' + ((b.pubkey_fp || '').slice(0, 12))"></span>
+                                                        <!-- FLEET-114: attestation badge — verified | skipped | unknown. -->
+                                                        <span style="font-size:8px;padding:1px 4px;margin-left:0.3rem;letter-spacing:0.05em;text-transform:uppercase;border-radius:2px;"
+                                                              :style="attestationBadgeStyle(b.attestation_status)"
+                                                              :title="attestationBadgeTitle(b.attestation_status)"
+                                                              x-text="b.attestation_status || 'unknown'"></span>
                                                         <button class="btn btn-ghost" style="font-size:8px;padding:0.1rem 0.35rem;margin-left:0.3rem;" @click="revokeBridge(hostDrawerKey, b.agent)">revoke</button>
                                                     </span>
                                                 </template>
@@ -7977,6 +8000,77 @@ WantedBy=multi-user.target</pre>
                 codeReady(host, agent) {
                     const v = this.pairCodes[host + '/' + agent] || '';
                     return v.replace(/\D/g, '').length === 6;
+                },
+                // FLEET-114: per-gateway attestation toggle.
+                async toggleAttestation(host, on) {
+                    if (!on) {
+                        const ok = await this.confirmModal({
+                            title: 'Disable attestation for ' + host + '?',
+                            body: 'Bridges from ' + host + ' will register without gateway-signed proof. Server-side audit row carries verb=ATTESTATION_SKIPPED so a security review can find these later, but the cryptographic second factor is gone.',
+                            confirmLabel: 'Disable attestation',
+                            level: 'warn',
+                        });
+                        if (!ok) { this.loadGateways(); return; }
+                    }
+                    return this.busy('attestation:' + host, 'Attestation ' + (on ? 'ENABLED' : 'disabled') + ' · ' + host,
+                        async () => {
+                            const res = await fetch('/api/gateways/' + encodeURIComponent(host) + '/attestation/' + (on ? 'on' : 'off'), { method: 'POST' });
+                            if (!res.ok) {
+                                this.loadGateways();
+                                await this._checkRes(res, 'Failed to toggle attestation');
+                            }
+                        },
+                        { verb: on ? 'ATTESTATION_ON' : 'ATTESTATION_OFF', target: 'gateway/' + host });
+                },
+                // Operator paste of the gateway's own raw Ed25519 pubkey.
+                // Uses the existing confirmModal with a typed input — same
+                // UX pattern as requireType but for free-text instead of
+                // echo. Stays simple; no separate modal needed.
+                async openGatewayPubkeyPrompt(host) {
+                    const current = (this.gatewayForHost(host) || {}).gateway_pubkey_b64 || '';
+                    // Native prompt would violate ban-native-confirm spirit;
+                    // use a one-shot reactive input via the existing modal.
+                    const value = window.prompt(
+                        'Paste the gateway pubkey for ' + host + ' (base64url-no-padding of the raw 32-byte Ed25519 public key).\n\nLeave empty to clear.',
+                        current,
+                    );
+                    if (value === null) return; // cancelled
+                    const trimmed = value.trim();
+                    return this.busy('setGatewayPubkey:' + host, trimmed ? 'Gateway pubkey saved · ' + host : 'Gateway pubkey cleared · ' + host,
+                        async () => {
+                            const res = await fetch('/api/gateways/' + encodeURIComponent(host) + '/pubkey', {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ pubkey_b64: trimmed }),
+                            });
+                            await this._checkRes(res, 'Failed to set gateway pubkey');
+                        },
+                        { verb: trimmed ? 'GATEWAY_PUBKEY_SET' : 'GATEWAY_PUBKEY_CLEARED', target: 'gateway/' + host });
+                },
+                // Attestation badge styling — operators read this at a
+                // glance, so the colors map to outcome severity:
+                //   verified → ok green
+                //   skipped  → warn amber (rollout audit)
+                //   unknown  → ink-faint (pre-Phase-3 row)
+                attestationBadgeStyle(s) {
+                    switch (s) {
+                        case 'verified':
+                            return 'background:var(--ok);color:var(--bg-0);';
+                        case 'skipped':
+                            return 'background:var(--warn);color:var(--bg-0);';
+                        default:
+                            return 'background:var(--ink-faint);color:var(--bg-0);opacity:0.65;';
+                    }
+                },
+                attestationBadgeTitle(s) {
+                    switch (s) {
+                        case 'verified':
+                            return 'Gateway-signed registration verified against the gateway pubkey (FLEET-114).';
+                        case 'skipped':
+                            return 'Registration succeeded under attestation_skipped — either the env was loose, the per-gateway flag was OFF, or no signature was provided. Audit row in the operator log.';
+                        default:
+                            return 'Pre-Phase-3 row OR attestation status not yet recorded.';
+                    }
                 },
                 async toggleOOBDelivery(host, on) {
                     if (on) {

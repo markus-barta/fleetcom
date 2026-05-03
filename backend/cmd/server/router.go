@@ -145,6 +145,9 @@ func newRouter(d *routerDeps) chi.Router {
 		// FLEET-113: OOB confirmation-code path + per-gateway toggle.
 		r.With(auth.RequireAdmin).Post("/api/bridges/{host}/{agent}/approve-skip-oob", api.ApproveBridgeSkipOOB(store, hub))
 		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/oob-delivery/{mode}", api.SetGatewayOOBDelivery(store, hub))
+		// FLEET-114: per-gateway attestation toggle + operator-paste pubkey.
+		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/attestation/{mode}", api.SetGatewayAttestationRequired(store, hub))
+		r.With(auth.RequireAdmin).Put("/api/gateways/{host}/pubkey", api.SetGatewayPubkey(store, hub))
 
 		// FLEET-60: bosun command channel — admin issues work, bosun
 		// picks it up via heartbeat response, reports back here.

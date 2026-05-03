@@ -2,15 +2,18 @@ package api
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"math/big"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -44,7 +47,84 @@ type ConfirmationCodePusher interface {
 type RegisterBridgeRequest struct {
 	Agent     string `json:"agent"`      // e.g. "merlin"
 	PubkeyPEM string `json:"pubkey_pem"` // Ed25519 SPKI PEM
+	// FLEET-114: Ed25519 signature over sha256(host || ":" || agent ||
+	// ":" || pubkey_fp), produced by the gateway with its own private
+	// key. b64-standard (not URL-safe) for compactness in JSON. Empty
+	// string means "no attestation provided" — server policy decides
+	// whether to reject (env=true) or pass-through with an audit row
+	// (env=false).
+	GatewaySignatureB64 string `json:"gateway_signature_b64,omitempty"`
 }
+
+// FLEET-114: env-gated global default + per-row outcome enum.
+const (
+	envAttestationRequired = "FLEETCOM_REGISTER_ATTESTATION_REQUIRED"
+
+	AttestationStatusUnknown  = "unknown"
+	AttestationStatusVerified = "verified"
+	AttestationStatusSkipped  = "skipped"
+)
+
+// attestationGloballyRequired returns the env's setting. Default FALSE
+// for the initial Phase-3 ship — strict enforcement requires the
+// operator to first paste each gateway's Ed25519 pubkey via PUT
+// /api/gateways/{host}/pubkey AND deploy bridges that include the
+// gateway-signed body. Until both sides are wired up, enforcement
+// would be a hard regression for existing installs.
+//
+// The end-state per FLEET-114 spec is default TRUE: a follow-up flips
+// it once the operator-log audit shows zero ATTESTATION_SKIPPED rows
+// for ≥2 weeks across all gateways. The env stays in place to let
+// individual operators upgrade earlier.
+func attestationGloballyRequired() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(envAttestationRequired)))
+	if v == "" {
+		return false
+	}
+	return v == "true" || v == "1" || v == "on" || v == "yes"
+}
+
+// attestationCanonicalMessage is the bytes that get signed by the
+// gateway and verified by the server. Format chosen to be stable, easy
+// to reproduce in any language, and impossible to confuse with a
+// neighboring field (`:` separator + sha256 wrapper).
+func attestationCanonicalMessage(host, agent, fp string) []byte {
+	h := sha256.Sum256([]byte(host + ":" + agent + ":" + fp))
+	return h[:]
+}
+
+// verifyGatewayAttestation checks an Ed25519 signature against the
+// canonical (host:agent:fp) message under the gateway's pubkey.
+// Returns nil on valid signature, an error explaining the failure
+// otherwise. Empty pubkey or empty sig → ErrAttestationMissing so the
+// caller can route to the audit-skipped path.
+func verifyGatewayAttestation(host, agent, fp, gatewayPubkeyB64, sigB64 string) error {
+	if gatewayPubkeyB64 == "" {
+		return errAttestationGatewayKeyUnknown
+	}
+	if sigB64 == "" {
+		return errAttestationMissing
+	}
+	// Pubkey is stored in the OpenClaw raw-pubkey format (b64url-no-padding).
+	pub, err := base64.RawURLEncoding.DecodeString(gatewayPubkeyB64)
+	if err != nil || len(pub) != ed25519.PublicKeySize {
+		return fmt.Errorf("invalid gateway pubkey: %w", err)
+	}
+	sig, err := base64.StdEncoding.DecodeString(sigB64)
+	if err != nil || len(sig) != ed25519.SignatureSize {
+		return fmt.Errorf("invalid signature encoding")
+	}
+	if !ed25519.Verify(pub, attestationCanonicalMessage(host, agent, fp), sig) {
+		return errAttestationInvalid
+	}
+	return nil
+}
+
+var (
+	errAttestationMissing           = fmt.Errorf("gateway_attestation_missing")
+	errAttestationInvalid           = fmt.Errorf("gateway_attestation_invalid")
+	errAttestationGatewayKeyUnknown = fmt.Errorf("gateway_attestation_pubkey_unknown")
+)
 
 // FLEET-113 OOB-code parameters. Code TTL chosen to match Signal's
 // safety-number model (operator window to read it on the agent and
@@ -142,10 +222,68 @@ func RegisterBridge(store *db.Store, hub *sse.Hub, pusher ConfirmationCodePusher
 			return
 		}
 
+		// FLEET-114: attestation gate runs BEFORE persisting the row so a
+		// rejected registration leaves no trace. Pull the gateway's row
+		// upfront — we need both its pubkey (for verify) and its
+		// per-gateway flag (for the AND with the env).
+		gws, _ := store.AllGateways()
+		var matchedGw *db.OpenClawGateway
+		for i := range gws {
+			if gws[i].Host == hostname {
+				matchedGw = &gws[i]
+				break
+			}
+		}
+		gatewayPubkey := ""
+		gatewayAttestationOn := true
+		if matchedGw != nil {
+			gatewayPubkey = matchedGw.GatewayPubkeyB64
+			gatewayAttestationOn = matchedGw.AttestationRequired
+		}
+		// Effective enforcement = global env AND per-gateway flag. Either
+		// can downgrade enforcement to "skip"; both must be ON to enforce.
+		envOn := attestationGloballyRequired()
+		enforce := envOn && gatewayAttestationOn
+
+		attStatus := AttestationStatusUnknown
+		var attSkipReason string
+		if err := verifyGatewayAttestation(hostname, body.Agent, fp, gatewayPubkey, body.GatewaySignatureB64); err == nil {
+			attStatus = AttestationStatusVerified
+		} else {
+			if enforce {
+				log.Printf("register bridge %s/%s: attestation REJECT: %v", hostname, body.Agent, err)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]any{
+					"error":  "gateway_attestation_required",
+					"reason": err.Error(),
+					"hint":   "set FLEETCOM_REGISTER_ATTESTATION_REQUIRED=false during rollout, or POST /api/gateways/{host}/attestation/off, or paste the gateway pubkey via /api/gateways/{host}/pubkey.",
+				})
+				return
+			}
+			attStatus = AttestationStatusSkipped
+			attSkipReason = err.Error()
+			log.Printf("register bridge %s/%s: attestation SKIPPED (%s)", hostname, body.Agent, attSkipReason)
+		}
+
 		if err := store.RegisterBridge(hostname, body.Agent, fp, body.PubkeyPEM); err != nil {
 			log.Printf("register bridge error: %v", err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
+		}
+		// Persist per-row attestation outcome so operators can audit.
+		_ = store.SetBridgeAttestationStatus(hostname, body.Agent, attStatus)
+		// FLEET-114: system audit row (user_id=0) so operators can grep
+		// the operator log later for "what came in under skip during rollout?"
+		if attStatus == AttestationStatusSkipped {
+			_, _ = store.RecordActivity(db.ActivityEvent{
+				UserID:     0,
+				Verb:       "ATTESTATION_SKIPPED",
+				TargetType: "bridge",
+				TargetKey:  hostname + "/" + body.Agent,
+				Outcome:    "ok",
+				Error:      attSkipReason,
+			})
 		}
 
 		// Broadcast bridges list update so the dashboard sees the new
@@ -156,21 +294,15 @@ func RegisterBridge(store *db.Store, hub *sse.Hub, pusher ConfirmationCodePusher
 			}
 		}
 
-		// Does the host have a paired gateway with auto-approve on? If
-		// so, the (future) OpenClaw WS client will pick this up and
-		// auto-approve. For now, flag it in the response so the bridge
-		// knows whether to expect instant approval or manual pending.
-		gws, _ := store.AllGateways()
+		// matchedGw was pulled above for the attestation gate — re-use
+		// it here for auto-approve + OOB.
 		autoApprove := false
 		oobEnabled := false
-		for _, g := range gws {
-			if g.Host == hostname {
-				if g.Status == "paired" && g.AutoApproveBridges {
-					autoApprove = true
-				}
-				oobEnabled = g.OOBDeliveryEnabled
-				break
+		if matchedGw != nil {
+			if matchedGw.Status == "paired" && matchedGw.AutoApproveBridges {
+				autoApprove = true
 			}
+			oobEnabled = matchedGw.OOBDeliveryEnabled
 		}
 
 		// FLEET-113: pending row + OOB-enabled gateway → mint a code,
@@ -203,15 +335,87 @@ func RegisterBridge(store *db.Store, hub *sse.Hub, pusher ConfirmationCodePusher
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"ok":           true,
-			"host":         hostname,
-			"agent":        body.Agent,
-			"fingerprint":  fp,
-			"auto_approve": autoApprove,
-			"oob_required": oobEnabled,
-			"oob_minted":   oobMinted,
-			"status":       "registered",
+			"ok":                 true,
+			"host":               hostname,
+			"agent":              body.Agent,
+			"fingerprint":        fp,
+			"auto_approve":       autoApprove,
+			"oob_required":       oobEnabled,
+			"oob_minted":         oobMinted,
+			"attestation_status": attStatus,
+			"status":             "registered",
 		})
+	}
+}
+
+// SetGatewayAttestationRequired toggles the per-gateway attestation
+// flag. URL: /api/gateways/{host}/attestation/{mode}.
+func SetGatewayAttestationRequired(store *db.Store, hub *sse.Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		host := chi.URLParam(r, "host")
+		mode := chi.URLParam(r, "mode")
+		if host == "" || (mode != "on" && mode != "off") {
+			http.Error(w, "host and mode (on|off) required", http.StatusBadRequest)
+			return
+		}
+		if err := store.SetGatewayAttestationRequired(host, mode == "on"); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if gs, err := store.AllGateways(); err == nil {
+			if data, err := json.Marshal(gs); err == nil {
+				hub.Broadcast("gateways", data)
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// SetGatewayPubkeyRequest carries the operator-pasted pubkey. Format
+// matches the rest of the OpenClaw stack: raw 32-byte Ed25519 pubkey
+// encoded as base64url-no-padding (the same format as
+// openclaw_gateways.fc_pubkey_b64).
+type SetGatewayPubkeyRequest struct {
+	PubkeyB64 string `json:"pubkey_b64"`
+}
+
+// SetGatewayPubkey lets an operator paste the gateway's own Ed25519
+// pubkey so the server can verify attestation signatures from it.
+// URL: PUT /api/gateways/{host}/pubkey. Empty string is allowed and
+// resets the column (verification falls through to "skipped").
+func SetGatewayPubkey(store *db.Store, hub *sse.Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		host := chi.URLParam(r, "host")
+		if host == "" {
+			http.Error(w, "host required", http.StatusBadRequest)
+			return
+		}
+		var body SetGatewayPubkeyRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+		body.PubkeyB64 = strings.TrimSpace(body.PubkeyB64)
+		// Validate format up-front — reject obviously-wrong values so
+		// the operator gets immediate feedback rather than discovering
+		// it via a broken signature on the next bridge registration.
+		if body.PubkeyB64 != "" {
+			raw, err := base64.RawURLEncoding.DecodeString(body.PubkeyB64)
+			if err != nil || len(raw) != ed25519.PublicKeySize {
+				http.Error(w, "pubkey must be base64url-no-padding of a 32-byte Ed25519 public key", http.StatusBadRequest)
+				return
+			}
+		}
+		if err := store.SetGatewayPubkey(host, body.PubkeyB64); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if gs, err := store.AllGateways(); err == nil {
+			if data, err := json.Marshal(gs); err == nil {
+				hub.Broadcast("gateways", data)
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
