@@ -2094,12 +2094,44 @@
             animation: toast-in 0.25s ease-out;
             max-width: 360px;
         }
-        .toast.toast-ok { border-left: 3px solid var(--ok); }
-        .toast.toast-err { border-left: 3px solid var(--crit); color: var(--crit); }
+        .toast.toast-ok   { border-left: 3px solid var(--ok); }
+        .toast.toast-err  { border-left: 3px solid var(--crit); }
+        .toast.toast-warn { border-left: 3px solid var(--warn); }
         .toast.toast-info { border-left: 3px solid var(--accent); }
-        .toast.toast-out { animation: toast-out 0.2s ease-in forwards; }
-        @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .toast.toast-out  { animation: toast-out 0.2s ease-in forwards; }
+        @keyframes toast-in  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(4px); } }
+        /* FLEET-105 Toast v2: structured head + body + actions, monospace timestamps,
+           level-tinted verb labels, hash-dedupe count pill, manual-dismiss × on err. */
+        .toast-head { display: flex; align-items: center; gap: 0.5rem; font-size: 9px; letter-spacing: 0.06em; line-height: 1; }
+        .toast-ts { color: var(--ink-faint); font-family: 'JetBrains Mono', ui-monospace, monospace; }
+        .toast-verb { color: var(--ink-dim); text-transform: uppercase; font-weight: 600; }
+        .toast-err  .toast-verb { color: var(--crit); }
+        .toast-warn .toast-verb { color: var(--warn); }
+        .toast-ok   .toast-verb { color: var(--ok); }
+        .toast-info .toast-verb { color: var(--accent); }
+        .toast-target { color: var(--ink); font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 10px; letter-spacing: 0; }
+        .toast-count {
+            color: var(--ink-ghost); font-size: 9px; padding: 0 0.3rem;
+            border: 1px solid var(--line-2); margin-left: 0.2rem;
+            font-family: 'JetBrains Mono', ui-monospace, monospace; line-height: 1.5;
+        }
+        .toast-x {
+            margin-left: auto; background: transparent; border: none;
+            color: var(--ink-ghost); cursor: pointer; padding: 0 0.25rem;
+            font-size: 16px; line-height: 1; font-family: inherit;
+        }
+        .toast-x:hover { color: var(--ink); }
+        .toast-msg { font-size: 11px; margin-top: 0.35rem; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
+        .toast-acts { display: flex; gap: 0.4rem; margin-top: 0.5rem; padding-top: 0.4rem; border-top: 1px solid var(--line); }
+        .toast-act {
+            background: transparent; border: 1px solid var(--line-2);
+            color: var(--ink-dim); font-family: inherit; font-size: 10px;
+            letter-spacing: 0.08em; text-transform: uppercase;
+            padding: 0.2rem 0.55rem; cursor: pointer;
+        }
+        .toast-act:hover { border-color: var(--accent); color: var(--accent); }
+        .toast-err .toast-act:hover { border-color: var(--crit); color: var(--crit); }
 
         /* --- Host hardware chips + panel --- */
         .hw-chips {
@@ -7663,17 +7695,141 @@ WantedBy=multi-user.target</pre>
                                         : 'Dead';
                 },
 
-                // ---------- toast notifications ----------
-                toast(msg, type = 'ok') {
+                // ---------- FLEET-105 Toast v2 ----------
+                // 4 levels (info / ok / warn / err); err is sticky (manual dismiss).
+                // Hash-dedupe within 5s bumps a ×N count pill instead of stacking.
+                // Optional inline action buttons (Retry / View / Re-login etc.).
+                //
+                // Two call shapes — both supported for back-compat:
+                //   toast('message')                            // ok, 3s
+                //   toast('message', 'err')                     // err, sticky
+                //   toast({ level, msg, verb, target, actions, sticky })
+                toast(arg, oldType) {
+                    const opts = (typeof arg === 'string')
+                        ? { level: oldType || 'ok', msg: arg }
+                        : (arg || {});
+                    const level   = opts.level || 'ok';
+                    const msg     = String(opts.msg == null ? '' : opts.msg);
+                    const verb    = opts.verb || '';
+                    const target  = opts.target || '';
+                    const actions = Array.isArray(opts.actions) ? opts.actions.slice(0, 2) : [];
+                    const sticky  = opts.sticky === true || level === 'err';
+
                     const container = document.getElementById('toasts');
+                    if (!container) return;
+
+                    if (!this._toastsByHash) { this._toastsByHash = new Map(); this._toastSeq = 0; }
+
+                    // Dedupe: same level + msg + verb + target within 5s → bump count
+                    const hash = level + '' + msg + '' + verb + '' + target;
+                    const existing = this._toastsByHash.get(hash);
+                    if (existing && (Date.now() - existing.firstAt) < 5000) {
+                        existing.count++;
+                        const cnt = existing.el.querySelector('.toast-count');
+                        if (cnt) { cnt.textContent = '×' + existing.count; cnt.style.display = ''; }
+                        if (existing.timeout) { clearTimeout(existing.timeout); existing.timeout = null; }
+                        if (!sticky) {
+                            const dur = level === 'ok' ? 3000 : level === 'info' ? 4000 : level === 'warn' ? 6000 : 0;
+                            if (dur) existing.timeout = setTimeout(() => this.dismissToast(existing.id), dur);
+                        }
+                        return existing.id;
+                    }
+
+                    const id = ++this._toastSeq;
                     const el = document.createElement('div');
-                    el.className = 'toast toast-' + type;
-                    el.textContent = msg;
+                    el.className = 'toast toast-' + level;
+                    el.setAttribute('data-toast-id', String(id));
+
+                    // Head row: timestamp · verb · target · count · ×
+                    const head = document.createElement('div');
+                    head.className = 'toast-head';
+                    const d = new Date();
+                    const pad = n => String(n).padStart(2, '0');
+                    const tsEl = document.createElement('span');
+                    tsEl.className = 'toast-ts';
+                    tsEl.textContent = '[' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) + ']';
+                    head.appendChild(tsEl);
+                    if (verb) {
+                        const v = document.createElement('span');
+                        v.className = 'toast-verb';
+                        v.textContent = verb;
+                        head.appendChild(v);
+                    }
+                    if (target) {
+                        const sep = document.createElement('span');
+                        sep.className = 'toast-ts';
+                        sep.textContent = '·';
+                        head.appendChild(sep);
+                        const t = document.createElement('span');
+                        t.className = 'toast-target';
+                        t.textContent = target;
+                        head.appendChild(t);
+                    }
+                    const cnt = document.createElement('span');
+                    cnt.className = 'toast-count';
+                    cnt.style.display = 'none';
+                    cnt.textContent = '×1';
+                    head.appendChild(cnt);
+                    if (sticky) {
+                        const x = document.createElement('button');
+                        x.className = 'toast-x';
+                        x.title = 'Dismiss';
+                        x.textContent = '×';
+                        x.onclick = () => this.dismissToast(id);
+                        head.appendChild(x);
+                    }
+                    el.appendChild(head);
+
+                    // Body
+                    if (msg) {
+                        const body = document.createElement('div');
+                        body.className = 'toast-msg';
+                        body.textContent = msg;
+                        el.appendChild(body);
+                    }
+
+                    // Actions (max 2). Each handler runs, then the toast dismisses.
+                    if (actions.length) {
+                        const actsEl = document.createElement('div');
+                        actsEl.className = 'toast-acts';
+                        actions.forEach(a => {
+                            if (!a || !a.label) return;
+                            const b = document.createElement('button');
+                            b.className = 'toast-act';
+                            b.textContent = a.label;
+                            b.onclick = () => {
+                                try { typeof a.onClick === 'function' && a.onClick(); }
+                                finally { this.dismissToast(id); }
+                            };
+                            actsEl.appendChild(b);
+                        });
+                        el.appendChild(actsEl);
+                    }
+
                     container.appendChild(el);
-                    setTimeout(() => {
-                        el.classList.add('toast-out');
-                        setTimeout(() => el.remove(), 200);
-                    }, type === 'err' ? 5000 : 3000);
+
+                    const entry = { id, el, hash, count: 1, firstAt: Date.now(), timeout: null };
+                    this._toastsByHash.set(hash, entry);
+
+                    if (!sticky) {
+                        const dur = level === 'ok' ? 3000 : level === 'info' ? 4000 : level === 'warn' ? 6000 : 0;
+                        if (dur) entry.timeout = setTimeout(() => this.dismissToast(id), dur);
+                    }
+                    return id;
+                },
+
+                dismissToast(id) {
+                    const container = document.getElementById('toasts');
+                    if (!container) return;
+                    const el = container.querySelector('[data-toast-id="' + id + '"]');
+                    if (!el) return;
+                    el.classList.add('toast-out');
+                    if (this._toastsByHash) {
+                        for (const [k, v] of this._toastsByHash) {
+                            if (v.id === id) { if (v.timeout) clearTimeout(v.timeout); this._toastsByHash.delete(k); break; }
+                        }
+                    }
+                    setTimeout(() => el.remove(), 200);
                 },
 
                 async copyToClipboard(text, okMsg = 'Copied to clipboard') {
