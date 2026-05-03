@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
@@ -767,6 +768,53 @@ func ListGateways(store *db.Store) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(gs)
+	}
+}
+
+// SetGatewayPosture (FLEET-117) atomically applies a named posture
+// (auto-pair / reviewed / hardened) to a gateway. One POST flips the
+// three FLEET-111 flags to a canonical combination — the wizard
+// surfaces this as a single posture-card click instead of three
+// independent toggles.
+//
+// URL: POST /api/gateways/{host}/posture/{name}.
+//
+// Status codes:
+//
+//	204 — applied
+//	400 — unknown posture name
+//	404 — gateway row not found
+//	422 — hardened requested but the gateway pubkey is empty (operator
+//	      must paste it via PUT /api/gateways/{host}/pubkey first)
+func SetGatewayPosture(store *db.Store, hub *sse.Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		host := chi.URLParam(r, "host")
+		name := chi.URLParam(r, "name")
+		if host == "" {
+			http.Error(w, "host required", http.StatusBadRequest)
+			return
+		}
+		err := store.SetGatewayPosture(host, name)
+		switch {
+		case err == nil:
+			// fallthrough to broadcast
+		case errors.Is(err, db.ErrUnknownPosture):
+			http.Error(w, "posture must be auto-pair, reviewed, or hardened", http.StatusBadRequest)
+			return
+		case errors.Is(err, db.ErrPostureLocked):
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		default:
+			// "gateway not found: <host>" or storage error
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if gs, err := store.AllGateways(); err == nil {
+			if data, err := json.Marshal(gs); err == nil {
+				hub.Broadcast("gateways", data)
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 

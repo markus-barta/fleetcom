@@ -204,6 +204,8 @@ var EndpointCatalog = []EndpointInfo{
 		Description: "FLEET-114: per-gateway attestation toggle. AND-ed with the FLEETCOM_REGISTER_ATTESTATION_REQUIRED env so flipping OFF for a single gateway lets it skip enforcement without disabling the global default."},
 	{Method: "PUT", Path: "/api/gateways/{host}/pubkey", Auth: []string{"session"}, RequiresAdmin: true,
 		Description: "FLEET-114: paste the gateway's own Ed25519 pubkey (b64url-no-padding) so the server can verify gateway-signed bridge registrations. Empty value resets the column → verification falls through to attestation_skipped."},
+	{Method: "POST", Path: "/api/gateways/{host}/posture/{name}", Auth: []string{"session"}, RequiresAdmin: true,
+		Description: "FLEET-117: atomic posture setter (auto-pair | reviewed | hardened). Collapses the auto_approve / oob_delivery / attestation flags into one named combination. Hardened returns 422 when gateway_pubkey_b64 is empty."},
 
 	// ---------- Admin: bosun command channel (FLEET-60) ----------
 	{Method: "POST", Path: "/api/hosts/{host}/commands", Auth: []string{"session"}, RequiresAdmin: true,

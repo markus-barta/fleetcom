@@ -148,6 +148,9 @@ func newRouter(d *routerDeps) chi.Router {
 		// FLEET-114: per-gateway attestation toggle + operator-paste pubkey.
 		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/attestation/{mode}", api.SetGatewayAttestationRequired(store, hub))
 		r.With(auth.RequireAdmin).Put("/api/gateways/{host}/pubkey", api.SetGatewayPubkey(store, hub))
+		// FLEET-117: atomic posture setter — collapses the four toggles
+		// above into one named card click (auto-pair / reviewed / hardened).
+		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/posture/{name}", api.SetGatewayPosture(store, hub))
 
 		// FLEET-60: bosun command channel — admin issues work, bosun
 		// picks it up via heartbeat response, reports back here.

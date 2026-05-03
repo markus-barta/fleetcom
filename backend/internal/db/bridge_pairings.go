@@ -2,9 +2,37 @@ package db
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
+
+// FLEET-117 posture-name → flag-triple mapping. The wizard surfaces three
+// canonical combinations of the three FLEET-111 flags as named "postures"
+// so the operator picks one card instead of three independent toggles.
+//
+//	Auto-pair  →  auto_approve=ON,  oob=OFF, attest=OFF  (1-of-3 trust)
+//	Reviewed   →  auto_approve=OFF, oob=OFF, attest=ON   (2-of-3 — production default)
+//	Hardened   →  auto_approve=OFF, oob=ON,  attest=ON   (3-of-3 — gated on pubkey)
+//
+// Non-canonical flag combinations (e.g. operators flipping individual
+// toggles via the "Advanced" disclosure) read as Custom on the frontend
+// and don't match any posture exactly.
+const (
+	PostureAutoPair = "auto-pair"
+	PostureReviewed = "reviewed"
+	PostureHardened = "hardened"
+)
+
+// ErrUnknownPosture means the operator passed something other than the
+// three canonical posture names. The handler maps this to a 400.
+var ErrUnknownPosture = errors.New("unknown posture: must be auto-pair, reviewed, or hardened")
+
+// ErrPostureLocked means hardened was requested but the gateway pubkey
+// is empty — without it FleetCom can't actually verify the attestation
+// signatures the posture promises, so flipping the flags would be a lie.
+// The handler maps this to a 422.
+var ErrPostureLocked = errors.New("hardened posture requires the gateway pubkey — paste it via PUT /api/gateways/{host}/pubkey first")
 
 // OpenClawGateway is the server-side record of one OpenClaw gateway
 // FleetCom pairs with. One row per host that's running OpenClaw.
@@ -189,6 +217,61 @@ func (s *Store) SetAutoApprove(host string, on bool) error {
 		val = 1
 	}
 	res, err := s.DB.Exec(`UPDATE openclaw_gateways SET auto_approve_bridges = ? WHERE host = ?`, val, host)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("gateway not found: %s", host)
+	}
+	return nil
+}
+
+// SetGatewayPosture (FLEET-117) atomically applies a named posture —
+// (auto-pair / reviewed / hardened) — to the per-gateway flag triple.
+// Hardened is gated on the gateway pubkey being non-empty; without it
+// FleetCom can't verify the attestation signatures the posture
+// promises, so flipping the flags would be a lie.
+//
+// One UPDATE statement covers all three flags so the gateway is never
+// observed in an intermediate state by SSE subscribers.
+func (s *Store) SetGatewayPosture(host, posture string) error {
+	var aa, oo, at int
+	switch posture {
+	case PostureAutoPair:
+		aa, oo, at = 1, 0, 0
+	case PostureReviewed:
+		aa, oo, at = 0, 0, 1
+	case PostureHardened:
+		// Probe pubkey before mutating — operators get a 422 instead of
+		// a half-applied state.
+		var pubkey string
+		err := s.DB.QueryRow(
+			`SELECT gateway_pubkey_b64 FROM openclaw_gateways WHERE host = ?`,
+			host,
+		).Scan(&pubkey)
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("gateway not found: %s", host)
+		}
+		if err != nil {
+			return err
+		}
+		if pubkey == "" {
+			return ErrPostureLocked
+		}
+		aa, oo, at = 0, 1, 1
+	default:
+		return ErrUnknownPosture
+	}
+
+	res, err := s.DB.Exec(`
+		UPDATE openclaw_gateways
+		   SET auto_approve_bridges = ?,
+		       oob_delivery_enabled = ?,
+		       attestation_required = ?
+		 WHERE host = ?`,
+		aa, oo, at, host,
+	)
 	if err != nil {
 		return err
 	}
