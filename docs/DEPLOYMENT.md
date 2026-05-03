@@ -191,11 +191,48 @@ services:
 
 Settings > Users > click "Hosts" > grant the new host to relevant users.
 
+## Storage Layout (Personal — csb1)
+
+The `csb1` compose uses a **named Docker volume**, not a host bind mount. The container mounts `fleetcom-data:/app/data`, where `fleetcom-data` is a Compose-managed volume.
+
+Resolved paths:
+
+| What | Where on the host |
+|------|--------|
+| Live volume | `/var/lib/docker/volumes/fleetcom_fleetcom-data/_data/` |
+| Database | `/var/lib/docker/volumes/fleetcom_fleetcom-data/_data/fleetcom.db` |
+| OpenClaw key directory | `/var/lib/docker/volumes/fleetcom_fleetcom-data/_data/openclaw-keys/` |
+
+The path `/home/mba/docker/fleetcom/data/` looks like a bind mount but **is not used** — that directory exists alongside `docker-compose.yml` for historical reasons and is empty/owned by `root`. Don't be alarmed by `ls` returning two entries (`.` and `..`) there. The named volume is the source of truth.
+
+You can confirm the mountpoint at any time with:
+
+```bash
+ssh csb1 "docker volume inspect fleetcom_fleetcom-data --format '{{.Mountpoint}}'"
+# /var/lib/docker/volumes/fleetcom_fleetcom-data/_data
+```
+
+### Inspecting the prod database
+
+The fleetcom container image does not include `sqlite3`, and the volume is owned by `root` (so a non-privileged user can't read it directly). Two safe paths:
+
+```bash
+# A) Read-only sqlite via a throwaway container (recommended).
+ssh csb1 "sudo cp /var/lib/docker/volumes/fleetcom_fleetcom-data/_data/fleetcom.db /tmp/fc.db && sudo chmod 644 /tmp/fc.db"
+ssh csb1 "docker run --rm -v /tmp/fc.db:/db:ro keinos/sqlite3 sqlite3 -readonly /db 'SELECT host, status FROM openclaw_gateways'"
+ssh csb1 "sudo rm /tmp/fc.db"
+
+# B) Backup (atomic copy via SQLite's own backup API would be safer for hot DBs;
+# for read-only inspection a raw cp is fine since SQLite WAL mode keeps writers
+# from corrupting readers).
+ssh csb1 "sudo cp /var/lib/docker/volumes/fleetcom_fleetcom-data/_data/fleetcom.db ~/backups/fleetcom-$(date +%F).db"
+```
+
 ## Backups
 
 ```bash
-# Personal
-ssh -p 2222 mba@cs1.barta.cm 'cp /home/mba/docker/fleetcom/data/fleetcom.db ~/backups/'
+# Personal — named volume on csb1
+ssh csb1 "sudo cp /var/lib/docker/volumes/fleetcom_fleetcom-data/_data/fleetcom.db ~/backups/fleetcom-$(date +%F).db"
 
 # BYTEPOETS
 ssh -i ~/.ssh/BP_OPS_Server_SSH_Key service-user@5.75.130.206 \
