@@ -172,6 +172,49 @@ func (s *Store) MarkBridgeApproved(host, agent, requestID string) error {
 	return nil
 }
 
+// PendingBridges returns every bridge row whose status is 'pending'.
+// Drives the FLEET-112 approval surface (host drawer + header counter).
+// Cheap full-table scan — pending count is bounded by operator attention,
+// not fleet size.
+func (s *Store) PendingBridges() ([]BridgePairing, error) {
+	rows, err := s.DB.Query(`
+		SELECT id, host, agent, pubkey_fp, pubkey_pem, status, approved_at, request_id, last_seen_at
+		FROM bridge_pairings WHERE status = 'pending' ORDER BY created_at DESC, host, agent
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []BridgePairing{}
+	for rows.Next() {
+		var b BridgePairing
+		if err := rows.Scan(&b.ID, &b.Host, &b.Agent, &b.PubkeyFP, &b.PubkeyPEM, &b.Status, &b.ApprovedAt, &b.RequestID, &b.LastSeenAt); err != nil {
+			return nil, err
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
+}
+
+// MarkBridgeApprovedManual is the manual-approve path (FLEET-112). Same
+// shape as MarkBridgeApproved but skips the requestId requirement —
+// manual approval has no gateway-side request to correlate against.
+func (s *Store) MarkBridgeApprovedManual(host, agent string) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := s.DB.Exec(`
+		UPDATE bridge_pairings SET status = 'approved', approved_at = ?
+		WHERE host = ? AND agent = ? AND status = 'pending'
+	`, now, host, agent)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("no pending bridge pairing for %s/%s", host, agent)
+	}
+	return nil
+}
+
 // AllBridgePairings returns every bridge row for the dashboard.
 func (s *Store) AllBridgePairings() ([]BridgePairing, error) {
 	rows, err := s.DB.Query(`

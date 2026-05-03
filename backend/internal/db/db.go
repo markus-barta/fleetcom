@@ -386,7 +386,10 @@ CREATE TABLE IF NOT EXISTS openclaw_gateways (
 	fc_device_token_hash TEXT NOT NULL DEFAULT '',
 	paired_at TEXT NOT NULL DEFAULT '',
 	status TEXT NOT NULL DEFAULT 'unpaired',
-	auto_approve_bridges INTEGER NOT NULL DEFAULT 1,
+	-- FLEET-112: default OFF for new gateways. Existing rows keep their
+	-- current value (no migration on this column). Operators see a one-
+	-- time advisory toast in the dashboard pointing at the new posture.
+	auto_approve_bridges INTEGER NOT NULL DEFAULT 0,
 	created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

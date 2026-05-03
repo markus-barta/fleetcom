@@ -121,6 +121,125 @@ func ListBridges(store *db.Store) http.HandlerFunc {
 	}
 }
 
+// FLEET-112: pair-request approval surface.
+//
+// PendingBridgeView is the wire shape returned by GET /api/bridges/pending.
+// fp_human is the SSH-style 8-byte fingerprint render (`a3:f1:9c:7d:4e:8b:2a:1f`)
+// computed server-side so every consumer renders identically. gateway_status
+// is `paired | unpaired | revoked | not_present` so the operator can spot
+// "bridge registered but no gateway to endorse it" at a glance.
+type PendingBridgeView struct {
+	Host          string `json:"host"`
+	Agent         string `json:"agent"`
+	PubkeyFP      string `json:"pubkey_fp"`
+	FpHuman       string `json:"fp_human"`
+	CreatedAt     string `json:"created_at"`
+	LastSeenAt    string `json:"last_seen_at"`
+	GatewayStatus string `json:"gateway_status"`
+}
+
+// fpHumanShort renders the first 8 bytes of a hex fingerprint as
+// colon-separated pairs. Same format as `ssh-keygen -lf` output and
+// every other "TOFU first time you saw this key" UX in the world.
+func fpHumanShort(hex string) string {
+	if len(hex) < 16 {
+		return hex
+	}
+	out := make([]byte, 0, 23)
+	for i := 0; i < 16; i += 2 {
+		if i > 0 {
+			out = append(out, ':')
+		}
+		out = append(out, hex[i], hex[i+1])
+	}
+	return string(out)
+}
+
+// ListPendingBridges handles GET /api/bridges/pending — admin only.
+// Returns all rows with status='pending' enriched with fp_human +
+// the host's gateway status so the UI can render advisory copy.
+func ListPendingBridges(store *db.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		pending, err := store.PendingBridges()
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		gws, _ := store.AllGateways()
+		gwStatus := map[string]string{}
+		for _, g := range gws {
+			gwStatus[g.Host] = g.Status
+		}
+		out := make([]PendingBridgeView, 0, len(pending))
+		for _, b := range pending {
+			st := gwStatus[b.Host]
+			if st == "" {
+				st = "not_present"
+			}
+			out = append(out, PendingBridgeView{
+				Host:          b.Host,
+				Agent:         b.Agent,
+				PubkeyFP:      b.PubkeyFP,
+				FpHuman:       fpHumanShort(b.PubkeyFP),
+				CreatedAt:     b.LastSeenAt, // pending rows have no approved_at; last_seen_at = registration time
+				LastSeenAt:    b.LastSeenAt,
+				GatewayStatus: st,
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		_ = json.NewEncoder(w).Encode(out)
+	}
+}
+
+// ApproveBridge handles POST /api/bridges/{host}/{agent}/approve — admin only.
+// Flips status='pending' → 'approved' and broadcasts SSE 'bridges'.
+// Returns 404 when no pending row matches (already approved, revoked, etc).
+func ApproveBridge(store *db.Store, hub *sse.Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		host := chi.URLParam(r, "host")
+		agent := chi.URLParam(r, "agent")
+		if host == "" || agent == "" {
+			http.Error(w, "host and agent required", http.StatusBadRequest)
+			return
+		}
+		if err := store.MarkBridgeApprovedManual(host, agent); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if bs, err := store.AllBridgePairings(); err == nil {
+			if data, err := json.Marshal(bs); err == nil {
+				hub.Broadcast("bridges", data)
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// RejectBridge handles POST /api/bridges/{host}/{agent}/reject — admin only.
+// Hard-deletes the pending row (operator's signal: "this isn't mine").
+// The bridge can re-register on its next attempt with a fresh fingerprint.
+func RejectBridge(store *db.Store, hub *sse.Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		host := chi.URLParam(r, "host")
+		agent := chi.URLParam(r, "agent")
+		if host == "" || agent == "" {
+			http.Error(w, "host and agent required", http.StatusBadRequest)
+			return
+		}
+		if err := store.DeleteBridgePairing(host, agent); err != nil {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if bs, err := store.AllBridgePairings(); err == nil {
+			if data, err := json.Marshal(bs); err == nil {
+				hub.Broadcast("bridges", data)
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 // RevokeBridge drops the pairing row AND asks the gateway to revoke
 // the operator token for that deviceId (via the OpenClaw WS client).
 // Both steps are best-effort; the DB drop is what prevents future
