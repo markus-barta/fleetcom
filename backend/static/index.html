@@ -6014,6 +6014,9 @@ WantedBy=multi-user.target</pre>
                         <span x-show="bridgeDeploy.phase === 'timeout'" style="color:var(--warn);">
                             Some bridges haven't registered after 90s. Inspect with <code style="font-size:9px;">ssh <span x-text="bridgeDeploy.host"></span> 'docker logs fleetcom-agent-bridge-&lt;agent&gt;'</code> — likely the gateway hasn't paired yet, or the bridge image failed to pull.
                         </span>
+                        <span x-show="bridgeDeploy.phase === 'error'" style="color:var(--crit);">
+                            Server rejected the bridge.install command — see the error row below for details. Nothing was enqueued; click Retry to revise selection.
+                        </span>
                     </p>
                     <div class="seq">
                         <template x-for="row in bridgeDeploy.steps" :key="row.id">
@@ -6034,11 +6037,11 @@ WantedBy=multi-user.target</pre>
                         <button class="btn btn-ghost"
                                 @click="closeBridgeDeploy()"
                                 :disabled="bridgeDeploy.phase === 'deploying'"
-                                x-text="bridgeDeploy.phase === 'done' ? 'Close' : 'Cancel'"></button>
+                                x-text="(bridgeDeploy.phase === 'done' || bridgeDeploy.phase === 'error' || bridgeDeploy.phase === 'timeout') ? 'Close' : 'Cancel'"></button>
                         <template x-if="bridgeDeploy.phase === 'done'">
                             <button class="btn btn-primary" @click="approveFingerprintFromDeploy()">Approve fingerprint →</button>
                         </template>
-                        <template x-if="bridgeDeploy.phase === 'timeout'">
+                        <template x-if="bridgeDeploy.phase === 'timeout' || bridgeDeploy.phase === 'error'">
                             <button class="btn btn-primary" @click="retryBridgeDeploy()">Retry</button>
                         </template>
                     </div>
@@ -6361,22 +6364,34 @@ WantedBy=multi-user.target</pre>
                         </div>
                     </div>
 
-                    <!-- TOFU explainer disclosure -->
-                    <details style="margin-top:0.8rem;font-size:11px;color:var(--ink-dim);"
-                             :open="pairApproveCtx.tofuOpen">
-                        <summary style="cursor:pointer;list-style:none;font-size:10px;letter-spacing:0.04em;color:var(--ink-faint);padding:0.25rem 0;font-family:'JetBrains Mono',ui-monospace,monospace;">
+                    <!-- TOFU explainer disclosure.
+                         QA-AUDIT-FIX: replaced native <details> with a
+                         manual button + x-show pair. The previous form
+                         used :open="pairApproveCtx.tofuOpen" (one-way
+                         binding) — clicking the summary toggled the
+                         <details> open attribute via browser default,
+                         but Alpine never saw the change, so the chevron
+                         (▸/▾) desynced from the actual visible state.
+                         The manual form keeps the JS state and the DOM
+                         in lockstep. -->
+                    <div style="margin-top:0.8rem;font-size:11px;color:var(--ink-dim);">
+                        <button type="button"
+                                style="cursor:pointer;background:none;border:none;padding:0.25rem 0;color:var(--ink-faint);font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;letter-spacing:0.04em;text-align:left;width:100%;"
+                                @click="pairApproveCtx = { ...pairApproveCtx, tofuOpen: !pairApproveCtx.tofuOpen }">
                             <span x-text="pairApproveCtx.tofuOpen ? '▾' : '▸'"></span>
                             Why we verify · TOFU model
-                        </summary>
-                        <div style="line-height:1.6;padding:0.5rem 0.7rem;background:rgba(255,255,255,0.02);border-left:2px solid var(--line-2);margin-top:0.3rem;">
-                            <p style="margin:0 0 0.4rem;">
-                                <strong style="color:var(--ink);">TOFU = Trust On First Use.</strong> The host bearer token is one factor of trust — it proves a known host posted this registration. Verifying the fingerprint is the second factor: it proves the bridge running on the host has the key it claims to have.
-                            </p>
-                            <p style="margin:0;">
-                                Once you approve, FleetCom <strong>pins this fingerprint forever</strong>. The bridge can't change its identity without you noticing — any future registration with a different key will land here as a new pending row, not silently overwrite this one.
-                            </p>
-                        </div>
-                    </details>
+                        </button>
+                        <template x-if="pairApproveCtx.tofuOpen">
+                            <div style="line-height:1.6;padding:0.5rem 0.7rem;background:rgba(255,255,255,0.02);border-left:2px solid var(--line-2);margin-top:0.3rem;">
+                                <p style="margin:0 0 0.4rem;">
+                                    <strong style="color:var(--ink);">TOFU = Trust On First Use.</strong> The host bearer token is one factor of trust — it proves a known host posted this registration. Verifying the fingerprint is the second factor: it proves the bridge running on the host has the key it claims to have.
+                                </p>
+                                <p style="margin:0;">
+                                    Once you approve, FleetCom <strong>pins this fingerprint forever</strong>. The bridge can't change its identity without you noticing — any future registration with a different key will land here as a new pending row, not silently overwrite this one.
+                                </p>
+                            </div>
+                        </template>
+                    </div>
 
                     <!-- OOB code input (only when gateway has oob_delivery_enabled) -->
                     <template x-if="oobRequiredForHost(pairApproveCtx.host)">
@@ -9525,28 +9540,12 @@ WantedBy=multi-user.target</pre>
                     } catch (_) { this.toast('Network error', 'err'); }
                 },
 
-                // FLEET-69 — drawer-initiated "+ Pair gateway". Picks a container
-                // name via the same auto-detect + prompt dance as the Settings
-                // wizard, then hands off to pairGateway().
-                async openPairGatewayFromDrawer(host) {
-                    const cands = this.gatewayContainerCandidates(host);
-                    let container;
-                    if (cands.length === 0) {
-                        container = prompt('Gateway container name on ' + host + ':', 'openclaw-gateway');
-                        if (container === null) return;
-                    } else if (cands.length === 1) {
-                        container = cands[0];
-                    } else {
-                        container = prompt('Which container runs the OpenClaw gateway on ' + host + '?\nCandidates (best guess first):\n\n' + cands.join('\n'), cands[0]);
-                        if (container === null) return;
-                    }
-                    container = (container || '').trim();
-                    if (!container) return;
-                    this.newGatewayHost = host;
-                    this.newGatewayContainer = container;
-                    this.newGatewayContainerCustom = '';
-                    await this.pairGateway();
-                },
+                // QA-AUDIT-FIX: legacy openPairGatewayFromDrawer removed
+                // (used native prompt() — banned by FLEET-107). Replaced
+                // by openPairFlow() in FLEET-118 which surfaces the
+                // container picker as an editable input inside the
+                // pair-flow modal. The host-drawer "+ Pair gateway"
+                // button now calls openPairFlow directly.
 
                 // FLEET-62: restart a container via the bosun command
                 // channel. key format is "host/container_name".
@@ -9694,6 +9693,7 @@ WantedBy=multi-user.target</pre>
                         case 'deploying': return '· step 2 of 2 · waiting for register';
                         case 'done':      return '· complete';
                         case 'timeout':   return '· timed out';
+                        case 'error':     return '· failed';
                         default:          return '';
                     }
                 },
@@ -9865,10 +9865,16 @@ WantedBy=multi-user.target</pre>
                                 body: JSON.stringify({ kind: 'bridge.install', params: { agent_names } })
                             });
                             if (!res.ok) {
+                                // QA-AUDIT-FIX: server rejection is an
+                                // immediate error, NOT a 90s-watchdog
+                                // timeout. Use 'error' phase so the copy
+                                // matches reality. phase='timeout' is
+                                // reserved for the "POST succeeded but
+                                // SSE pair-request never arrived" case.
                                 const txt = (await res.text()).trim();
                                 steps[steps.length - 1] = { ...steps[steps.length - 1], state: 'error',
                                     msg: 'Server rejected bridge.install', hint: txt || 'HTTP ' + res.status };
-                                this.bridgeDeploy = { ...this.bridgeDeploy, phase: 'timeout', steps: [...steps] };
+                                this.bridgeDeploy = { ...this.bridgeDeploy, phase: 'error', steps: [...steps] };
                                 throw new Error('Deploy failed: ' + (txt || 'HTTP ' + res.status));
                             }
                             const body = await res.json();
