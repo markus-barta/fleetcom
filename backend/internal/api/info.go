@@ -200,6 +200,10 @@ var EndpointCatalog = []EndpointInfo{
 		Description: "FLEET-113: bypass OOB code on /approve. Body must echo the hostname (`{\"confirm\":\"<hostname>\"}`) — server-side typed-confirm. Audit row carries verb=OOB_BYPASSED for security review."},
 	{Method: "POST", Path: "/api/gateways/{host}/oob-delivery/{mode}", Auth: []string{"session"}, RequiresAdmin: true,
 		Description: "FLEET-113: per-gateway OOB-delivery toggle. ON enables strict /approve enforcement and pushes the bridge.confirmation_code RPC to the gateway WS on registration."},
+	{Method: "POST", Path: "/api/gateways/{host}/attestation/{mode}", Auth: []string{"session"}, RequiresAdmin: true,
+		Description: "FLEET-114: per-gateway attestation toggle. AND-ed with the FLEETCOM_REGISTER_ATTESTATION_REQUIRED env so flipping OFF for a single gateway lets it skip enforcement without disabling the global default."},
+	{Method: "PUT", Path: "/api/gateways/{host}/pubkey", Auth: []string{"session"}, RequiresAdmin: true,
+		Description: "FLEET-114: paste the gateway's own Ed25519 pubkey (b64url-no-padding) so the server can verify gateway-signed bridge registrations. Empty value resets the column → verification falls through to attestation_skipped."},
 
 	// ---------- Admin: bosun command channel (FLEET-60) ----------
 	{Method: "POST", Path: "/api/hosts/{host}/commands", Auth: []string{"session"}, RequiresAdmin: true,

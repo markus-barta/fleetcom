@@ -79,6 +79,21 @@ func migrate(db *sql.DB) error {
 		// gateway side; flipping ON enables strict OOB enforcement on
 		// /approve for that gateway's bridges.
 		`ALTER TABLE openclaw_gateways ADD COLUMN oob_delivery_enabled INTEGER NOT NULL DEFAULT 0`,
+		// FLEET-114: per-gateway attestation enforcement + the gateway's
+		// raw Ed25519 pubkey (b64url-no-padding). The pubkey populates
+		// when an operator pastes it (or when the OpenClaw RFC for
+		// pair-time pubkey exchange lands and we capture it during
+		// MarkGatewayPaired). Until the column is non-empty for a given
+		// gateway, attestation falls through to "skipped" regardless of
+		// the env / per-gateway flag — verification cannot proceed
+		// without the verifier's key.
+		`ALTER TABLE openclaw_gateways ADD COLUMN attestation_required INTEGER NOT NULL DEFAULT 1`,
+		`ALTER TABLE openclaw_gateways ADD COLUMN gateway_pubkey_b64 TEXT NOT NULL DEFAULT ''`,
+		// FLEET-114: per-row attestation outcome. One of:
+		//   'unknown'  — pre-Phase-3 row OR registration didn't include a sig
+		//   'verified' — sig present + valid; gateway endorsed this (host,agent,fp)
+		//   'skipped'  — registration succeeded under attestation_skipped
+		`ALTER TABLE bridge_pairings ADD COLUMN attestation_status TEXT NOT NULL DEFAULT 'unknown'`,
 		// Agent observability (FLEET-36) — see docs/AGENT-OBSERVABILITY.md.
 		// New tables are created by the schema const; nothing to ALTER here
 		// unless we evolve existing tables later.
@@ -406,6 +421,11 @@ CREATE TABLE IF NOT EXISTS openclaw_gateways (
 	-- FLEET-113: per-gateway OOB-delivery toggle (default OFF until the
 	-- gateway-side OpenClaw RFC ships the bridge.confirmation_code RPC).
 	oob_delivery_enabled INTEGER NOT NULL DEFAULT 0,
+	-- FLEET-114: per-gateway attestation enforcement + the gateway's
+	-- own pubkey for signature verification. See migrate() for the
+	-- ALTER fallback and the column semantics.
+	attestation_required INTEGER NOT NULL DEFAULT 1,
+	gateway_pubkey_b64 TEXT NOT NULL DEFAULT '',
 	created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -425,6 +445,8 @@ CREATE TABLE IF NOT EXISTS bridge_pairings (
 	confirmation_code_hash TEXT NOT NULL DEFAULT '',
 	confirmation_code_expires_at TEXT NOT NULL DEFAULT '',
 	confirmation_attempts INTEGER NOT NULL DEFAULT 0,
+	-- FLEET-114: per-row attestation outcome (unknown | verified | skipped).
+	attestation_status TEXT NOT NULL DEFAULT 'unknown',
 	UNIQUE(host, agent)
 );
 CREATE INDEX IF NOT EXISTS idx_bridge_pairings_fp ON bridge_pairings(pubkey_fp);
