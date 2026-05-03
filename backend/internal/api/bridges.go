@@ -2,8 +2,14 @@ package api
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log"
+	"math/big"
 	"net/http"
 	"strings"
 	"sync"
@@ -22,6 +28,15 @@ type GatewayRevoker interface {
 	RevokeBridgeOnGateway(ctx context.Context, host, deviceID string) error
 }
 
+// ConfirmationCodePusher is the FLEET-113 hook the OpenClaw manager
+// implements. RegisterBridge calls it when the host's gateway has
+// oob_delivery_enabled=ON to ship the freshly minted 6-digit code to
+// the gateway so it can deliver it through the agent itself. Defined
+// as an interface so tests can substitute a no-op.
+type ConfirmationCodePusher interface {
+	PushConfirmationCode(ctx context.Context, host, agent, code, fp string) error
+}
+
 // RegisterBridgeRequest is the body of POST /api/bridges/register.
 // Authentication is the host's bosun bearer token (shared with the
 // bridge via env). The server derives the host from the token — the
@@ -31,11 +46,69 @@ type RegisterBridgeRequest struct {
 	PubkeyPEM string `json:"pubkey_pem"` // Ed25519 SPKI PEM
 }
 
+// FLEET-113 OOB-code parameters. Code TTL chosen to match Signal's
+// safety-number model (operator window to read it on the agent and
+// type it into FleetCom). Length is 6 digits → 1M space; combined
+// with the 5-attempt rate limit gives an effective brute-force
+// probability of 5/1M ≈ 5×10⁻⁶ per registration before auto-reject.
+const (
+	confirmationCodeTTL    = 5 * time.Minute
+	confirmationCodeDigits = 6
+)
+
+// generateConfirmationCode returns a cryptographically random 6-digit
+// code as a zero-padded string ("472819"). crypto/rand → rejection
+// sampling via Int(reader, 10^digits) avoids the modulo-bias trap of
+// `rand.Read` over a power-of-two byte slice.
+func generateConfirmationCode() (string, error) {
+	max := big.NewInt(1)
+	for i := 0; i < confirmationCodeDigits; i++ {
+		max.Mul(max, big.NewInt(10))
+	}
+	n, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%0*d", confirmationCodeDigits, n.Int64()), nil
+}
+
+// confirmationCodeHash returns hex(sha256(code || ":" || pubkey_fp)).
+// The fingerprint salt binds the hash to a specific bridge so a leaked
+// code cannot approve a different pending row (Signal-style salting).
+func confirmationCodeHash(code, fp string) string {
+	h := sha256.Sum256([]byte(code + ":" + fp))
+	return hex.EncodeToString(h[:])
+}
+
+// gatewayOOBEnabled is a small helper to look up whether the host's
+// gateway has oob_delivery_enabled=ON. Returns false on any miss
+// (no gateway, store error) — caller treats that as "OOB not in
+// effect" and falls back to the Phase-1 approve-without-code path.
+func gatewayOOBEnabled(store *db.Store, host string) bool {
+	gws, err := store.AllGateways()
+	if err != nil {
+		return false
+	}
+	for _, g := range gws {
+		if g.Host == host {
+			return g.OOBDeliveryEnabled
+		}
+	}
+	return false
+}
+
 // RegisterBridge handles POST /api/bridges/register. Bearer-authenticated
 // by the host's bosun token; records the (host, agent, fingerprint)
 // triple so the auto-approver can match it against pending pair requests
 // seen on the host's OpenClaw gateway.
-func RegisterBridge(store *db.Store, hub *sse.Hub) http.HandlerFunc {
+//
+// FLEET-113: when the host's gateway has oob_delivery_enabled=ON and the
+// new row lands as status='pending', the server mints a 6-digit OOB code,
+// stores SHA-256(code:fp), and pushes the plaintext to the gateway over
+// its operator WS so the gateway can deliver it through the agent itself.
+// pusher may be nil (e.g. in tests) — the code is still minted and stored
+// so the operator can recover it via skip-oob if needed.
+func RegisterBridge(store *db.Store, hub *sse.Hub, pusher ConfirmationCodePusher) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := extractBearer(r)
 		if token == "" {
@@ -89,10 +162,42 @@ func RegisterBridge(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 		// knows whether to expect instant approval or manual pending.
 		gws, _ := store.AllGateways()
 		autoApprove := false
+		oobEnabled := false
 		for _, g := range gws {
-			if g.Host == hostname && g.Status == "paired" && g.AutoApproveBridges {
-				autoApprove = true
+			if g.Host == hostname {
+				if g.Status == "paired" && g.AutoApproveBridges {
+					autoApprove = true
+				}
+				oobEnabled = g.OOBDeliveryEnabled
 				break
+			}
+		}
+
+		// FLEET-113: pending row + OOB-enabled gateway → mint a code,
+		// store the salted hash, push plaintext to the gateway's WS for
+		// agent-side delivery. We mint the code unconditionally on
+		// pending so /approve-skip-oob remains the operator's recovery
+		// path even if the WS push fails or the gateway hasn't shipped
+		// the bridge.confirmation_code RPC yet.
+		oobMinted := false
+		if !autoApprove {
+			code, codeErr := generateConfirmationCode()
+			if codeErr != nil {
+				log.Printf("warn: register bridge %s/%s: confirmation code mint failed: %v", hostname, body.Agent, codeErr)
+			} else {
+				expires := time.Now().UTC().Add(confirmationCodeTTL).Format(time.RFC3339)
+				if err := store.SetConfirmationCode(hostname, body.Agent, confirmationCodeHash(code, fp), expires); err != nil {
+					log.Printf("warn: register bridge %s/%s: persist confirmation code: %v", hostname, body.Agent, err)
+				} else {
+					oobMinted = true
+				}
+				if oobEnabled && pusher != nil {
+					ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+					if err := pusher.PushConfirmationCode(ctx, hostname, body.Agent, code, fp); err != nil {
+						log.Printf("warn: push confirmation code to gateway %s: %v", hostname, err)
+					}
+					cancel()
+				}
 			}
 		}
 
@@ -103,6 +208,8 @@ func RegisterBridge(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			"agent":        body.Agent,
 			"fingerprint":  fp,
 			"auto_approve": autoApprove,
+			"oob_required": oobEnabled,
+			"oob_minted":   oobMinted,
 			"status":       "registered",
 		})
 	}
@@ -192,9 +299,24 @@ func ListPendingBridges(store *db.Store) http.HandlerFunc {
 	}
 }
 
+// approveBridgeRequest is the optional body of /approve. FLEET-113
+// adds the OOB code path; absent code triggers Phase-1 fallback only
+// when the gateway has oob_delivery_enabled=OFF.
+type approveBridgeRequest struct {
+	Code string `json:"code"`
+}
+
 // ApproveBridge handles POST /api/bridges/{host}/{agent}/approve — admin only.
-// Flips status='pending' → 'approved' and broadcasts SSE 'bridges'.
-// Returns 404 when no pending row matches (already approved, revoked, etc).
+// FLEET-113 flow:
+//
+//   - Gateway oob_delivery_enabled=OFF → approve without code (Phase-1
+//     behavior; lets ops land Phase 2 without breaking gateways that
+//     haven't shipped the OpenClaw RFC yet).
+//   - Gateway oob_delivery_enabled=ON, body has code → validate hash,
+//     enforce TTL, enforce 5-attempt limit. Match → clear code, approve.
+//     Mismatch → bump attempts, auto-reject + 410 at the limit.
+//   - Gateway oob_delivery_enabled=ON, body missing code → 400 pointing
+//     at /approve-skip-oob.
 func ApproveBridge(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host := chi.URLParam(r, "host")
@@ -203,16 +325,131 @@ func ApproveBridge(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			http.Error(w, "host and agent required", http.StatusBadRequest)
 			return
 		}
+
+		var body approveBridgeRequest
+		_ = json.NewDecoder(r.Body).Decode(&body) // body is optional; ignore decode error
+		body.Code = strings.TrimSpace(body.Code)
+
+		oobOn := gatewayOOBEnabled(store, host)
+
+		if oobOn {
+			if body.Code == "" {
+				http.Error(w, "OOB code required (or POST /approve-skip-oob with operator typed-confirm)", http.StatusBadRequest)
+				return
+			}
+			cc, err := store.GetConfirmationCode(host, agent)
+			if err != nil || cc == nil {
+				http.Error(w, "no pending bridge pairing for "+host+"/"+agent, http.StatusNotFound)
+				return
+			}
+			if cc.Hash == "" {
+				http.Error(w, "no active confirmation code — wait for the bridge to re-register", http.StatusGone)
+				return
+			}
+			if cc.Attempts >= db.MaxConfirmationAttempts {
+				_ = store.DeleteBridgePairing(host, agent)
+				broadcastBridges(store, hub)
+				http.Error(w, "too many confirmation attempts — pairing auto-rejected, bridge must re-register", http.StatusGone)
+				return
+			}
+			if cc.ExpiresAt != "" {
+				if t, perr := time.Parse(time.RFC3339, cc.ExpiresAt); perr == nil && time.Now().UTC().After(t) {
+					http.Error(w, "confirmation code expired — wait for the bridge to re-register", http.StatusGone)
+					return
+				}
+			}
+			expected := confirmationCodeHash(body.Code, cc.PubkeyFP)
+			if subtle.ConstantTimeCompare([]byte(expected), []byte(cc.Hash)) != 1 {
+				newAttempts, _ := store.IncrementConfirmationAttempts(host, agent)
+				if newAttempts >= db.MaxConfirmationAttempts {
+					_ = store.DeleteBridgePairing(host, agent)
+					broadcastBridges(store, hub)
+					http.Error(w, "too many confirmation attempts — pairing auto-rejected, bridge must re-register", http.StatusGone)
+					return
+				}
+				http.Error(w, fmt.Sprintf("confirmation code mismatch (%d/%d attempts)", newAttempts, db.MaxConfirmationAttempts), http.StatusUnauthorized)
+				return
+			}
+			// Match — clear the code so it cannot be replayed, then approve.
+			_ = store.ClearConfirmationCode(host, agent)
+		}
+
 		if err := store.MarkBridgeApprovedManual(host, agent); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		if bs, err := store.AllBridgePairings(); err == nil {
-			if data, err := json.Marshal(bs); err == nil {
-				hub.Broadcast("bridges", data)
+		broadcastBridges(store, hub)
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// approveBridgeSkipOOBRequest requires the operator to echo the host
+// name (typed-confirm at the API level — the UI already wraps this in
+// confirmModal+requireType, but enforcing it server-side guarantees the
+// audit row is loud even on direct curl).
+type approveBridgeSkipOOBRequest struct {
+	Confirm string `json:"confirm"`
+}
+
+// ApproveBridgeSkipOOB handles POST /api/bridges/{host}/{agent}/approve-skip-oob.
+// Server-side typed-confirm: body must be `{"confirm":"<hostname>"}`.
+// Always loud-audited (the operator log row carries verb=OOB_BYPASSED).
+func ApproveBridgeSkipOOB(store *db.Store, hub *sse.Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		host := chi.URLParam(r, "host")
+		agent := chi.URLParam(r, "agent")
+		if host == "" || agent == "" {
+			http.Error(w, "host and agent required", http.StatusBadRequest)
+			return
+		}
+		var body approveBridgeSkipOOBRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+		if strings.TrimSpace(body.Confirm) != host {
+			http.Error(w, "typed-confirm mismatch — body.confirm must equal the hostname", http.StatusBadRequest)
+			return
+		}
+		if err := store.MarkBridgeApprovedManual(host, agent); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		_ = store.ClearConfirmationCode(host, agent)
+		broadcastBridges(store, hub)
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// SetGatewayOOBDelivery toggles the per-gateway oob_delivery_enabled flag.
+// Mirrors SetGatewayAutoApprove. URL: /api/gateways/{host}/oob-delivery/{mode}.
+func SetGatewayOOBDelivery(store *db.Store, hub *sse.Hub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		host := chi.URLParam(r, "host")
+		mode := chi.URLParam(r, "mode")
+		if host == "" || (mode != "on" && mode != "off") {
+			http.Error(w, "host and mode (on|off) required", http.StatusBadRequest)
+			return
+		}
+		if err := store.SetOOBDelivery(host, mode == "on"); err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		if gs, err := store.AllGateways(); err == nil {
+			if data, err := json.Marshal(gs); err == nil {
+				hub.Broadcast("gateways", data)
 			}
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// broadcastBridges is a tiny convenience for the approve/reject paths.
+func broadcastBridges(store *db.Store, hub *sse.Hub) {
+	if bs, err := store.AllBridgePairings(); err == nil {
+		if data, err := json.Marshal(bs); err == nil {
+			hub.Broadcast("bridges", data)
+		}
 	}
 }
 

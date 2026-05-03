@@ -69,8 +69,10 @@ func newRouter(d *routerDeps) chi.Router {
 	r.Post("/api/heartbeat", api.Heartbeat(store, hub))
 	r.Post("/api/container-events", api.ContainerEvents(store, hub))
 	r.Post("/api/agent-events", api.AgentEvents(store, hub))
-	// FLEET-51: bridge registration — bosun-bearer-authenticated, public endpoint.
-	r.Post("/api/bridges/register", api.RegisterBridge(store, hub))
+	// FLEET-51 + FLEET-113: bridge registration. Bosun-bearer-authenticated,
+	// public endpoint. ocMgr is passed for the OOB confirmation-code push
+	// when the host's gateway has oob_delivery_enabled=ON.
+	r.Post("/api/bridges/register", api.RegisterBridge(store, hub, ocMgr))
 	// FLEET-60: bosun reports command results here (bosun-bearer auth).
 	r.Post("/api/command-results", api.CommandResults(store, hub))
 
@@ -140,6 +142,9 @@ func newRouter(d *routerDeps) chi.Router {
 		r.With(auth.RequireAdmin).Get("/api/bridges/pending", api.ListPendingBridges(store))
 		r.With(auth.RequireAdmin).Post("/api/bridges/{host}/{agent}/approve", api.ApproveBridge(store, hub))
 		r.With(auth.RequireAdmin).Post("/api/bridges/{host}/{agent}/reject", api.RejectBridge(store, hub))
+		// FLEET-113: OOB confirmation-code path + per-gateway toggle.
+		r.With(auth.RequireAdmin).Post("/api/bridges/{host}/{agent}/approve-skip-oob", api.ApproveBridgeSkipOOB(store, hub))
+		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/oob-delivery/{mode}", api.SetGatewayOOBDelivery(store, hub))
 
 		// FLEET-60: bosun command channel — admin issues work, bosun
 		// picks it up via heartbeat response, reports back here.

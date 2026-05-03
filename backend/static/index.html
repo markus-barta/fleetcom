@@ -2695,6 +2695,52 @@
             background: rgba(0, 0, 0, 0.12);
         }
         .pair-tofu-help strong { color: var(--ink-dim); }
+        /* FLEET-113: OOB code input. Renders only when the host's gateway
+           has oob_delivery_enabled — the row collapses to fp + actions
+           otherwise. Monospace + tracking spread to read the digits as
+           a Signal-style 3-3 group. */
+        .pair-oob-row {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            gap: 0.6rem;
+            align-items: center;
+            padding: 0.5rem 0.75rem;
+            border-top: 1px solid var(--line);
+            background: rgba(0, 0, 0, 0.10);
+        }
+        .pair-oob-input {
+            background: var(--bg-0);
+            color: var(--ink);
+            border: 1px solid var(--line-2);
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+            font-size: 14px;
+            letter-spacing: 0.4em;
+            text-align: center;
+            padding: 0.45rem 0.6rem;
+            width: 100%;
+            max-width: 180px;
+        }
+        .pair-oob-input:focus { outline: none; border-color: var(--accent); }
+        .pair-oob-skip {
+            background: transparent;
+            color: var(--ink-dim);
+            border: 1px dashed var(--line-2);
+            font-family: inherit;
+            font-size: 9px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            padding: 0.3rem 0.65rem;
+            cursor: pointer;
+        }
+        .pair-oob-skip:hover { color: var(--crit); border-color: var(--crit); border-style: solid; }
+        .pair-oob-help {
+            padding: 0.4rem 0.75rem;
+            font-size: 10px;
+            color: var(--ink-faint);
+            border-top: 1px solid var(--line);
+            background: rgba(0, 0, 0, 0.10);
+        }
+        .pair-oob-help strong { color: var(--warn); }
         .drawer.drawer-agent.drawer-with-activity { right: min(var(--fc-drawer-activity-w), 100vw); }
         .drawer.is-pinned { box-shadow: none; }
         .drawer.drawer-host.with-activity-pinned { right: min(var(--fc-drawer-activity-w), 100vw); }
@@ -5149,6 +5195,16 @@ WantedBy=multi-user.target</pre>
                                                 auto-approve
                                             </label>
                                         </template>
+                                        <!-- FLEET-113: per-gateway OOB-delivery toggle. ON enables strict
+                                             /approve enforcement and requires the 6-digit code generated
+                                             from the agent itself. OFF (default) keeps Phase-1 fallback. -->
+                                        <template x-if="gatewayForHost(hostDrawerKey)">
+                                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:10px;color:var(--ink-dim);cursor:pointer;" title="When on, /approve requires the 6-digit code the gateway delivers through the agent itself. Needs the OpenClaw bridge.confirmation_code RPC (FLEET-113).">
+                                                <input type="checkbox" :checked="(gatewayForHost(hostDrawerKey) || {}).oob_delivery_enabled"
+                                                       @change="toggleOOBDelivery(hostDrawerKey, $event.target.checked)">
+                                                OOB code
+                                            </label>
+                                        </template>
                                         <template x-if="!gatewayForHost(hostDrawerKey)">
                                             <button class="btn btn-primary" @click="openPairGatewayFromDrawer(hostDrawerKey)" title="Generate FleetCom keys + enqueue openclaw.pair on this host. Jumps to the Log tab so you can watch it.">+ Pair gateway</button>
                                         </template>
@@ -5203,27 +5259,56 @@ WantedBy=multi-user.target</pre>
                                         </div>
                                         <template x-if="pairListExpanded[hostDrawerKey]">
                                             <div class="pair-list">
-                                                <div class="pair-list-head">PENDING — verify fingerprint out-of-band before approving</div>
+                                                <div class="pair-list-head" x-text="oobRequiredForHost(hostDrawerKey) ? 'PENDING — verify fingerprint AND enter the 6-digit code from the agent' : 'PENDING — verify fingerprint out-of-band before approving'"></div>
                                                 <template x-for="b in pendingBridgesForHost(hostDrawerKey)" :key="b.agent">
-                                                    <div class="pair-row">
-                                                        <span class="pair-agent" x-text="b.agent"></span>
-                                                        <span class="pair-fp" :title="'Full SHA-256: ' + (b.pubkey_fp || '')" x-text="fpHuman(b.pubkey_fp)"></span>
-                                                        <span class="pair-meta">
-                                                            <span x-text="pairAge(b.last_seen_at)"></span>
-                                                            <span> · gateway </span>
-                                                            <span :class="'pair-gw-' + ((gatewayForHost(hostDrawerKey) || {}).status || 'unpaired')"
-                                                                  x-text="((gatewayForHost(hostDrawerKey) || {}).status || 'not present')"></span>
-                                                        </span>
-                                                        <span class="pair-acts">
-                                                            <button class="btn btn-approve"
-                                                                    @click="approveBridge(hostDrawerKey, b.agent)"
-                                                                    :disabled="!!pending['approveBridge:'+hostDrawerKey+'/'+b.agent]"
-                                                                    :data-pending="!!pending['approveBridge:'+hostDrawerKey+'/'+b.agent]">APPROVE</button>
-                                                            <button class="btn btn-reject"
-                                                                    @click="rejectBridge(hostDrawerKey, b.agent)"
-                                                                    :disabled="!!pending['rejectBridge:'+hostDrawerKey+'/'+b.agent]"
-                                                                    :data-pending="!!pending['rejectBridge:'+hostDrawerKey+'/'+b.agent]">REJECT</button>
-                                                        </span>
+                                                    <div>
+                                                        <div class="pair-row">
+                                                            <span class="pair-agent" x-text="b.agent"></span>
+                                                            <span class="pair-fp" :title="'Full SHA-256: ' + (b.pubkey_fp || '')" x-text="fpHuman(b.pubkey_fp)"></span>
+                                                            <span class="pair-meta">
+                                                                <span x-text="pairAge(b.last_seen_at)"></span>
+                                                                <span> · gateway </span>
+                                                                <span :class="'pair-gw-' + ((gatewayForHost(hostDrawerKey) || {}).status || 'unpaired')"
+                                                                      x-text="((gatewayForHost(hostDrawerKey) || {}).status || 'not present')"></span>
+                                                            </span>
+                                                            <span class="pair-acts">
+                                                                <button class="btn btn-approve"
+                                                                        @click="approveBridge(hostDrawerKey, b.agent)"
+                                                                        :disabled="!!pending['approveBridge:'+hostDrawerKey+'/'+b.agent] || (oobRequiredForHost(hostDrawerKey) && !codeReady(hostDrawerKey, b.agent))"
+                                                                        :data-pending="!!pending['approveBridge:'+hostDrawerKey+'/'+b.agent]">APPROVE</button>
+                                                                <button class="btn btn-reject"
+                                                                        @click="rejectBridge(hostDrawerKey, b.agent)"
+                                                                        :disabled="!!pending['rejectBridge:'+hostDrawerKey+'/'+b.agent]"
+                                                                        :data-pending="!!pending['rejectBridge:'+hostDrawerKey+'/'+b.agent]">REJECT</button>
+                                                            </span>
+                                                        </div>
+                                                        <!-- FLEET-113: OOB code input only shown when the host's gateway
+                                                             has oob_delivery_enabled. The Skip OOB link is always
+                                                             available so a missing code (broken Telegram, broken email)
+                                                             never hard-locks the operator out. -->
+                                                        <template x-if="oobRequiredForHost(hostDrawerKey)">
+                                                            <div class="pair-oob-row">
+                                                                <input class="pair-oob-input"
+                                                                       type="text"
+                                                                       inputmode="numeric"
+                                                                       maxlength="6"
+                                                                       autocomplete="off"
+                                                                       placeholder="• • • • • •"
+                                                                       :value="pairCodes[hostDrawerKey + '/' + b.agent] || ''"
+                                                                       @input="setPairCode(hostDrawerKey, b.agent, $event.target.value)"
+                                                                       @keydown.enter="codeReady(hostDrawerKey, b.agent) && approveBridge(hostDrawerKey, b.agent)">
+                                                                <button class="pair-oob-skip"
+                                                                        @click="approveBridgeSkipOOB(hostDrawerKey, b.agent)"
+                                                                        :disabled="!!pending['approveBridgeSkipOOB:'+hostDrawerKey+'/'+b.agent]"
+                                                                        :data-pending="!!pending['approveBridgeSkipOOB:'+hostDrawerKey+'/'+b.agent]"
+                                                                        title="Bypass the OOB confirmation code. Audit row will carry verb=OOB_BYPASSED.">SKIP OOB</button>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </template>
+                                                <template x-if="oobRequiredForHost(hostDrawerKey)">
+                                                    <div class="pair-oob-help">
+                                                        <strong>OOB enforced:</strong> the gateway is configured to deliver a 6-digit confirmation code through the agent itself (e.g. an Ocean DM to David's Telegram). Type the digits into the input above. The code is salted with the bridge's fingerprint, so a leaked code cannot approve a different bridge.
                                                     </div>
                                                 </template>
                                                 <div class="pair-tofu-help">
@@ -5781,6 +5866,10 @@ WantedBy=multi-user.target</pre>
                 // in the host drawer Integrations row.
                 pairDrawerOpen: false,
                 pairListExpanded: {},
+                // FLEET-113: per-pending-row OOB code input. Keyed by
+                // `<host>/<agent>` so multiple rows in the same drawer can
+                // accumulate codes independently. Cleared on approve/reject.
+                pairCodes: {},
                 usersList: [],
                 newUserEmail: '', newUserPassword: '', newUserRole: 'user',
                 selectedUser: null, selectedUserHosts: [], allHostsList: [],
@@ -7829,12 +7918,85 @@ WantedBy=multi-user.target</pre>
                     return Math.floor(s / 86400) + 'd ago';
                 },
                 async approveBridge(host, agent) {
-                    return this.busy('approveBridge:' + host + '/' + agent, 'Bridge approved · ' + host + '/' + agent,
+                    const k = host + '/' + agent;
+                    const oobOn = this.oobRequiredForHost(host);
+                    const code = (this.pairCodes[k] || '').replace(/\D/g, '').slice(0, 6);
+                    if (oobOn && code.length !== 6) {
+                        this.toast({ level: 'warn', verb: 'OOB_REQUIRED', target: 'bridge/' + k, msg: 'Type the 6-digit confirmation code from the agent (or use SKIP OOB).' });
+                        return;
+                    }
+                    const verb = oobOn ? 'BRIDGE_APPROVE_OOB' : 'BRIDGE_APPROVE';
+                    return this.busy('approveBridge:' + k, 'Bridge approved · ' + k,
                         async () => {
-                            const res = await fetch('/api/bridges/' + encodeURIComponent(host) + '/' + encodeURIComponent(agent) + '/approve', { method: 'POST' });
+                            const body = oobOn ? JSON.stringify({ code }) : '{}';
+                            const res = await fetch('/api/bridges/' + encodeURIComponent(host) + '/' + encodeURIComponent(agent) + '/approve', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body,
+                            });
                             await this._checkRes(res, 'Approve failed');
+                            // Clear the cached code so a stale value can't carry into a re-registered row.
+                            this.setPairCode(host, agent, '');
                         },
-                        { verb: 'BRIDGE_APPROVE', target: 'bridge/' + host + '/' + agent });
+                        { verb, target: 'bridge/' + k });
+                },
+                // FLEET-113: typed-confirm bypass. confirmModal forces the
+                // operator to retype the hostname; the API also enforces it
+                // server-side so curl-driven bypasses are loud-audited too.
+                async approveBridgeSkipOOB(host, agent) {
+                    const k = host + '/' + agent;
+                    const ok = await this.confirmModal({
+                        title: 'Skip OOB confirmation for ' + k + '?',
+                        body: 'The agent could not deliver a confirmation code (broken Telegram, broken email, or operator override). Approving without OOB bypasses the second factor — only do this if you have verified the bridge fingerprint through some other channel.\n\nThis action will be loudly logged as OOB_BYPASSED in the operator log for security review.',
+                        confirmLabel: 'Skip OOB and approve',
+                        level: 'crit',
+                        requireType: host,
+                    });
+                    if (!ok) return;
+                    return this.busy('approveBridgeSkipOOB:' + k, 'OOB bypassed · ' + k + ' approved',
+                        async () => {
+                            const res = await fetch('/api/bridges/' + encodeURIComponent(host) + '/' + encodeURIComponent(agent) + '/approve-skip-oob', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ confirm: host }),
+                            });
+                            await this._checkRes(res, 'Skip-OOB approve failed');
+                            this.setPairCode(host, agent, '');
+                        },
+                        { verb: 'OOB_BYPASSED', target: 'bridge/' + k, level: 'warn' });
+                },
+                // OOB code helpers — keyed by `host/agent`.
+                oobRequiredForHost(host) {
+                    const g = this.gatewayForHost(host);
+                    return !!(g && g.oob_delivery_enabled);
+                },
+                setPairCode(host, agent, value) {
+                    const digits = (value || '').replace(/\D/g, '').slice(0, 6);
+                    this.pairCodes = { ...this.pairCodes, [host + '/' + agent]: digits };
+                },
+                codeReady(host, agent) {
+                    const v = this.pairCodes[host + '/' + agent] || '';
+                    return v.replace(/\D/g, '').length === 6;
+                },
+                async toggleOOBDelivery(host, on) {
+                    if (on) {
+                        const ok = await this.confirmModal({
+                            title: 'Enable OOB delivery for ' + host + '?',
+                            body: 'When ON, /approve will require the 6-digit code that the gateway delivers through the agent itself. This needs the OpenClaw side to implement the bridge.confirmation_code RPC — until then, operators must use SKIP OOB on every approval.\n\nFlip this OFF if your gateway has not shipped the RFC yet.',
+                            confirmLabel: 'Enable OOB delivery',
+                            level: 'warn',
+                        });
+                        if (!ok) { this.loadGateways(); return; }
+                    }
+                    return this.busy('oobDelivery:' + host, 'OOB delivery ' + (on ? 'ENABLED' : 'disabled') + ' · ' + host,
+                        async () => {
+                            const res = await fetch('/api/gateways/' + encodeURIComponent(host) + '/oob-delivery/' + (on ? 'on' : 'off'), { method: 'POST' });
+                            if (!res.ok) {
+                                this.loadGateways();
+                                await this._checkRes(res, 'Failed to toggle OOB delivery');
+                            }
+                        },
+                        { verb: on ? 'OOB_ON' : 'OOB_OFF', target: 'gateway/' + host });
                 },
                 async rejectBridge(host, agent) {
                     const ok = await this.confirmModal({
