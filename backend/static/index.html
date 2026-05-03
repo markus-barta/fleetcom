@@ -2420,10 +2420,17 @@
         }
         .drawer-backdrop.is-open { opacity: 1; pointer-events: auto; }
 
+        /* FLEET-102: drawer widths are CSS variables so the resize handle
+           can update them live and dependent right-offsets follow. */
+        :root {
+            --fc-drawer-host-w: 720px;
+            --fc-drawer-activity-w: 480px;
+            --fc-drawer-agent-w: 560px;
+        }
         .drawer {
             position: fixed;
             top: 0; right: 0; bottom: 0;
-            width: min(560px, 100vw);
+            width: min(var(--fc-drawer-agent-w), 100vw);
             background: var(--bg-1, #1a1f2a);
             border-left: 1px solid var(--line);
             box-shadow: -8px 0 32px rgba(0,0,0,0.4);
@@ -2435,10 +2442,28 @@
             overflow: hidden;
         }
         .drawer.is-open { transform: translateX(0); }
-        .drawer.drawer-activity { width: min(480px, 100vw); right: 0; }
-        .drawer.drawer-agent.drawer-with-activity { right: min(480px, 100vw); }
+        .drawer.drawer-activity { width: min(var(--fc-drawer-activity-w), 100vw); right: 0; }
+        .drawer.drawer-agent.drawer-with-activity { right: min(var(--fc-drawer-activity-w), 100vw); }
         .drawer.is-pinned { box-shadow: none; }
-        .drawer.drawer-host.with-activity-pinned { right: min(480px, 100vw); }
+        .drawer.drawer-host.with-activity-pinned { right: min(var(--fc-drawer-activity-w), 100vw); }
+        /* FLEET-102: drag handle on the left edge of resizable drawers.
+           8px hit-target, 1px visible line on hover. */
+        .drawer-resize-handle {
+            position: absolute;
+            top: 0; bottom: 0; left: 0;
+            width: 8px;
+            cursor: ew-resize;
+            z-index: 60;
+            background: transparent;
+            transition: background 0.12s;
+        }
+        .drawer-resize-handle:hover,
+        .drawer-resize-handle.is-dragging {
+            background: linear-gradient(to right, var(--accent, #7ec2ff), transparent);
+            opacity: 0.55;
+        }
+        body.fc-resizing { cursor: ew-resize !important; user-select: none; }
+        body.fc-resizing * { cursor: ew-resize !important; }
         .drawer-pin {
             background: transparent;
             border: 1px solid var(--line);
@@ -2524,8 +2549,8 @@
         }
 
         /* Host drawer (FLEET-66) — wider than agent drawer, tabs at top */
-        .drawer.drawer-host { width: min(720px, 100vw); }
-        .drawer.drawer-host.drawer-with-agent { right: min(560px, 100vw); }
+        .drawer.drawer-host { width: min(var(--fc-drawer-host-w), 100vw); }
+        .drawer.drawer-host.drawer-with-agent { right: min(var(--fc-drawer-agent-w), 100vw); }
         @media (max-width: 720px) {
             .drawer.drawer-host { width: 100vw; }
         }
@@ -2654,6 +2679,14 @@
             font-size: 11px;
             word-break: break-all;
         }
+        /* FLEET-99: small explainer paragraph above each integration row. */
+        .drawer-integ-help {
+            font-size: 10px;
+            line-height: 1.45;
+            color: var(--ink-dim);
+            padding: 0 0.15rem 0.4rem 0.15rem;
+        }
+        .drawer-integ-help strong { color: var(--ink); font-weight: 600; }
 
         /* Current turn span visualisation (user → LLM → tool → reply) */
         .turn-span {
@@ -4188,6 +4221,8 @@ WantedBy=multi-user.target</pre>
                :class="[agentDrawerKey ? 'is-open' : '', activityOpen ? 'drawer-with-activity' : '']"
                @keydown.escape.window="closeAgentDrawer()"
                x-show="agentDrawerKey" style="display:none">
+            <!-- FLEET-102: drag-to-resize handle on left edge -->
+            <div class="drawer-resize-handle" :class="dragResize.side === 'agent' && 'is-dragging'" @pointerdown="startDrawerResize('agent', $event)" title="Drag to resize"></div>
             <div class="drawer-head" x-show="agentDrawerKey">
                 <div>
                     <div class="subtitle">Agent</div>
@@ -4327,6 +4362,8 @@ WantedBy=multi-user.target</pre>
                :class="[hostDrawerKey ? 'is-open' : '', agentDrawerKey ? 'drawer-with-agent' : '', pinHost ? 'is-pinned' : '', (pinActivity && activityOpen) ? 'with-activity-pinned' : '']"
                @keydown.escape.window="if (!pinHost) closeHostDrawer()"
                x-show="hostDrawerKey" style="display:none">
+            <!-- FLEET-102: drag-to-resize handle on left edge -->
+            <div class="drawer-resize-handle" :class="dragResize.side === 'host' && 'is-dragging'" @pointerdown="startDrawerResize('host', $event)" title="Drag to resize"></div>
             <!-- Header: hostname + state pill + OS/uptime/seen line + close -->
             <template x-if="hostDrawerKey && hostByName(hostDrawerKey)">
                 <div class="drawer-head">
@@ -4351,16 +4388,18 @@ WantedBy=multi-user.target</pre>
                 </div>
             </template>
 
-            <!-- Tab bar -->
+            <!-- Tab bar — FLEET-101: order is OVERVIEW | SETTINGS | LOG; the LOG
+                 tab keeps the internal value 'commands' so all existing call sites
+                 (openHostDrawer(host,'commands'), SSE handlers, ...) still work. -->
             <div class="drawer-tabs">
                 <button class="drawer-tab" :class="hostDrawerTab === 'overview' && 'is-active'" @click="hostDrawerTab = 'overview'">Overview</button>
-                <button class="drawer-tab" :class="hostDrawerTab === 'commands' && 'is-active'" @click="hostDrawerTab = 'commands'; openHostCommands(hostDrawerKey)">
-                    Commands
+                <button class="drawer-tab" x-show="currentUser && currentUser.role === 'admin'" :class="hostDrawerTab === 'settings' && 'is-active'" @click="hostDrawerTab = 'settings'; seedHostConfigForm(hostDrawerKey); loadImagePresets()">Settings</button>
+                <button class="drawer-tab" :class="hostDrawerTab === 'commands' && 'is-active'" @click="hostDrawerTab = 'commands'; openHostCommands(hostDrawerKey)" title="Audit trail of commands enqueued for this host (read-only).">
+                    Log
                     <template x-if="hostDrawerCommandsPending(hostDrawerKey) > 0">
                         <span class="drawer-tab-active-dot" :title="hostDrawerCommandsPending(hostDrawerKey) + ' in flight'"></span>
                     </template>
                 </button>
-                <button class="drawer-tab" x-show="currentUser && currentUser.role === 'admin'" :class="hostDrawerTab === 'settings' && 'is-active'" @click="hostDrawerTab = 'settings'; seedHostConfigForm(hostDrawerKey); loadImagePresets()">Settings</button>
             </div>
 
             <!-- Tab body -->
@@ -4695,6 +4734,10 @@ WantedBy=multi-user.target</pre>
                         <div>
                             <div class="drawer-section-label">Integrations</div>
                             <div style="display:flex;flex-direction:column;gap:0.6rem;">
+                                <!-- FLEET-99: gateway explainer -->
+                                <div class="drawer-integ-help">
+                                    <strong>OpenClaw gateway:</strong> FleetCom watches this host's gateway over WebSocket. <strong>Pair</strong> once to authorize FleetCom — after that, AI agent activity (turns, tool calls, lifecycle) flows into the dashboard in real time.
+                                </div>
                                 <!-- Gateway row -->
                                 <div class="drawer-integ-row">
                                     <div style="min-width:0;">
@@ -4716,12 +4759,16 @@ WantedBy=multi-user.target</pre>
                                             </label>
                                         </template>
                                         <template x-if="!gatewayForHost(hostDrawerKey)">
-                                            <button class="btn btn-primary" @click="openPairGatewayFromDrawer(hostDrawerKey)" title="Generate FleetCom keys + enqueue openclaw.pair on this host. Jumps to the Commands tab so you can watch it.">+ Pair gateway</button>
+                                            <button class="btn btn-primary" @click="openPairGatewayFromDrawer(hostDrawerKey)" title="Generate FleetCom keys + enqueue openclaw.pair on this host. Jumps to the Log tab so you can watch it.">+ Pair gateway</button>
                                         </template>
                                         <template x-if="gatewayForHost(hostDrawerKey)">
                                             <button class="btn btn-danger" @click="unpairGateway(hostDrawerKey)">Unpair</button>
                                         </template>
                                     </div>
+                                </div>
+                                <!-- FLEET-99: bridge explainer -->
+                                <div class="drawer-integ-help" style="padding-top:0.4rem;">
+                                    <strong>Agent-bridges:</strong> One bridge container per host translates each AI agent's pair-request from the gateway into a FleetCom registration. <strong>Deploy</strong> runs <code style="font-size:9px;">docker run</code> on the host using bosun's token — idempotent, safe to click twice. Needs a paired gateway with auto-approve on.
                                 </div>
                                 <!-- Bridge row -->
                                 <div class="drawer-integ-row">
@@ -4760,6 +4807,8 @@ WantedBy=multi-user.target</pre>
                :class="[activityOpen ? 'is-open' : '', pinActivity ? 'is-pinned' : '']"
                @keydown.escape.window="if (!pinActivity) activityOpen = false"
                x-show="activityOpen" style="display:none">
+            <!-- FLEET-102: drag-to-resize handle on left edge -->
+            <div class="drawer-resize-handle" :class="dragResize.side === 'activity' && 'is-dragging'" @pointerdown="startDrawerResize('activity', $event)" title="Drag to resize"></div>
             <div class="drawer-head">
                 <div>
                     <div class="subtitle">Fleet · live</div>
@@ -4832,6 +4881,48 @@ WantedBy=multi-user.target</pre>
     <!-- FLEET-369.1: hostname-confirm modal for host.reboot. The destructive
          action requires the operator to type the hostname exactly — same
          pattern as `git push --force` to a release branch. -->
+    <!-- FLEET-100: deploy agent-bridge modal. Replaces the old hardcoded
+         `merlin,nimue` prompt(). Default agent names are derived from
+         existing bridges first, then heartbeat agents, then empty. -->
+    <div x-show="bridgeDeploy.host" x-cloak
+         @keydown.escape.window="bridgeDeploy.host = ''; bridgeDeploy.names = ''; bridgeDeploy.source = ''"
+         class="modal-backdrop"
+         style="display:none">
+        <div class="modal-card" @click.stop>
+            <div class="modal-title" style="color:var(--accent);">Deploy agent-bridge</div>
+            <p style="font-size:11px;color:var(--ink-dim);line-height:1.5;">
+                The agent-bridge container will run on <strong x-text="bridgeDeploy.host"></strong>
+                and relay AI agent activity from the local OpenClaw gateway.
+                Needs a paired gateway with auto-approve on; otherwise registration is a no-op.
+            </p>
+            <p style="font-size:10px;color:var(--ink-ghost);margin-top:0.6rem;">
+                AI agent names to relay (comma-separated):
+            </p>
+            <input type="text" class="modal-input"
+                   x-model="bridgeDeploy.names"
+                   placeholder="e.g. merlin, nimue, percival"
+                   @keydown.enter="(bridgeDeploy.names || '').trim() && submitBridgeDeploy()"
+                   x-init="$watch('bridgeDeploy.host', v => { if (v) $nextTick(() => $el.focus()); })">
+            <p style="font-size:9px;color:var(--ink-ghost);margin-top:0.3rem;font-style:italic;">
+                <template x-if="bridgeDeploy.source === 'bridges'">
+                    <span>Pre-filled from existing bridges on this host (redeploy or add).</span>
+                </template>
+                <template x-if="bridgeDeploy.source === 'agents'">
+                    <span>Pre-filled from <code>FLEETCOM_AGENTS</code> in bosun's heartbeat.</span>
+                </template>
+                <template x-if="bridgeDeploy.source === 'none'">
+                    <span>No agents detected — type the names manually.</span>
+                </template>
+            </p>
+            <div class="modal-actions">
+                <button class="btn btn-ghost" @click="bridgeDeploy.host = ''; bridgeDeploy.names = ''; bridgeDeploy.source = ''">Cancel</button>
+                <button class="btn btn-primary"
+                        :disabled="!(bridgeDeploy.names || '').trim()"
+                        @click="submitBridgeDeploy()">Deploy</button>
+            </div>
+        </div>
+    </div>
+
     <div x-show="rebootConfirm.host" x-cloak
          @keydown.escape.window="rebootConfirm.host = ''; rebootConfirm.typed = ''"
          class="modal-backdrop"
@@ -4879,6 +4970,14 @@ WantedBy=multi-user.target</pre>
                 ver: { version: '', commit: '', build_time: '', build_time_display: '', destructive_commands_enabled: false },
                 // FLEET-369.1: state for the host.reboot type-to-confirm modal.
                 rebootConfirm: { host: '', typed: '' },
+                // FLEET-100: state for the agent-bridge deploy modal. `source`
+                // is one of '' | 'bridges' | 'agents' | 'none' so the UI can
+                // tell the operator where the suggested names came from.
+                bridgeDeploy: { host: '', names: '', source: '' },
+                // FLEET-102: drag-to-resize state. `side` is one of
+                // '' | 'host' | 'activity' | 'agent'. When non-empty, a
+                // pointermove handler is updating the matching CSS var.
+                dragResize: { side: '', startX: 0, startW: 0 },
 
                 // Connection state machine
                 connState: 'reconnecting', // 'live' | 'reconnecting' | 'offline'
@@ -4992,6 +5091,8 @@ WantedBy=multi-user.target</pre>
                     this.useUTC = localStorage.getItem('fleetcom.tz') !== 'local';
                     this.cardImgSize = parseInt(localStorage.getItem('fleetcom.imgSize')) || 170;
                     document.documentElement.style.setProperty('--card-img-size', this.cardImgSize + 'px');
+                    // FLEET-102: restore drawer widths from localStorage.
+                    this.restoreDrawerWidths();
                     this.stripRegistry = new Set();
                     this.startClock();
                     this.loadVersion();
@@ -5474,10 +5575,66 @@ WantedBy=multi-user.target</pre>
                     this.pinHost = !this.pinHost;
                     localStorage.setItem('fleetcom.pinHost', this.pinHost ? '1' : '0');
                 },
+
+                // FLEET-102: drawer width state. Restored from localStorage on
+                // init; updated live via the resize handle. The CSS rules read
+                // these from --fc-drawer-{host,activity,agent}-w custom props.
+                drawerWidths: { host: 720, activity: 480, agent: 560 },
+                drawerWidthLimits: { host: { min: 380, max: 1400 }, activity: { min: 320, max: 1200 }, agent: { min: 380, max: 1200 } },
+
+                restoreDrawerWidths() {
+                    for (const side of ['host', 'activity', 'agent']) {
+                        const stored = parseInt(localStorage.getItem('fleetcom.drawerWidth.' + side), 10);
+                        if (Number.isFinite(stored) && stored >= this.drawerWidthLimits[side].min) {
+                            this.drawerWidths[side] = stored;
+                        }
+                        document.documentElement.style.setProperty(
+                            '--fc-drawer-' + side + '-w',
+                            this.drawerWidths[side] + 'px'
+                        );
+                    }
+                },
+
+                startDrawerResize(side, ev) {
+                    if (!this.drawerWidths[side]) return;
+                    ev.preventDefault();
+                    this.dragResize = {
+                        side,
+                        startX: ev.clientX,
+                        startW: this.drawerWidths[side]
+                    };
+                    document.body.classList.add('fc-resizing');
+                    const limits = this.drawerWidthLimits[side];
+                    const onMove = (e) => {
+                        // Drawers anchor right; dragging left = wider.
+                        const delta = this.dragResize.startX - e.clientX;
+                        let next = this.dragResize.startW + delta;
+                        const cap = Math.min(limits.max, window.innerWidth - 80);
+                        if (next < limits.min) next = limits.min;
+                        if (next > cap) next = cap;
+                        this.drawerWidths[side] = next;
+                        document.documentElement.style.setProperty(
+                            '--fc-drawer-' + side + '-w', next + 'px'
+                        );
+                    };
+                    const onUp = () => {
+                        window.removeEventListener('pointermove', onMove);
+                        window.removeEventListener('pointerup', onUp);
+                        document.body.classList.remove('fc-resizing');
+                        localStorage.setItem(
+                            'fleetcom.drawerWidth.' + this.dragResize.side,
+                            String(this.drawerWidths[this.dragResize.side])
+                        );
+                        this.dragResize = { side: '', startX: 0, startW: 0 };
+                    };
+                    window.addEventListener('pointermove', onMove);
+                    window.addEventListener('pointerup', onUp);
+                },
+
                 reservedRightPx() {
                     let w = 0;
-                    if (this.pinActivity && this.activityOpen) w += 480;
-                    if (this.pinHost && this.hostDrawerKey) w += 720;
+                    if (this.pinActivity && this.activityOpen) w += this.drawerWidths.activity;
+                    if (this.pinHost && this.hostDrawerKey) w += this.drawerWidths.host;
                     const vw = typeof window !== 'undefined' ? window.innerWidth : 1920;
                     const cap = Math.floor(vw * 0.6);
                     return Math.min(w, cap);
@@ -6950,13 +7107,35 @@ WantedBy=multi-user.target</pre>
                     return (this.bridges || []).some(b => b.host === host);
                 },
 
-                // FLEET-63: enqueue bridge.install for a host. Bosun
-                // reuses its own FLEETCOM_TOKEN + FLEETCOM_URL env, so
-                // params only carry agent names (reasonable defaults).
-                async deployBridge(host) {
-                    const names = prompt('Deploy agent-bridge on ' + host + '.\n\nWhich AI agents should it relay? (comma-separated, e.g. merlin,nimue,percival)\n\nThe bridge needs a paired gateway with auto-approve on; otherwise registration is a no-op.', 'merlin,nimue');
-                    if (names === null) return; // cancelled
-                    const clean = (names || '').trim() || 'merlin,nimue';
+                // FLEET-63 / FLEET-100: open the deploy-bridge modal.
+                // Defaults are derived in priority order:
+                //   1. existing bridges on this host (redeploy / add)
+                //   2. heartbeat agents reported via FLEETCOM_AGENTS
+                //   3. empty (operator types names manually)
+                deployBridge(host) {
+                    const existingBridges = this.bridgesForHost(host) || [];
+                    const heartbeatAgents = ((this.hostByName(host) || {}).agents) || [];
+                    let names = '';
+                    let source = 'none';
+                    if (existingBridges.length > 0) {
+                        names = existingBridges.map(b => b.agent).filter(Boolean).join(',');
+                        source = 'bridges';
+                    } else if (heartbeatAgents.length > 0) {
+                        names = heartbeatAgents.map(a => a.name).filter(Boolean).join(',');
+                        source = 'agents';
+                    }
+                    this.bridgeDeploy = { host, names, source };
+                },
+
+                // FLEET-100: submit handler for the deploy-bridge modal —
+                // mirrors the original POST flow (bosun reuses its own
+                // FLEETCOM_TOKEN + FLEETCOM_URL env; params only carry
+                // agent_names).
+                async submitBridgeDeploy() {
+                    const host = this.bridgeDeploy.host;
+                    const clean = (this.bridgeDeploy.names || '').trim();
+                    if (!host || !clean) return;
+                    this.bridgeDeploy = { host: '', names: '', source: '' };
                     try {
                         const res = await fetch('/api/hosts/' + encodeURIComponent(host) + '/commands', {
                             method: 'POST',
@@ -6966,9 +7145,6 @@ WantedBy=multi-user.target</pre>
                         if (res.ok) {
                             const body = await res.json();
                             this.toast('agent-bridge install enqueued — watching command #' + body.id);
-                            // FLEET-68: jump into the host drawer's COMMANDS
-                            // tab so the admin watches the bridge.install
-                            // result live without navigating to Settings.
                             this.openHostDrawer(host, 'commands');
                         } else {
                             this.toast('Deploy failed: ' + (await res.text()).slice(0, 120), 'err');
@@ -7238,7 +7414,7 @@ WantedBy=multi-user.target</pre>
                             body: JSON.stringify({ kind: 'agent.update', params: {} }),
                         });
                         if (res.ok) {
-                            this.toast('Update queued for ' + hostname + ' (watch the Commands tab)');
+                            this.toast('Update queued for ' + hostname + ' (watch the Log tab)');
                         } else {
                             const text = await res.text().catch(() => '');
                             this.toast('Update rejected: ' + (text.slice(0, 200) || 'HTTP ' + res.status), 'err');
