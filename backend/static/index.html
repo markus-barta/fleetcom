@@ -3109,6 +3109,77 @@
             padding: 0.15rem 0.3rem 0.4rem;
         }
 
+        /* FLEET-118: launch-sequence log. Used by the pair-flow modal
+           (preflight + live pair progress). Reusable for FLEET-119
+           command preview + future wizard steps. Rows render with a
+           fixed-width timestamp + status flag + message + elapsed.
+           Status-flag flips ([…] → [OK]) are state-class changes with
+           a 200ms color transition for an in-place flip read.
+           See docs/WIZARD-DESIGN.md sketch 3. */
+        .seq {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid var(--line);
+            padding: 0.7rem;
+            font-family: 'JetBrains Mono', ui-monospace, monospace;
+            font-size: 11px;
+            line-height: 1.6;
+            max-height: 320px;
+            overflow-y: auto;
+        }
+        .seq-row {
+            display: grid;
+            grid-template-columns: 64px 36px 1fr 78px;
+            gap: 0.5rem;
+            padding: 1px 0.4rem;
+            border-left: 2px solid transparent;
+            transition: border-color 200ms ease, background 200ms ease;
+        }
+        .seq-row.pending .seq-flag {
+            color: var(--ink);
+            animation: seq-blink 1s steps(2) infinite;
+        }
+        .seq-row.done {
+            border-left-color: var(--ok);
+        }
+        .seq-row.done .seq-flag { color: var(--ok); }
+        .seq-row.done .seq-msg  { color: var(--ink); }
+        .seq-row.warn {
+            border-left-color: var(--warn);
+        }
+        .seq-row.warn .seq-flag { color: var(--warn); }
+        .seq-row.warn .seq-msg  { color: var(--warn); }
+        .seq-row.error {
+            border-left-color: var(--crit);
+            background: rgba(255, 90, 90, 0.06);
+        }
+        .seq-row.error .seq-flag { color: var(--crit); }
+        .seq-row.error .seq-msg  { color: var(--crit); }
+        .seq-row.sse .seq-flag { color: var(--ink); }
+        .seq-row.finale {
+            border-top: 1px dashed var(--line);
+            margin-top: 0.4rem;
+            padding-top: 0.5rem;
+            font-weight: 700;
+        }
+        .seq-ts, .seq-elapsed {
+            color: var(--ink-faint);
+            font-size: 10px;
+        }
+        .seq-flag {
+            font-weight: 700;
+            letter-spacing: -0.04em;
+            text-align: center;
+        }
+        .seq-msg { color: var(--ink-dim); }
+        .seq-hint {
+            grid-column: 2 / -1;
+            color: var(--ink-faint);
+            font-size: 9px;
+            font-style: italic;
+            padding: 0 0.4rem 0.2rem;
+        }
+        @keyframes seq-blink { 50% { opacity: 0.35; } }
+
         /* FLEET-117: 'Advanced toggles' disclosure. The original
            4-toggle row from FLEET-111 lives inside this <details>;
            the posture cards above are the recommended surface. */
@@ -5429,7 +5500,7 @@ WantedBy=multi-user.target</pre>
                                                     x-text="(gatewayForHost(hostDrawerKey) || {}).gateway_pubkey_b64 ? '✓ pubkey' : '+ pubkey'"></button>
                                         </template>
                                         <template x-if="!gatewayForHost(hostDrawerKey)">
-                                            <button class="btn btn-primary" @click="openPairGatewayFromDrawer(hostDrawerKey)" title="Generate FleetCom keys + enqueue openclaw.pair on this host. Jumps to the Log tab so you can watch it.">+ Pair gateway</button>
+                                            <button class="btn btn-primary" @click="openPairFlow(hostDrawerKey)" title="Open the pair-flow wizard: runs preflight checks (bosun freshness + TCP dial + TLS handshake) before generating keys and enqueueing openclaw.pair.">+ Pair gateway</button>
                                         </template>
                                         <template x-if="gatewayForHost(hostDrawerKey)">
                                             <button class="btn btn-danger" @click="unpairGateway(hostDrawerKey)">Unpair</button>
@@ -5963,6 +6034,104 @@ WantedBy=multi-user.target</pre>
         </div>
     </div>
 
+    <!-- FLEET-118: pair-flow modal. Shows the GET /api/gateways/{host}/preflight
+         results as a launch-sequence checklist, then transitions to a live
+         pair-progress log when the operator clicks "Pair now". Auto-closes
+         on success; stays open on error with an actionable retry. Mission-
+         console aesthetic — see docs/WIZARD-DESIGN.md sketch 3. -->
+    <div x-show="pairFlowCtx" x-cloak
+         @keydown.escape.window="pairFlowCtx && pairFlowCtx.phase !== 'pairing' && closePairFlow()"
+         class="modal-backdrop"
+         @click="pairFlowCtx && pairFlowCtx.phase !== 'pairing' && closePairFlow()"
+         style="display:none">
+        <div class="modal-card" @click.stop style="max-width:700px;">
+            <div class="modal-title" style="color:var(--ink);font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:0.04em;text-transform:uppercase;font-size:13px;">
+                <span x-text="pairFlowCtx ? ('PAIR HOST · ' + pairFlowCtx.host) : ''"></span>
+                <span style="color:var(--ink-faint);font-weight:400;font-size:10px;letter-spacing:0.06em;margin-left:0.5rem;"
+                      x-text="pairFlowCtx ? pairFlowPhaseLabel() : ''"></span>
+            </div>
+
+            <!-- Preflight phase -->
+            <template x-if="pairFlowCtx && pairFlowCtx.phase === 'preflight'">
+                <div>
+                    <p style="font-size:11px;color:var(--ink-dim);line-height:1.55;margin:0.4rem 0 0.6rem;">
+                        Pre-pair checks — confirms FleetCom can reach this host's gateway over the network before enqueueing the pair command.
+                    </p>
+                    <div class="seq">
+                        <template x-for="row in pairFlowCtx.steps" :key="row.id">
+                            <div>
+                                <div class="seq-row" :class="row.state">
+                                    <span class="seq-ts" x-text="row.ts"></span>
+                                    <span class="seq-flag" x-text="seqFlag(row.state)"></span>
+                                    <span class="seq-msg" x-text="row.msg"></span>
+                                    <span class="seq-elapsed" x-text="row.elapsed || ''"></span>
+                                </div>
+                                <template x-if="row.hint">
+                                    <div class="seq-hint" x-text="row.hint"></div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                    <div style="margin-top:0.7rem;display:flex;gap:0.7rem;align-items:center;">
+                        <label style="font-size:10px;color:var(--ink-dim);display:flex;align-items:center;gap:0.4rem;flex:1;">
+                            Container name on host:
+                            <input type="text"
+                                   x-model="pairFlowCtx.container"
+                                   placeholder="openclaw-gateway"
+                                   spellcheck="false"
+                                   autocomplete="off"
+                                   style="flex:1;background:var(--bg-0);border:1px solid var(--line-2);color:var(--ink);font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;padding:0.25rem 0.45rem;">
+                        </label>
+                    </div>
+                </div>
+            </template>
+
+            <!-- Pairing / done / error phases share the launch-sequence rendering -->
+            <template x-if="pairFlowCtx && pairFlowCtx.phase !== 'preflight'">
+                <div>
+                    <p style="font-size:11px;color:var(--ink-dim);line-height:1.55;margin:0.4rem 0 0.6rem;">
+                        <span x-show="pairFlowCtx.phase === 'pairing'">Pairing in progress — keys generated and the openclaw.pair command is in bosun's queue. The actual handshake completes on the host's next heartbeat (within 60s).</span>
+                        <span x-show="pairFlowCtx.phase === 'done'" style="color:var(--ok);">Done — gateway paired. The bosun will pick up the openclaw.pair command on its next heartbeat. AI agent activity will start flowing once the bridges register.</span>
+                        <span x-show="pairFlowCtx.phase === 'error'" style="color:var(--crit);">Pair failed — see the error row below for details. The keys (if generated) have been cleaned up server-side.</span>
+                    </p>
+                    <div class="seq">
+                        <template x-for="row in pairFlowCtx.steps" :key="row.id">
+                            <div>
+                                <div class="seq-row" :class="row.state">
+                                    <span class="seq-ts" x-text="row.ts"></span>
+                                    <span class="seq-flag" x-text="seqFlag(row.state)"></span>
+                                    <span class="seq-msg" x-text="row.msg"></span>
+                                    <span class="seq-elapsed" x-text="row.elapsed || ''"></span>
+                                </div>
+                                <template x-if="row.hint">
+                                    <div class="seq-hint" x-text="row.hint"></div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+
+            <div class="modal-actions" style="margin-top:0.85rem;">
+                <button class="btn btn-ghost"
+                        @click="closePairFlow()"
+                        :disabled="pairFlowCtx && pairFlowCtx.phase === 'pairing'"
+                        x-text="(pairFlowCtx && pairFlowCtx.phase === 'done') ? 'Close' : 'Cancel'"></button>
+                <template x-if="pairFlowCtx && pairFlowCtx.phase === 'preflight'">
+                    <button class="btn btn-primary"
+                            @click="executePair()"
+                            :disabled="!(pairFlowCtx.preflight && pairFlowCtx.preflight.ready)"
+                            :title="(pairFlowCtx.preflight && pairFlowCtx.preflight.ready) ? 'Generate FleetCom keys, enqueue openclaw.pair on this host, mark the gateway paired' : 'Resolve all blockers above before pairing'">
+                        Pair now
+                    </button>
+                </template>
+                <template x-if="pairFlowCtx && pairFlowCtx.phase === 'error'">
+                    <button class="btn btn-primary" @click="openPairFlow(pairFlowCtx.host)">Retry</button>
+                </template>
+            </div>
+        </div>
+    </div>
+
     <!-- FLEET-116: 'What is this?' explainer drawer. Plain-language
          3-layer security explainer + 'today's right answer' cheat sheet.
          Opens from the host-drawer Integrations row (admin-only). Content
@@ -6276,6 +6445,13 @@ WantedBy=multi-user.target</pre>
                 // host-drawer Integrations row. Mirrors docs/PAIRING-SECURITY-MODEL.md
                 // — engineering doc updates should be reflected here too.
                 pairInfoDrawerOpen: false,
+                // FLEET-118: pair-flow modal state. null = closed; otherwise
+                // {host, container, phase, preflight, steps, startedAt}.
+                // phase ∈ 'preflight' | 'pairing' | 'done' | 'error'.
+                // preflight is the {bosun_seen_at, blockers[], ready, …} object
+                // returned by GET /api/gateways/{host}/preflight. steps is the
+                // launch-sequence log (array of {ts, state, msg, elapsed}).
+                pairFlowCtx: null,
                 // FLEET-113: per-pending-row OOB code input. Keyed by
                 // `<host>/<agent>` so multiple rows in the same drawer can
                 // accumulate codes independently. Cleared on approve/reject.
@@ -8510,6 +8686,173 @@ WantedBy=multi-user.target</pre>
                             // selected/recommended state automatically.
                         },
                         { verb: 'POSTURE_' + name.toUpperCase().replace('-', '_'), target: 'gateway/' + host });
+                },
+                // FLEET-118: pair-flow modal. Replaces the legacy native-prompt
+                // container picker and "jump to LOG tab" UX with a modal that
+                // surfaces preflight checks (bosun freshness + TCP dial + TLS
+                // handshake) up front, then transitions to a launch-sequence
+                // log when the operator clicks Pair now. Mission-console
+                // aesthetic: status flags ([OK]/[…]/[!!]) flip in place,
+                // monospace timestamps, no spinners.
+                async openPairFlow(host) {
+                    if (!host) return;
+                    // Default container picker — auto-pick if exactly one
+                    // candidate, otherwise default to 'openclaw-gateway'
+                    // (the most common name). Operators on hosts with
+                    // unusual names can edit the field in the modal.
+                    const cands = this.gatewayContainerCandidates ? this.gatewayContainerCandidates(host) : [];
+                    const defaultContainer = cands.length === 1 ? cands[0] : 'openclaw-gateway';
+                    this.pairFlowCtx = {
+                        host,
+                        container: defaultContainer,
+                        phase: 'preflight',
+                        preflight: null,
+                        steps: [{ id: 0, ts: this.seqNow(), state: 'pending', msg: 'Probing host…' }],
+                        startedAt: Date.now(),
+                    };
+                    try {
+                        const t0 = performance.now();
+                        const res = await fetch('/api/gateways/' + encodeURIComponent(host) + '/preflight');
+                        if (!res.ok) {
+                            throw new Error('preflight HTTP ' + res.status);
+                        }
+                        const pf = await res.json();
+                        const elapsed = ((performance.now() - t0) / 1000).toFixed(2) + 's';
+                        // Render preflight as launch-sequence rows. Order
+                        // matches what an operator reads top-down.
+                        const rows = [];
+                        let nextId = 1;
+                        // Bosun freshness
+                        if (pf.blockers.includes('host_unknown')) {
+                            rows.push({ id: nextId++, ts: this.seqNow(), state: 'error',
+                                msg: 'Host unknown to FleetCom',
+                                hint: 'Register the host first via Settings → Hosts (or POST /api/hosts).' });
+                        } else if (pf.blockers.includes('bosun_never_seen')) {
+                            rows.push({ id: nextId++, ts: this.seqNow(), state: 'error',
+                                msg: 'Bosun has never reported in',
+                                hint: 'Bring up bosun on the host: docker compose up -d fleetcom-bosun.' });
+                        } else if (pf.blockers.includes('bosun_stale')) {
+                            rows.push({ id: nextId++, ts: this.seqNow(), state: 'warn',
+                                msg: 'Bosun heartbeat is stale (' + pf.bosun_seen_ago_seconds + 's ago)',
+                                hint: 'Wait for the next heartbeat (every 60s) or check ssh ' + host + ' \'docker logs fleetcom-bosun --tail 50\'.' });
+                        } else if (pf.bosun_seen_ago_seconds != null) {
+                            rows.push({ id: nextId++, ts: this.seqNow(), state: 'done',
+                                msg: 'Bosun heartbeat fresh (' + pf.bosun_seen_ago_seconds + 's ago)',
+                                elapsed: elapsed });
+                        }
+                        // Gateway port
+                        if (pf.blockers.includes('gateway_unreachable')) {
+                            rows.push({ id: nextId++, ts: this.seqNow(), state: 'error',
+                                msg: 'Gateway port ' + pf.gateway_port + ' unreachable on ' + host,
+                                hint: 'OpenClaw is not running. Check ssh ' + host + ' \'docker ps | grep openclaw\' — start it if it\'s not.' });
+                        } else if (pf.gateway_port_reachable) {
+                            rows.push({ id: nextId++, ts: this.seqNow(), state: 'done',
+                                msg: 'Gateway port ' + pf.gateway_port + ' reachable',
+                                elapsed: elapsed });
+                        }
+                        // TLS
+                        if (pf.blockers.includes('tls_failed')) {
+                            const tlsErr = pf.tls_error || 'TLS handshake failed';
+                            rows.push({ id: nextId++, ts: this.seqNow(), state: 'error',
+                                msg: 'TLS handshake failed',
+                                hint: 'OpenClaw is up but its cert doesn\'t match: ' + tlsErr });
+                        } else if (pf.tls_ok) {
+                            rows.push({ id: nextId++, ts: this.seqNow(), state: 'done',
+                                msg: 'TLS handshake OK',
+                                elapsed: elapsed });
+                        }
+                        // Final summary row — the wizard's go/no-go signal.
+                        rows.push({ id: nextId++, ts: this.seqNow(),
+                            state: pf.ready ? 'done' : 'error',
+                            msg: pf.ready ? 'All checks pass — ready to pair' : 'Resolve blockers above to continue' });
+                        this.pairFlowCtx = { ...this.pairFlowCtx, preflight: pf, steps: rows };
+                    } catch (e) {
+                        this.pairFlowCtx = { ...this.pairFlowCtx, phase: 'error', steps: [
+                            { id: 0, ts: this.seqNow(), state: 'error',
+                              msg: 'Preflight probe failed', hint: String(e && e.message || e) },
+                        ] };
+                    }
+                },
+                pairFlowPhaseLabel() {
+                    if (!this.pairFlowCtx) return '';
+                    const phase = this.pairFlowCtx.phase;
+                    if (phase === 'preflight') return '· step 1 of 2 · preflight';
+                    if (phase === 'pairing')   return '· step 2 of 2 · pairing';
+                    if (phase === 'done')      return '· complete';
+                    if (phase === 'error')     return '· failed';
+                    return '';
+                },
+                seqFlag(state) {
+                    switch (state) {
+                        case 'done':    return '[OK]';
+                        case 'pending': return '[…]';
+                        case 'warn':    return '[~~]';
+                        case 'error':   return '[!!]';
+                        case 'sse':     return '↓';
+                        default:        return '[--]';
+                    }
+                },
+                seqNow() {
+                    // HH:MM:SS.mmm — fixed-width, monospace-friendly.
+                    const d = new Date();
+                    const pad = (n, w = 2) => String(n).padStart(w, '0');
+                    return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
+                },
+                async executePair() {
+                    if (!this.pairFlowCtx || !this.pairFlowCtx.preflight || !this.pairFlowCtx.preflight.ready) return;
+                    const { host } = this.pairFlowCtx;
+                    const container = (this.pairFlowCtx.container || 'openclaw-gateway').trim() || 'openclaw-gateway';
+                    let nextId = (this.pairFlowCtx.steps.length || 0) + 100;
+                    const steps = [];
+                    // Reset step list — clear preflight rows for the
+                    // pairing phase so the launch-sequence reads cleanly.
+                    const pushRow = (state, msg, hint) => {
+                        steps.push({ id: nextId++, ts: this.seqNow(), state, msg, hint });
+                        this.pairFlowCtx = { ...this.pairFlowCtx, steps: [...steps] };
+                    };
+                    this.pairFlowCtx = { ...this.pairFlowCtx, phase: 'pairing', steps };
+                    pushRow('pending', 'Generating FleetCom keypair on server');
+                    try {
+                        const t0 = performance.now();
+                        const res = await fetch('/api/gateways/' + encodeURIComponent(host) + '/pair', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ container_name: container }),
+                        });
+                        if (!res.ok) {
+                            const txt = (await res.text()).trim();
+                            // Roll the spinner row back to error.
+                            steps[steps.length - 1] = { ...steps[steps.length - 1], state: 'error',
+                                msg: 'Server rejected pair request', hint: txt || 'HTTP ' + res.status };
+                            this.pairFlowCtx = { ...this.pairFlowCtx, phase: 'error', steps: [...steps] };
+                            return;
+                        }
+                        const body = await res.json();
+                        const elapsed = ((performance.now() - t0) / 1000).toFixed(2) + 's';
+                        // Replace the spinner row with three resolved rows
+                        // matching the server-side phases of PairGateway.
+                        steps[steps.length - 1] = { id: steps[steps.length - 1].id, ts: this.seqNow(), state: 'done',
+                            msg: 'FleetCom keypair generated', elapsed };
+                        this.pairFlowCtx = { ...this.pairFlowCtx, steps: [...steps] };
+                        pushRow('done', 'Operator token written to /app/data/openclaw-keys/' + host + '/operator-token');
+                        pushRow('done', 'Command #' + body.command_id + ' enqueued for bosun (openclaw.pair)');
+                        pushRow('done', 'Gateway row marked paired (status=paired)');
+                        pushRow('sse', 'SSE gateways · status=paired');
+                        pushRow('done', 'Pair complete — bosun will pick up the command on next heartbeat (≤60s)');
+                        this.pairFlowCtx = { ...this.pairFlowCtx, phase: 'done', steps: [...steps] };
+                        // Refresh local gateway list so the host drawer's
+                        // posture cards transition out of "not paired" state.
+                        this.loadGateways();
+                        this.toast('Gateway pairing initiated for ' + host, 'ok');
+                    } catch (e) {
+                        steps[steps.length - 1] = { ...steps[steps.length - 1], state: 'error',
+                            msg: 'Network error', hint: String(e && e.message || e) };
+                        this.pairFlowCtx = { ...this.pairFlowCtx, phase: 'error', steps: [...steps] };
+                    }
+                },
+                closePairFlow() {
+                    if (this.pairFlowCtx && this.pairFlowCtx.phase === 'pairing') return; // guard
+                    this.pairFlowCtx = null;
                 },
                 // FLEET-114 operator paste of the gateway's raw Ed25519
                 // pubkey. Opens the paste modal (no native prompt — keeps

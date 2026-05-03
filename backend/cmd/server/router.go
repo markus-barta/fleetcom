@@ -151,6 +151,10 @@ func newRouter(d *routerDeps) chi.Router {
 		// FLEET-117: atomic posture setter — collapses the four toggles
 		// above into one named card click (auto-pair / reviewed / hardened).
 		r.With(auth.RequireAdmin).Post("/api/gateways/{host}/posture/{name}", api.SetGatewayPosture(store, hub))
+		// FLEET-118: pre-pair probe (bosun freshness + TCP dial + TLS
+		// handshake) so the wizard can render a checklist before the
+		// operator clicks Pair.
+		r.With(auth.RequireAdmin).Get("/api/gateways/{host}/preflight", api.GatewayPreflight(store))
 
 		// FLEET-60: bosun command channel — admin issues work, bosun
 		// picks it up via heartbeat response, reports back here.
