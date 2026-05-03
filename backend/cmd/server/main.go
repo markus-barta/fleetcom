@@ -175,4 +175,3 @@ func main() {
 		log.Fatalf("shutdown error: %v", err)
 	}
 }
-

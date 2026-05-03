@@ -285,16 +285,16 @@ var ExcludedFromInfo = map[string]string{
 	// serve text/html, not JSON, and are discoverable via redirect from
 	// any protected route. Documenting them as "endpoints" misrepresents
 	// them as machine-callable.
-	"GET /":                  "dashboard SPA shell (text/html)",
-	"GET /login":             "login form (text/html)",
-	"POST /login":            "login form submit (form-urlencoded, returns redirect or HTML)",
-	"POST /login/totp":       "TOTP step submit (form-urlencoded)",
-	"GET /logout":            "logout link (returns redirect)",
-	"POST /forgot-password":  "password reset form submit (form-urlencoded)",
-	"GET /reset/{token}":     "password reset form (text/html)",
-	"POST /reset":            "password reset submit (form-urlencoded)",
-	"GET /setup-totp":        "mandatory TOTP setup form (text/html)",
-	"POST /setup-totp":       "mandatory TOTP setup submit (form-urlencoded)",
+	"GET /":                 "dashboard SPA shell (text/html)",
+	"GET /login":            "login form (text/html)",
+	"POST /login":           "login form submit (form-urlencoded, returns redirect or HTML)",
+	"POST /login/totp":      "TOTP step submit (form-urlencoded)",
+	"GET /logout":           "logout link (returns redirect)",
+	"POST /forgot-password": "password reset form submit (form-urlencoded)",
+	"GET /reset/{token}":    "password reset form (text/html)",
+	"POST /reset":           "password reset submit (form-urlencoded)",
+	"GET /setup-totp":       "mandatory TOTP setup form (text/html)",
+	"POST /setup-totp":      "mandatory TOTP setup submit (form-urlencoded)",
 }
 
 // infoLinks returns the dashboard / docs / repo link map. APP_BASE_URL
