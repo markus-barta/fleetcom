@@ -196,6 +196,10 @@ var EndpointCatalog = []EndpointInfo{
 		Description: "FLEET-112: manually approve a pending bridge pair request. Flips status='approved'; broadcasts SSE 'bridges'. Audit-logged via FLEET-108."},
 	{Method: "POST", Path: "/api/bridges/{host}/{agent}/reject", Auth: []string{"session"}, RequiresAdmin: true,
 		Description: "FLEET-112: reject a pending bridge pair request. Hard-deletes the row; the bridge can re-register on its next attempt. Audit-logged via FLEET-108."},
+	{Method: "POST", Path: "/api/bridges/{host}/{agent}/approve-skip-oob", Auth: []string{"session"}, RequiresAdmin: true,
+		Description: "FLEET-113: bypass OOB code on /approve. Body must echo the hostname (`{\"confirm\":\"<hostname>\"}`) — server-side typed-confirm. Audit row carries verb=OOB_BYPASSED for security review."},
+	{Method: "POST", Path: "/api/gateways/{host}/oob-delivery/{mode}", Auth: []string{"session"}, RequiresAdmin: true,
+		Description: "FLEET-113: per-gateway OOB-delivery toggle. ON enables strict /approve enforcement and pushes the bridge.confirmation_code RPC to the gateway WS on registration."},
 
 	// ---------- Admin: bosun command channel (FLEET-60) ----------
 	{Method: "POST", Path: "/api/hosts/{host}/commands", Auth: []string{"session"}, RequiresAdmin: true,

@@ -66,6 +66,19 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE hosts ADD COLUMN allow_reboot INTEGER NOT NULL DEFAULT 1`,
 		// User avatars (FLEET-487) — stored as a data URL string (data:image/...;base64,...).
 		`ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''`,
+		// FLEET-113: per-row OOB confirmation-code state. The hash is
+		// SHA-256(code || pubkey_fp) so a leaked code cannot approve a
+		// different bridge. Attempts is bumped on each failed /approve;
+		// at 5 the row auto-rejects (deletes) and the bridge must re-
+		// register from scratch.
+		`ALTER TABLE bridge_pairings ADD COLUMN confirmation_code_hash TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE bridge_pairings ADD COLUMN confirmation_code_expires_at TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE bridge_pairings ADD COLUMN confirmation_attempts INTEGER NOT NULL DEFAULT 0`,
+		// FLEET-113: per-gateway OOB-delivery toggle. Default OFF until
+		// the OpenClaw RFC for `bridge.confirmation_code` lands on the
+		// gateway side; flipping ON enables strict OOB enforcement on
+		// /approve for that gateway's bridges.
+		`ALTER TABLE openclaw_gateways ADD COLUMN oob_delivery_enabled INTEGER NOT NULL DEFAULT 0`,
 		// Agent observability (FLEET-36) — see docs/AGENT-OBSERVABILITY.md.
 		// New tables are created by the schema const; nothing to ALTER here
 		// unless we evolve existing tables later.
@@ -390,6 +403,9 @@ CREATE TABLE IF NOT EXISTS openclaw_gateways (
 	-- current value (no migration on this column). Operators see a one-
 	-- time advisory toast in the dashboard pointing at the new posture.
 	auto_approve_bridges INTEGER NOT NULL DEFAULT 0,
+	-- FLEET-113: per-gateway OOB-delivery toggle (default OFF until the
+	-- gateway-side OpenClaw RFC ships the bridge.confirmation_code RPC).
+	oob_delivery_enabled INTEGER NOT NULL DEFAULT 0,
 	created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -404,6 +420,11 @@ CREATE TABLE IF NOT EXISTS bridge_pairings (
 	request_id TEXT NOT NULL DEFAULT '',
 	last_seen_at TEXT NOT NULL DEFAULT '',
 	created_at TEXT NOT NULL DEFAULT (datetime('now')),
+	-- FLEET-113: OOB confirmation-code state. See migrate() for the
+	-- ALTER fallback path used by existing databases.
+	confirmation_code_hash TEXT NOT NULL DEFAULT '',
+	confirmation_code_expires_at TEXT NOT NULL DEFAULT '',
+	confirmation_attempts INTEGER NOT NULL DEFAULT 0,
 	UNIQUE(host, agent)
 );
 CREATE INDEX IF NOT EXISTS idx_bridge_pairings_fp ON bridge_pairings(pubkey_fp);

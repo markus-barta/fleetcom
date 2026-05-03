@@ -16,6 +16,11 @@ type OpenClawGateway struct {
 	PairedAt           string `json:"paired_at,omitempty"`
 	Status             string `json:"status"` // unpaired | paired | revoked
 	AutoApproveBridges bool   `json:"auto_approve_bridges"`
+	// FLEET-113: when true, the server pushes the bridge.confirmation_code
+	// RPC to the gateway WS on bridge registration AND requires the OOB
+	// code on /approve. When false (default until the gateway-side
+	// OpenClaw RFC ships), /approve is permitted without a code.
+	OOBDeliveryEnabled bool   `json:"oob_delivery_enabled"`
 	CreatedAt          string `json:"created_at,omitempty"`
 }
 
@@ -61,7 +66,7 @@ func (s *Store) MarkGatewayPaired(host, pubkeyB64, tokenHash string) error {
 // AllGateways returns every gateway row. Admin-only consumer.
 func (s *Store) AllGateways() ([]OpenClawGateway, error) {
 	rows, err := s.DB.Query(`
-		SELECT id, host, url, fc_pubkey_b64, paired_at, status, auto_approve_bridges, created_at
+		SELECT id, host, url, fc_pubkey_b64, paired_at, status, auto_approve_bridges, oob_delivery_enabled, created_at
 		FROM openclaw_gateways ORDER BY host
 	`)
 	if err != nil {
@@ -71,14 +76,34 @@ func (s *Store) AllGateways() ([]OpenClawGateway, error) {
 	out := []OpenClawGateway{}
 	for rows.Next() {
 		var g OpenClawGateway
-		var auto int
-		if err := rows.Scan(&g.ID, &g.Host, &g.URL, &g.FCPubkeyB64, &g.PairedAt, &g.Status, &auto, &g.CreatedAt); err != nil {
+		var auto, oob int
+		if err := rows.Scan(&g.ID, &g.Host, &g.URL, &g.FCPubkeyB64, &g.PairedAt, &g.Status, &auto, &oob, &g.CreatedAt); err != nil {
 			return nil, err
 		}
 		g.AutoApproveBridges = auto != 0
+		g.OOBDeliveryEnabled = oob != 0
 		out = append(out, g)
 	}
 	return out, rows.Err()
+}
+
+// SetOOBDelivery flips the per-gateway oob_delivery_enabled flag. When
+// ON, the server pushes confirmation codes via WS on bridge registration
+// AND requires the code on /approve.
+func (s *Store) SetOOBDelivery(host string, on bool) error {
+	val := 0
+	if on {
+		val = 1
+	}
+	res, err := s.DB.Exec(`UPDATE openclaw_gateways SET oob_delivery_enabled = ? WHERE host = ?`, val, host)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("gateway not found: %s", host)
+	}
+	return nil
 }
 
 // DeleteGateway drops an openclaw_gateways row (the unpair path).
@@ -213,6 +238,86 @@ func (s *Store) MarkBridgeApprovedManual(host, agent string) error {
 		return fmt.Errorf("no pending bridge pairing for %s/%s", host, agent)
 	}
 	return nil
+}
+
+// FLEET-113: per-row OOB confirmation-code state.
+
+// MaxConfirmationAttempts is the rate limit on /approve. Once exceeded
+// the row is auto-deleted and the bridge must re-register.
+const MaxConfirmationAttempts = 5
+
+// ConfirmationCodeRow is the minimal slice of a pending row needed to
+// validate a submitted code. Returned by GetConfirmationCode so the
+// API handler can do the constant-time hash compare without a second
+// round trip.
+type ConfirmationCodeRow struct {
+	Hash      string
+	ExpiresAt string // RFC3339
+	Attempts  int
+	PubkeyFP  string
+}
+
+// SetConfirmationCode stores a fresh hash + expiry on a pending row,
+// resetting the attempts counter. Caller is responsible for computing
+// SHA-256(code || pubkey_fp) — the store is policy-free.
+func (s *Store) SetConfirmationCode(host, agent, hash, expiresAt string) error {
+	res, err := s.DB.Exec(`
+		UPDATE bridge_pairings
+		SET confirmation_code_hash = ?, confirmation_code_expires_at = ?, confirmation_attempts = 0
+		WHERE host = ? AND agent = ?
+	`, hash, expiresAt, host, agent)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("bridge pairing not found: %s/%s", host, agent)
+	}
+	return nil
+}
+
+// GetConfirmationCode returns the code-validation slice for a row.
+// Empty Hash means "no active code on this row" (legacy or cleared).
+func (s *Store) GetConfirmationCode(host, agent string) (*ConfirmationCodeRow, error) {
+	row := s.DB.QueryRow(`
+		SELECT confirmation_code_hash, confirmation_code_expires_at, confirmation_attempts, pubkey_fp
+		FROM bridge_pairings WHERE host = ? AND agent = ?
+	`, host, agent)
+	var c ConfirmationCodeRow
+	err := row.Scan(&c.Hash, &c.ExpiresAt, &c.Attempts, &c.PubkeyFP)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &c, nil
+}
+
+// ClearConfirmationCode wipes the hash + expiry after a successful
+// /approve so the same code cannot be replayed.
+func (s *Store) ClearConfirmationCode(host, agent string) error {
+	_, err := s.DB.Exec(`
+		UPDATE bridge_pairings
+		SET confirmation_code_hash = '', confirmation_code_expires_at = '', confirmation_attempts = 0
+		WHERE host = ? AND agent = ?
+	`, host, agent)
+	return err
+}
+
+// IncrementConfirmationAttempts bumps the per-row attempts counter and
+// returns the new value. Callers compare against MaxConfirmationAttempts
+// to decide whether to auto-reject.
+func (s *Store) IncrementConfirmationAttempts(host, agent string) (int, error) {
+	if _, err := s.DB.Exec(`
+		UPDATE bridge_pairings SET confirmation_attempts = confirmation_attempts + 1
+		WHERE host = ? AND agent = ?
+	`, host, agent); err != nil {
+		return 0, err
+	}
+	var n int
+	err := s.DB.QueryRow(`SELECT confirmation_attempts FROM bridge_pairings WHERE host = ? AND agent = ?`, host, agent).Scan(&n)
+	return n, err
 }
 
 // AllBridgePairings returns every bridge row for the dashboard.

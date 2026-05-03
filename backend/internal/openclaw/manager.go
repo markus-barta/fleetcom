@@ -369,6 +369,39 @@ func (m *Manager) handlePairRequested(ctx context.Context, host string, payload 
 	}
 }
 
+// PushConfirmationCode (FLEET-113) sends the OOB pair confirmation code
+// to the gateway over its existing operator WS so the gateway can emit
+// it through the agent itself ("FleetCom pair confirmation: 472 819").
+// The gateway-side handler is filed as a separate OpenClaw RFC; until
+// it ships, this is a best-effort push that no-ops on missing client or
+// server-side error. The code stays valid on the FleetCom side either
+// way so /approve-skip-oob remains the operator's escape hatch.
+//
+// Returns nil on success OR when no live gateway client is available
+// (the absence of a delivery channel is not an FleetCom-side failure
+// the operator can act on); returns an error only when the WS Call
+// itself fails so the caller can decide whether to surface it.
+func (m *Manager) PushConfirmationCode(ctx context.Context, host, agent, code, fp string) error {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	h, ok := m.clients[host]
+	m.mu.Unlock()
+	if !ok {
+		// No live gateway client — operator must use skip-oob or wait
+		// for the bridge to re-register once the gateway is reachable.
+		return nil
+	}
+	_, err := h.client.Call(ctx, "bridge.confirmation_code", map[string]interface{}{
+		"host":  host,
+		"agent": agent,
+		"code":  code,
+		"fp":    fp,
+	}, 10*time.Second)
+	return err
+}
+
 // RevokeBridgeOnGateway is called from DELETE /api/bridges/{host}/{agent}
 // after the DB row is dropped. It asks the gateway to revoke the
 // operator token for that deviceId so a revoked bridge can't reconnect
