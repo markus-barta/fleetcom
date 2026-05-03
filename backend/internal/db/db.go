@@ -334,6 +334,29 @@ CREATE TABLE IF NOT EXISTS user_host_access (
 	PRIMARY KEY (user_id, host_id)
 );
 
+-- FLEET-79: user-issued API tokens for read-only programmatic access.
+-- Token shape is "fleet_pat_<64 hex>"; only the SHA-256 of the full string
+-- is stored. The plaintext "prefix" column ("fleet_pat_<first 8 hex>") is
+-- the only piece of the token surfaced anywhere — UI display, audit logs,
+-- rate-limit identity. expires_at NULL means "never" (the UI surfaces a
+-- prominent warning when the operator picks that). revoked_at is sticky:
+-- once set, the token never validates again. last_used_at write is
+-- throttled in the middleware to one update per 60s per token.
+CREATE TABLE IF NOT EXISTS user_api_tokens (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	token_hash TEXT NOT NULL UNIQUE,
+	prefix TEXT NOT NULL,
+	label TEXT NOT NULL DEFAULT '',
+	scopes TEXT NOT NULL DEFAULT '[]',
+	last_used_at TEXT,
+	expires_at TEXT,
+	revoked_at TEXT,
+	created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_user_api_tokens_user ON user_api_tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_api_tokens_hash ON user_api_tokens(token_hash);
+
 -- OpenClaw gateway pairing + bridge registry (FLEET-51) —
 -- see docs/AGENT-BRIDGE-PAIRING.md.
 CREATE TABLE IF NOT EXISTS openclaw_gateways (

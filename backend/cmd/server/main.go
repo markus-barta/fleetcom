@@ -202,16 +202,29 @@ func main() {
 		r.Get("/api/me", api.Me(store))
 	})
 
+	// FLEET-79: read-only endpoints that accept either a session cookie OR
+	// a "fleet_pat_…" bearer token with the matching scope. These live
+	// outside the standard r.Group() because MaybeAPIToken must run BEFORE
+	// RequireSession (chi's group .Use middleware runs ahead of any
+	// per-route .With middleware, which would defeat the short-circuit).
+	// On token auth, MaybeAPIToken sets a context flag that
+	// RequireSession+RequireTOTP honor and skip past.
+	tokenOrSession := func(scope string) func(http.Handler) http.Handler {
+		return func(next http.Handler) http.Handler {
+			return auth.MaybeAPIToken(store, scope)(a.RequireSession(auth.RequireTOTP(next)))
+		}
+	}
+	r.With(tokenOrSession("read:hosts")).Get("/api/hosts", api.ListHosts(store))
+	r.With(tokenOrSession("read:hardware")).Get("/api/hosts/{hostname}/hardware", api.HostHardware(store))
+	r.With(tokenOrSession("read:agents")).Get("/api/agents", api.ListAgents(store))
+	r.With(tokenOrSession("read:agents")).Get("/api/agents/{host}/{name}", api.AgentDetail(store))
+
 	// Protected routes (session + TOTP required)
 	r.Group(func(r chi.Router) {
 		r.Use(a.RequireSession)
 		r.Use(auth.RequireTOTP)
 		r.Get("/", api.Dashboard)
 		r.Get("/api/events", api.Events(store, hub))
-		r.Get("/api/hosts", api.ListHosts(store))
-		r.Get("/api/hosts/{hostname}/hardware", api.HostHardware(store))
-		r.Get("/api/agents", api.ListAgents(store))
-		r.Get("/api/agents/{host}/{name}", api.AgentDetail(store))
 		// FLEET-51: OpenClaw gateway pairing + bridge registry.
 		r.With(auth.RequireAdmin).Get("/api/gateways", api.ListGateways(store))
 		r.With(auth.RequireAdmin).Get("/api/gateways/pairable-hosts", api.HostsAvailableForPairing(store))
@@ -265,6 +278,10 @@ func main() {
 		r.Delete("/api/auth/sessions/{id}", api.RevokeSession(store))
 		r.Post("/api/auth/avatar", api.UpdateAvatar(store))
 		r.Delete("/api/auth/avatar", api.DeleteAvatar(store))
+		// FLEET-79: user-issued read-only API tokens.
+		r.Get("/api/auth/api-tokens", api.ListAPITokens(store))
+		r.Post("/api/auth/api-tokens", api.CreateAPIToken(store))
+		r.Delete("/api/auth/api-tokens/{id}", api.RevokeAPIToken(store))
 
 		// Admin-only routes
 		r.Route("/api/users", func(r chi.Router) {
