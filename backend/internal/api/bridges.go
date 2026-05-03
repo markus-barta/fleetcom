@@ -227,7 +227,10 @@ func RegisterBridge(store *db.Store, hub *sse.Hub, pusher ConfirmationCodePusher
 		// rejected registration leaves no trace. Pull the gateway's row
 		// upfront — we need both its pubkey (for verify) and its
 		// per-gateway flag (for the AND with the env).
-		gws, _ := store.AllGateways()
+		gws, gwErr := store.AllGateways()
+		if gwErr != nil {
+			log.Printf("warn: register bridge %s/%s: AllGateways failed: %v (proceeding as no-gateway)", hostname, body.Agent, gwErr)
+		}
 		var matchedGw *db.OpenClawGateway
 		for i := range gws {
 			if gws[i].Host == hostname {
@@ -273,7 +276,10 @@ func RegisterBridge(store *db.Store, hub *sse.Hub, pusher ConfirmationCodePusher
 			return
 		}
 		// Persist per-row attestation outcome so operators can audit.
-		_ = store.SetBridgeAttestationStatus(hostname, body.Agent, attStatus)
+		// Quietly no-ops on already-approved rows (FLEET-114 downgrade-protect filter).
+		if err := store.SetBridgeAttestationStatus(hostname, body.Agent, attStatus); err != nil {
+			log.Printf("warn: register bridge %s/%s: SetBridgeAttestationStatus(%q): %v", hostname, body.Agent, attStatus, err)
+		}
 		// FLEET-114: system audit row (user_id=0) so operators can grep
 		// the operator log later for "what came in under skip during rollout?"
 		if attStatus == AttestationStatusSkipped {
@@ -679,13 +685,18 @@ func ApproveBridgeSkipOOB(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 		if u := auth.GetUser(r); u != nil {
 			userID = u.ID
 		}
-		_, _ = store.RecordActivity(db.ActivityEvent{
+		// QA-AUDIT-FIX: log RecordActivity errors. The OOB_BYPASSED audit
+		// row is the canonical loud-record for this loud action; a silent
+		// failure would mean a security-relevant event went unrecorded.
+		if _, err := store.RecordActivity(db.ActivityEvent{
 			UserID:     userID,
 			Verb:       "OOB_BYPASSED",
 			TargetType: "bridge",
 			TargetKey:  host + "/" + agent,
 			Outcome:    "ok",
-		})
+		}); err != nil {
+			log.Printf("warn: OOB_BYPASSED audit-row write failed for %s/%s: %v", host, agent, err)
+		}
 
 		broadcastBridges(store, hub)
 		w.WriteHeader(http.StatusNoContent)
@@ -694,6 +705,15 @@ func ApproveBridgeSkipOOB(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 
 // SetGatewayOOBDelivery toggles the per-gateway oob_delivery_enabled flag.
 // Mirrors SetGatewayAutoApprove. URL: /api/gateways/{host}/oob-delivery/{mode}.
+//
+// QA-AUDIT-FIX (PPM 1527): refuses to enable OOB when auto-approve is
+// already ON. With both flags ON, RegisterBridge takes the auto-approve
+// path and never mints/checks the OOB code — the operator's "I want OOB
+// enforced" intent would be silently dropped. Better to reject the
+// non-canonical combination at the toggle layer with an actionable hint.
+// The posture cards (FLEET-117) already enforce this naturally — only
+// the Advanced toggles disclosure can produce the bad state, and now
+// it can't either.
 func SetGatewayOOBDelivery(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host := chi.URLParam(r, "host")
@@ -702,7 +722,20 @@ func SetGatewayOOBDelivery(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			http.Error(w, "host and mode (on|off) required", http.StatusBadRequest)
 			return
 		}
-		if err := store.SetOOBDelivery(host, mode == "on"); err != nil {
+		on := mode == "on"
+		// Guard against the auto-approve + OOB silent override.
+		if on {
+			gws, err := store.AllGateways()
+			if err == nil {
+				for _, g := range gws {
+					if g.Host == host && g.AutoApproveBridges {
+						http.Error(w, "OOB enforcement requires auto-approve OFF — turn off auto-approve first (or pick the Reviewed/Hardened posture card)", http.StatusUnprocessableEntity)
+						return
+					}
+				}
+			}
+		}
+		if err := store.SetOOBDelivery(host, on); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
@@ -844,6 +877,11 @@ func SetGatewayPosture(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 }
 
 // SetGatewayAutoApprove toggles the per-gateway auto-approve flag.
+//
+// QA-AUDIT-FIX (PPM 1527): symmetric guard with SetGatewayOOBDelivery —
+// refuses to enable auto-approve when OOB is already ON. With both ON,
+// RegisterBridge takes the auto-approve path and the OOB code is never
+// minted/checked; better to reject the non-canonical combination here.
 func SetGatewayAutoApprove(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host := chi.URLParam(r, "host")
@@ -852,7 +890,19 @@ func SetGatewayAutoApprove(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			http.Error(w, "host and mode (on|off) required", http.StatusBadRequest)
 			return
 		}
-		if err := store.SetAutoApprove(host, mode == "on"); err != nil {
+		on := mode == "on"
+		if on {
+			gws, err := store.AllGateways()
+			if err == nil {
+				for _, g := range gws {
+					if g.Host == host && g.OOBDeliveryEnabled {
+						http.Error(w, "auto-approve cannot be enabled while OOB enforcement is ON — turn off OOB first (or pick the Auto-pair posture card)", http.StatusUnprocessableEntity)
+						return
+					}
+				}
+			}
+		}
+		if err := store.SetAutoApprove(host, on); err != nil {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}

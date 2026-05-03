@@ -6853,13 +6853,15 @@ WantedBy=multi-user.target</pre>
                     // its progression logic during 'deploying'.
                     this.$watch('bridges', () => this.bridgeDeployWatchBridges());
                     // FLEET-121: refresh the onboarding banner whenever
-                    // SSE pushes a relevant change. loadOnboarding is a
-                    // single GET; it's cheap and the banner is only
-                    // visible to admins.
+                    // SSE pushes a relevant change.
+                    //
+                    // QA-AUDIT-FIX (PPM 1527): debounced so a single SSE
+                    // event that touches all three arrays collapses to
+                    // one onboarding fetch instead of three.
                     this.onboardingDismissedSig = localStorage.getItem('fleetcom.onboarding.dismissedSig') || '';
-                    this.$watch('hosts',    () => this.loadOnboarding());
-                    this.$watch('gateways', () => this.loadOnboarding());
-                    this.$watch('bridges',  () => this.loadOnboarding());
+                    this.$watch('hosts',    () => this.requestLoadOnboarding());
+                    this.$watch('gateways', () => this.requestLoadOnboarding());
+                    this.$watch('bridges',  () => this.requestLoadOnboarding());
                     this.startStripRefresher();
                     document.addEventListener('visibilitychange', () => {
                         if (document.visibilityState === 'visible') this.kickIfStale();
@@ -9115,11 +9117,21 @@ WantedBy=multi-user.target</pre>
                 },
                 // FLEET-121: onboarding state — fetched by loadOnboarding()
                 // (init + post-deploy + post-approve) and refreshed by the
-                // bridges/gateways/hosts SSE watchers below. The signature
-                // we hash for dismissal is "what counts as the same state"
-                // — count + comma-joined sorted hostnames + count of pending
-                // approvals — so the banner re-appears when the actionable
-                // set actually changes (not on every re-render).
+                // bridges/gateways/hosts SSE watchers below.
+                //
+                // QA-AUDIT-FIX (PPM 1527): the three $watches on hosts /
+                // gateways / bridges all fire for a single SSE event that
+                // updates them — that produced 3× redundant fetches per
+                // event. Debounced via _onboardingDebouncer (300ms trailing)
+                // so a burst collapses to one fetch.
+                _onboardingDebouncer: null,
+                requestLoadOnboarding() {
+                    if (this._onboardingDebouncer) clearTimeout(this._onboardingDebouncer);
+                    this._onboardingDebouncer = setTimeout(() => {
+                        this._onboardingDebouncer = null;
+                        this.loadOnboarding();
+                    }, 300);
+                },
                 async loadOnboarding() {
                     if (!this.currentUser || this.currentUser.role !== 'admin') return;
                     try {
@@ -9139,7 +9151,17 @@ WantedBy=multi-user.target</pre>
                     if (!o.actionable) return '';
                     const ng = o.hostsNoGateway.map(h => h.hostname).sort().join(',');
                     const nb = o.hostsNoBridge.map(h => h.hostname).sort().join(',');
-                    const pa = o.pending.map(p => p.host + '/' + p.agent).sort().join(',');
+                    // QA-AUDIT-FIX (PPM 1527): include first 12 chars of fp
+                    // in the pending-approval signature. Without it, a
+                    // re-register with the same (host, agent) but a NEW
+                    // fingerprint produces an unchanged signature → banner
+                    // stays hidden after dismiss → operator misses a
+                    // potential security event. Including the fp closes
+                    // the gap; the host drawer's inline pending list
+                    // remains the canonical surface either way.
+                    const pa = o.pending.map(p =>
+                        p.host + '/' + p.agent + ':' + ((p.fp || '').slice(0, 12))
+                    ).sort().join(',');
                     return 'ng=' + ng + '|nb=' + nb + '|pa=' + pa;
                 },
                 onboardingBannerMessage() {
@@ -9193,6 +9215,15 @@ WantedBy=multi-user.target</pre>
                         this.$nextTick(() => this.openPairFlow(h.hostname));
                         return;
                     }
+                    // QA-AUDIT-FIX (PPM 1527): defensive fallback when
+                    // actionable=true but every list is empty. Should be
+                    // unreachable (server computes actionable as the OR of
+                    // the three lists), but if a malformed response slips
+                    // through, the operator gets useful feedback instead
+                    // of a silent dead button.
+                    this.toast({ level: 'info', verb: 'ONBOARDING_REFRESH',
+                        target: 'onboarding', msg: 'No actionable items — banner may be stale, refreshing.' });
+                    this.requestLoadOnboarding();
                 },
 
                 // FLEET-118: pair-flow modal. Replaces the legacy native-prompt
@@ -9322,11 +9353,28 @@ WantedBy=multi-user.target</pre>
                     pushRow('pending', 'Generating FleetCom keypair on server');
                     try {
                         const t0 = performance.now();
-                        const res = await fetch('/api/gateways/' + encodeURIComponent(host) + '/pair', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ container_name: container }),
-                        });
+                        // QA-AUDIT-FIX (PPM 1527): race the fetch against
+                        // a 60s timeout. Without this, a hung fetch leaves
+                        // the modal stuck in phase='pairing' (close buttons
+                        // disabled) until the operator reloads the tab.
+                        // 60s is generous — the server side of /pair is
+                        // bounded by file I/O + a single SQL update +
+                        // a manager nudge, so realistic worst case is
+                        // milliseconds. If we hit 60s, something's broken
+                        // and the operator deserves a useful error state.
+                        const ctrl = new AbortController();
+                        const timeoutId = setTimeout(() => ctrl.abort(), 60 * 1000);
+                        let res;
+                        try {
+                            res = await fetch('/api/gateways/' + encodeURIComponent(host) + '/pair', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ container_name: container }),
+                                signal: ctrl.signal,
+                            });
+                        } finally {
+                            clearTimeout(timeoutId);
+                        }
                         if (!res.ok) {
                             const txt = (await res.text()).trim();
                             // Roll the spinner row back to error.
@@ -9353,8 +9401,17 @@ WantedBy=multi-user.target</pre>
                         this.loadGateways();
                         this.toast('Gateway pairing initiated for ' + host, 'ok');
                     } catch (e) {
+                        // QA-AUDIT-FIX (PPM 1527): distinguish abort-timeout
+                        // from generic network errors so the operator can
+                        // tell "I waited 60s and gave up" from "the connection
+                        // dropped immediately." DOMException name is 'AbortError'
+                        // when ctrl.abort() fires; the fallback catches everything else.
+                        const isAbort = e && (e.name === 'AbortError' || /abort/i.test(String(e.message || '')));
                         steps[steps.length - 1] = { ...steps[steps.length - 1], state: 'error',
-                            msg: 'Network error', hint: String(e && e.message || e) };
+                            msg: isAbort ? 'Server did not respond within 60s' : 'Network error',
+                            hint: isAbort
+                                ? 'The /pair POST is bounded by file I/O + one SQL update; this timeout means the server is unresponsive. Check fleetcom logs and retry.'
+                                : String(e && e.message || e) };
                         this.pairFlowCtx = { ...this.pairFlowCtx, phase: 'error', steps: [...steps] };
                     }
                 },

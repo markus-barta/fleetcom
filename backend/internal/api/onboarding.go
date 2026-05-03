@@ -50,9 +50,12 @@ type onboardingState struct {
 // OnboardingState handles GET /api/onboarding/state. Admin-only,
 // always 200 with a fresh snapshot — operators expect the banner
 // count to reflect the current state, not a cached view.
+//
+// QA-AUDIT-FIX (PPM 1527): uses HostsBareList instead of AllHosts so
+// we don't load containers + agents per host just to read last_seen.
 func OnboardingState(store *db.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		hosts, err := store.AllHosts()
+		hosts, err := store.HostsBareList()
 		if err != nil {
 			http.Error(w, "onboarding: "+err.Error(), http.StatusInternalServerError)
 			return
