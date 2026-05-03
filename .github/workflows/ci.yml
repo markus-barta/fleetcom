@@ -61,6 +61,30 @@ jobs:
             exit 1
           fi
 
+      # FLEET-106: ban silent error swallow. catch (_) {} hides every async
+      # failure from the operator and was the disease the busy() helper exists
+      # to cure. Allowed exceptions: a single intentional silent loader is
+      # marked with the comment "// silent: pure background load".
+      - name: ban-silent-catch
+        working-directory: backend
+        run: |
+          hits=$(grep -nE 'catch\s*\(\s*_\s*\)\s*\{\s*\}' static/index.html || true)
+          # Allowlist: lines that carry the "silent: pure background load" comment
+          # on the same or following line are intentional and approved.
+          unapproved=$(echo "$hits" | while read -r line; do
+            [ -z "$line" ] && continue
+            ln=$(echo "$line" | cut -d: -f1)
+            ctx=$(sed -n "${ln},$((ln+1))p" static/index.html)
+            if echo "$ctx" | grep -q 'silent: pure background load'; then continue; fi
+            echo "$line"
+          done)
+          if [ -n "$unapproved" ]; then
+            echo "Silent error swallow (catch (_) {}) is banned (FLEET-106). Wrap the call in this.busy(...) so the failure surfaces as a toast + activity-log entry."
+            echo "Allow only with the comment '// silent: pure background load' on the same or next line."
+            echo "$unapproved"
+            exit 1
+          fi
+
   lint-agent:
     name: Lint Agent (gofmt + vet)
     runs-on: ubuntu-latest
