@@ -5171,9 +5171,19 @@ WantedBy=multi-user.target</pre>
                         <div>
                             <div class="drawer-section-label">Integrations</div>
                             <div style="display:flex;flex-direction:column;gap:0.6rem;">
-                                <!-- FLEET-99: gateway explainer -->
+                                <!-- FLEET-99: gateway explainer.
+                                     FLEET-116: + 'What is this?' button (admin-only)
+                                     opens the 3-layer security-model drawer. -->
                                 <div class="drawer-integ-help">
                                     <strong>OpenClaw gateway:</strong> FleetCom watches this host's gateway over WebSocket. <strong>Pair</strong> once to authorize FleetCom — after that, AI agent activity (turns, tool calls, lifecycle) flows into the dashboard in real time.
+                                    <template x-if="currentUser && currentUser.role === 'admin'">
+                                        <button class="btn btn-ghost"
+                                                style="font-size:9px;padding:0.15rem 0.45rem;margin-left:0.4rem;display:inline-flex;align-items:center;gap:0.25rem;vertical-align:baseline;"
+                                                @click="pairInfoDrawerOpen = true"
+                                                title="What do these toggles do? Click for the 3-layer security explainer + 'today's right answer' cheat sheet.">
+                                            <i data-lucide="help-circle" style="width:11px;height:11px;"></i> What is this?
+                                        </button>
+                                    </template>
                                 </div>
                                 <!-- Gateway row -->
                                 <div class="drawer-integ-row">
@@ -5189,7 +5199,7 @@ WantedBy=multi-user.target</pre>
                                     <div style="display:flex;gap:0.5rem;align-items:center;">
                                         <!-- FLEET-377: auto-approve toggle migrated from Settings → Gateways tab. -->
                                         <template x-if="gatewayForHost(hostDrawerKey)">
-                                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:10px;color:var(--ink-dim);cursor:pointer;" title="When on, FleetCom auto-approves matching agent-bridge pair requests on this gateway. Off = pending until manual approve.">
+                                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:10px;color:var(--ink-dim);cursor:pointer;" title="When ON, FleetCom auto-approves every new bridge once the host bearer token checks out. When OFF (recommended), each new bridge sits in 'pending' until you click APPROVE after eyeballing its fingerprint. Default OFF for new gateways.">
                                                 <input type="checkbox" :checked="(gatewayForHost(hostDrawerKey) || {}).auto_approve_bridges"
                                                        @change="toggleAutoApprove(hostDrawerKey, $event.target.checked)">
                                                 auto-approve
@@ -5199,7 +5209,7 @@ WantedBy=multi-user.target</pre>
                                              /approve enforcement and requires the 6-digit code generated
                                              from the agent itself. OFF (default) keeps Phase-1 fallback. -->
                                         <template x-if="gatewayForHost(hostDrawerKey)">
-                                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:10px;color:var(--ink-dim);cursor:pointer;" title="When on, /approve requires the 6-digit code the gateway delivers through the agent itself. Needs the OpenClaw bridge.confirmation_code RPC (FLEET-113).">
+                                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:10px;color:var(--ink-dim);cursor:pointer;" title="Out-of-band confirmation code (Signal-style). When ON, /approve requires a 6-digit code that the gateway delivers through the agent itself (e.g. Ocean DMs you on Telegram). Currently dormant — needs the gateway-side OpenClaw signing endpoint to ship.">
                                                 <input type="checkbox" :checked="(gatewayForHost(hostDrawerKey) || {}).oob_delivery_enabled"
                                                        @change="toggleOOBDelivery(hostDrawerKey, $event.target.checked)">
                                                 OOB code
@@ -5210,7 +5220,7 @@ WantedBy=multi-user.target</pre>
                                              before strict enforcement can succeed; pasting it directly
                                              surfaces the requirement. -->
                                         <template x-if="gatewayForHost(hostDrawerKey)">
-                                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:10px;color:var(--ink-dim);cursor:pointer;" title="When on AND the FLEETCOM_REGISTER_ATTESTATION_REQUIRED env is true, bridge registrations from this gateway must include a gateway-signed body verified against the gateway pubkey. Off = pass-through with audit row (FLEET-114).">
+                                            <label style="display:flex;align-items:center;gap:0.3rem;font-size:10px;color:var(--ink-dim);cursor:pointer;" title="Cryptographic gateway endorsement. When ON (and the global env flag is also ON), bridge registrations must include a gateway-signed body. Closes the 'leaked host token' attack: a stolen token alone is no longer enough.">
                                                 <input type="checkbox" :checked="(gatewayForHost(hostDrawerKey) || {}).attestation_required"
                                                        @change="toggleAttestation(hostDrawerKey, $event.target.checked)">
                                                 attest
@@ -5220,7 +5230,7 @@ WantedBy=multi-user.target</pre>
                                             <button class="btn btn-ghost"
                                                     style="font-size:9px;padding:0.15rem 0.5rem;"
                                                     @click="openGatewayPubkeyPrompt(hostDrawerKey)"
-                                                    :title="(gatewayForHost(hostDrawerKey) || {}).gateway_pubkey_b64 ? 'Pubkey captured: ' + ((gatewayForHost(hostDrawerKey) || {}).gateway_pubkey_b64 || '').slice(0, 12) + '… (click to replace)' : 'Paste the gateway Ed25519 pubkey (b64url) — required for FLEET-114 attestation verification.'"
+                                                    :title="(gatewayForHost(hostDrawerKey) || {}).gateway_pubkey_b64 ? 'Pubkey captured: ' + ((gatewayForHost(hostDrawerKey) || {}).gateway_pubkey_b64 || '').slice(0, 12) + '… (click to replace)' : 'Paste the gateway\'s own Ed25519 public key (b64url, 43 chars) so FleetCom can verify attestation signatures. Required for hardened posture.'"
                                                     x-text="(gatewayForHost(hostDrawerKey) || {}).gateway_pubkey_b64 ? '✓ pubkey' : '+ pubkey'"></button>
                                         </template>
                                         <template x-if="!gatewayForHost(hostDrawerKey)">
@@ -5758,6 +5768,131 @@ WantedBy=multi-user.target</pre>
         </div>
     </div>
 
+    <!-- FLEET-116: 'What is this?' explainer drawer. Plain-language
+         3-layer security explainer + 'today's right answer' cheat sheet.
+         Opens from the host-drawer Integrations row (admin-only). Content
+         mirrors docs/PAIRING-SECURITY-MODEL.md — when the doc changes,
+         this copy should follow. -->
+    <div x-show="pairInfoDrawerOpen" x-cloak
+         @keydown.escape.window="pairInfoDrawerOpen = false"
+         class="modal-backdrop"
+         @click="pairInfoDrawerOpen = false"
+         style="display:none">
+        <div class="modal-card" @click.stop style="max-width:720px;">
+            <div class="modal-title" style="color:var(--ink);">Bridge pairing security · 3-layer model</div>
+            <p style="font-size:11px;color:var(--ink-dim);line-height:1.55;">
+                A <strong>bridge</strong> runs on a managed host alongside an AI agent (Ocean, Merlin, …). Its job is to translate per-turn agent activity into FleetCom dashboard events. The hard question:
+                <em style="color:var(--ink);">"how does FleetCom know this 'Ocean' bridge is the real Ocean and not someone with a stolen token claiming to be Ocean?"</em>
+                The answer is layered N-of-3 trust: an attacker must break <strong>all three</strong> layers below to plant a fake bridge.
+            </p>
+
+            <!-- Layer 1 -->
+            <div style="margin-top:0.9rem;padding:0.7rem 0.85rem;border:1px solid var(--line);background:rgba(0,0,0,0.18);border-left:2px solid var(--ok);">
+                <div style="font-size:11px;color:var(--ok);font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">Layer 1 · Host bearer token <span style="color:var(--ink-ghost);font-weight:400;text-transform:none;letter-spacing:0;">(always on, no toggle)</span></div>
+                <p style="font-size:11px;color:var(--ink-dim);line-height:1.55;margin:0.4rem 0 0;">
+                    Every bridge presents the host's bosun bearer token on register. The server hashes it and looks it up.
+                </p>
+                <ul style="font-size:11px;color:var(--ink-dim);line-height:1.55;margin:0.3rem 0 0;padding-left:1.1rem;">
+                    <li><strong style="color:var(--ok);">Closes:</strong> random attackers on the internet posting fake registrations.</li>
+                    <li><strong style="color:var(--warn);">Doesn't close:</strong> anyone with the token (leaked .env, hijacked process, supply chain) — they can register any bridge.</li>
+                </ul>
+            </div>
+
+            <!-- Layer 2 -->
+            <div style="margin-top:0.65rem;padding:0.7rem 0.85rem;border:1px solid var(--line);background:rgba(0,0,0,0.18);border-left:2px solid var(--accent);">
+                <div style="font-size:11px;color:var(--accent);font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">Layer 2 · Operator approval <span style="color:var(--ink-ghost);font-weight:400;text-transform:none;letter-spacing:0;">(<code style="font-size:10px;">auto-approve</code> toggle)</span></div>
+                <p style="font-size:11px;color:var(--ink-dim);line-height:1.55;margin:0.4rem 0 0;">
+                    With <code style="font-size:10px;">auto-approve = OFF</code> (the recommended default), every new bridge sits as <code style="font-size:10px;">pending</code>. The header shows <span style="color:var(--warn);font-weight:700;">PAIR · N</span>. You eyeball the SSH-style fingerprint (e.g. <code style="font-size:10px;">a3:f1:9c:7d:4e:8b:2a:1f</code>) and click APPROVE.
+                </p>
+                <table style="width:100%;font-size:10px;color:var(--ink-dim);border-collapse:collapse;margin-top:0.4rem;">
+                    <thead>
+                        <tr style="text-align:left;color:var(--ink);">
+                            <th style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line-2);width:25%;">auto-approve</th>
+                            <th style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line-2);">Behavior</th>
+                            <th style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line-2);">Cost / benefit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line);"><strong style="color:var(--ok);">OFF</strong> <span style="color:var(--ink-ghost);">(recommended)</span></td>
+                            <td style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line);">Each bridge sits pending until you click APPROVE</td>
+                            <td style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line);">Closes the leaked-token attack: even with the token, attacker can't pair without your eyeballs</td>
+                        </tr>
+                        <tr>
+                            <td style="padding:0.3rem 0.4rem;"><strong style="color:var(--warn);">ON</strong></td>
+                            <td style="padding:0.3rem 0.4rem;">FleetCom auto-approves once the host token checks out</td>
+                            <td style="padding:0.3rem 0.4rem;">Zero friction; the host token alone is sufficient to register anything</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Layer 3 -->
+            <div style="margin-top:0.65rem;padding:0.7rem 0.85rem;border:1px solid var(--line);background:rgba(0,0,0,0.18);border-left:2px solid var(--ink);">
+                <div style="font-size:11px;color:var(--ink);font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">Layer 3 · Gateway co-signature <span style="color:var(--ink-ghost);font-weight:400;text-transform:none;letter-spacing:0;">(<code style="font-size:10px;">attest</code> + <code style="font-size:10px;">OOB code</code>)</span></div>
+                <div style="font-size:11px;color:var(--ink-dim);line-height:1.55;margin:0.4rem 0 0;">
+                    <strong style="color:var(--ink);">3a · Cryptographic endorsement (<code style="font-size:10px;">attest</code>):</strong>
+                    Before registering, the bridge asks its local OpenClaw gateway to sign a statement <em>"yes, this is the bridge claiming agent X with fingerprint Y on host Z."</em> FleetCom verifies the Ed25519 signature against the gateway's pubkey.
+                    <span style="color:var(--ink-ghost);">Status today: FleetCom side fully shipped (FLEET-114). Gateway side pending — until OpenClaw exposes <code style="font-size:10px;">/v1/bridge/sign-registration</code>, this falls through to <code style="font-size:10px;">skipped</code> with an audit row.</span>
+                </div>
+                <div style="font-size:11px;color:var(--ink-dim);line-height:1.55;margin:0.5rem 0 0;">
+                    <strong style="color:var(--ink);">3b · Out-of-band confirmation (<code style="font-size:10px;">OOB code</code>):</strong>
+                    Server mints a 6-digit code on register, salted with the bridge fingerprint. Pushed to the gateway over WebSocket; the gateway is supposed to deliver it through the agent's user channel (Ocean DMs you on Telegram). You read it from the agent and type it into the approval. 5-minute TTL, 5-attempt rate limit, then auto-reject.
+                    <span style="color:var(--ink-ghost);">Status today: FleetCom side fully shipped (FLEET-113). Gateway side pending — until the <code style="font-size:10px;">bridge.confirmation_code</code> RPC handler ships, OOB is dormant and operators must use SKIP OOB on every approval.</span>
+                </div>
+                <p style="font-size:11px;color:var(--ink-dim);line-height:1.55;margin:0.5rem 0 0;">
+                    <strong style="color:var(--ok);">Closes:</strong> the "host token + gateway both compromised" attack. The attacker still doesn't control the agent's user channel — Ocean's actual conversation with you. The OOB code arrives there or doesn't.
+                </p>
+            </div>
+
+            <!-- Today's right answer cheat sheet -->
+            <div style="margin-top:0.9rem;padding:0.7rem 0.85rem;border:1px solid var(--line-2);background:rgba(255,255,255,0.02);">
+                <div style="font-size:11px;color:var(--ink);font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">Today's right answer for production</div>
+                <p style="font-size:10px;color:var(--ink-ghost);line-height:1.55;margin:0.3rem 0 0;font-style:italic;">
+                    Until the gateway-side OpenClaw RFC ships, this is the maximum useful posture per toggle:
+                </p>
+                <table style="width:100%;font-size:10px;color:var(--ink-dim);border-collapse:collapse;margin-top:0.45rem;">
+                    <thead>
+                        <tr style="text-align:left;color:var(--ink);">
+                            <th style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line-2);width:22%;">Toggle</th>
+                            <th style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line-2);width:18%;">Value</th>
+                            <th style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line-2);">Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line);"><code style="font-size:10px;">auto-approve</code></td>
+                            <td style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line);"><strong style="color:var(--ok);">OFF</strong></td>
+                            <td style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line);">The only working second factor right now.</td>
+                        </tr>
+                        <tr>
+                            <td style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line);"><code style="font-size:10px;">OOB code</code></td>
+                            <td style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line);"><strong style="color:var(--ink-dim);">OFF</strong></td>
+                            <td style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line);">Gateway can't deliver codes yet — turning ON forces SKIP OOB on every approval.</td>
+                        </tr>
+                        <tr>
+                            <td style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line);"><code style="font-size:10px;">attest</code></td>
+                            <td style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line);"><strong style="color:var(--ink-dim);">ON or OFF</strong></td>
+                            <td style="padding:0.3rem 0.4rem;border-bottom:1px solid var(--line);">Equivalent until the global env flag is true. Default ON for forward-compatibility.</td>
+                        </tr>
+                        <tr>
+                            <td style="padding:0.3rem 0.4rem;"><code style="font-size:10px;">+ pubkey</code></td>
+                            <td style="padding:0.3rem 0.4rem;"><strong style="color:var(--ink-dim);">leave blank</strong></td>
+                            <td style="padding:0.3rem 0.4rem;">Nothing to paste until OpenClaw exports the gateway pubkey at pair time.</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p style="font-size:10px;color:var(--ink-ghost);line-height:1.55;margin:0.5rem 0 0;">
+                    A guided assistant (FLEET-115) will collapse this into 3 named postures (Auto-pair / Reviewed / Hardened) once the gateway-side endpoints land. For now, the toggles above are the canonical surface.
+                </p>
+            </div>
+
+            <div class="modal-actions" style="margin-top:0.85rem;">
+                <button class="btn btn-ghost" @click="pairInfoDrawerOpen = false">Close <span style="color:var(--ink-ghost);font-size:9px;">(Esc)</span></button>
+            </div>
+        </div>
+    </div>
+
     <!-- FLEET-112: full-fleet pending pair-requests panel. Opened from
          the header PAIR · N button. Each row is a click-jump back into
          the host drawer where the inline approval list lives — keeps
@@ -5942,6 +6077,10 @@ WantedBy=multi-user.target</pre>
                 // in the host drawer Integrations row.
                 pairDrawerOpen: false,
                 pairListExpanded: {},
+                // FLEET-116: 'What is this?' explainer modal opened from the
+                // host-drawer Integrations row. Mirrors docs/PAIRING-SECURITY-MODEL.md
+                // — engineering doc updates should be reflected here too.
+                pairInfoDrawerOpen: false,
                 // FLEET-113: per-pending-row OOB code input. Keyed by
                 // `<host>/<agent>` so multiple rows in the same drawer can
                 // accumulate codes independently. Cleared on approve/reject.
