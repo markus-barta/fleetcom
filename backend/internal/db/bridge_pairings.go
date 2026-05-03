@@ -193,6 +193,84 @@ func (s *Store) AllBridgePairings() ([]BridgePairing, error) {
 	return out, rows.Err()
 }
 
+// FLEET-109: data sources for the bridge-deploy suggestion chip rails.
+
+// BridgeAgentsForHost returns the agent names already paired as bridges
+// on this host. Drives the "ON THIS HOST" rail.
+func (s *Store) BridgeAgentsForHost(host string) ([]string, error) {
+	rows, err := s.DB.Query(
+		`SELECT agent FROM bridge_pairings WHERE host = ? ORDER BY agent`, host,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// HeartbeatAgentsForHost returns the agent names reported via bosun's
+// FLEETCOM_AGENTS heartbeat for this host. Drives the second source for
+// the "ON THIS HOST" rail (union with bridges).
+func (s *Store) HeartbeatAgentsForHost(host string) ([]string, error) {
+	rows, err := s.DB.Query(
+		`SELECT a.name FROM agents a
+		 JOIN hosts h ON h.id = a.host_id
+		 WHERE h.hostname = ?
+		 ORDER BY a.name`, host,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// TopBridgeNamesAcrossFleet returns up to limit agent names by frequency
+// across all hosts EXCEPT excludeHost. Drives the "SEEN IN YOUR FLEET"
+// rail. Trivial cardinality so a single GROUP BY is fine; no need for
+// a pre-aggregated table at this scale.
+func (s *Store) TopBridgeNamesAcrossFleet(excludeHost string, limit int) ([]string, error) {
+	if limit <= 0 {
+		limit = 3
+	}
+	rows, err := s.DB.Query(
+		`SELECT agent FROM bridge_pairings
+		 WHERE host != ?
+		 GROUP BY agent
+		 ORDER BY COUNT(*) DESC, agent ASC
+		 LIMIT ?`, excludeHost, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // DeleteBridgePairing removes a bridge row (the revoke path). The caller
 // is responsible for also invoking device.token.revoke on the gateway.
 func (s *Store) DeleteBridgePairing(host, agent string) error {

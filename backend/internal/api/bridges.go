@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -194,3 +195,135 @@ func SetGatewayAutoApprove(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 // the auth.GetUser dance. Currently unused but kept for future manual-
 // approval endpoints that need the admin's identity for audit.
 var _ = auth.GetUser
+
+// FLEET-109: bridge-deploy smart suggestion endpoint. The modal renders
+// three additive chip rails — "ON THIS HOST", "SEEN IN YOUR FLEET", and
+// "COMMON DEFAULTS" — populated server-side so the client doesn't have
+// to load the whole fleet. Cached in-process for 60s per host.
+
+// commonBridgeDefaults is the baseline set surfaced when the host has
+// nothing paired and the fleet is empty. Hard-coded for v1; promote to
+// a settings-table value if operators ever ask.
+var commonBridgeDefaults = []string{"merlin", "nimue", "percival"}
+
+type bridgeSuggestionsResponse struct {
+	OnHost   []string `json:"on_host"`
+	InFleet  []string `json:"in_fleet"`
+	Defaults []string `json:"defaults"`
+}
+
+type bridgeSuggestionsCacheEntry struct {
+	resp     bridgeSuggestionsResponse
+	expires  time.Time
+	hostname string
+}
+
+var (
+	bridgeSuggestionsMu    sync.Mutex
+	bridgeSuggestionsCache = map[string]bridgeSuggestionsCacheEntry{}
+)
+
+const bridgeSuggestionsTTL = 60 * time.Second
+
+// BridgeSuggestions handles GET /api/bridges/suggestions/{host}.
+// Admin-only (matches the rest of the bridge-management surface).
+func BridgeSuggestions(store *db.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		host := chi.URLParam(r, "host")
+		if host == "" {
+			http.Error(w, "host required", http.StatusBadRequest)
+			return
+		}
+
+		bridgeSuggestionsMu.Lock()
+		entry, ok := bridgeSuggestionsCache[host]
+		bridgeSuggestionsMu.Unlock()
+		if ok && time.Now().Before(entry.expires) {
+			writeBridgeSuggestions(w, entry.resp)
+			return
+		}
+
+		bridges, err := store.BridgeAgentsForHost(host)
+		if err != nil {
+			log.Printf("error: bridge suggestions / bridges for %s: %v", host, err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		hb, err := store.HeartbeatAgentsForHost(host)
+		if err != nil {
+			log.Printf("error: bridge suggestions / heartbeat for %s: %v", host, err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		fleet, err := store.TopBridgeNamesAcrossFleet(host, 3)
+		if err != nil {
+			log.Printf("error: bridge suggestions / fleet top: %v", err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+
+		// Union bridges + heartbeat agents, preserving first-seen order.
+		seen := map[string]bool{}
+		onHost := []string{}
+		for _, n := range bridges {
+			if n == "" || seen[n] {
+				continue
+			}
+			seen[n] = true
+			onHost = append(onHost, n)
+		}
+		for _, n := range hb {
+			if n == "" || seen[n] {
+				continue
+			}
+			seen[n] = true
+			onHost = append(onHost, n)
+		}
+
+		// in_fleet: exclude any name already on this host.
+		inFleet := []string{}
+		for _, n := range fleet {
+			if seen[n] {
+				continue
+			}
+			inFleet = append(inFleet, n)
+		}
+
+		// defaults: exclude anything already shown above.
+		defaults := []string{}
+		shown := map[string]bool{}
+		for _, n := range onHost {
+			shown[n] = true
+		}
+		for _, n := range inFleet {
+			shown[n] = true
+		}
+		for _, n := range commonBridgeDefaults {
+			if !shown[n] {
+				defaults = append(defaults, n)
+			}
+		}
+
+		resp := bridgeSuggestionsResponse{
+			OnHost:   onHost,
+			InFleet:  inFleet,
+			Defaults: defaults,
+		}
+
+		bridgeSuggestionsMu.Lock()
+		bridgeSuggestionsCache[host] = bridgeSuggestionsCacheEntry{
+			resp:     resp,
+			expires:  time.Now().Add(bridgeSuggestionsTTL),
+			hostname: host,
+		}
+		bridgeSuggestionsMu.Unlock()
+
+		writeBridgeSuggestions(w, resp)
+	}
+}
+
+func writeBridgeSuggestions(w http.ResponseWriter, resp bridgeSuggestionsResponse) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "private, max-age=30")
+	_ = json.NewEncoder(w).Encode(resp)
+}
