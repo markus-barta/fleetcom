@@ -208,6 +208,8 @@ var EndpointCatalog = []EndpointInfo{
 		Description: "FLEET-117: atomic posture setter (auto-pair | reviewed | hardened). Collapses the auto_approve / oob_delivery / attestation flags into one named combination. Hardened returns 422 when gateway_pubkey_b64 is empty."},
 	{Method: "GET", Path: "/api/gateways/{host}/preflight", Auth: []string{"session"}, RequiresAdmin: true,
 		Description: "FLEET-118: pre-pair probe — bosun freshness (last heartbeat <120s) + TCP dial + TLS handshake to wss://<host>:18789 with 3s timeout. Returns {checks, blockers[], ready}. Drives the wizard's pair-step checklist."},
+	{Method: "GET", Path: "/api/onboarding/state", Auth: []string{"session"}, RequiresAdmin: true,
+		Description: "FLEET-121: cross-cutting wizard state — {hosts_with_bosun_no_gateway, hosts_with_gateway_no_bridge, gateways_pending_approval, wizard_actionable}. Drives the first-run banner above the host grid."},
 
 	// ---------- Admin: bosun command channel (FLEET-60) ----------
 	{Method: "POST", Path: "/api/hosts/{host}/commands", Auth: []string{"session"}, RequiresAdmin: true,
