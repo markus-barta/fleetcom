@@ -5557,7 +5557,7 @@ WantedBy=multi-user.target</pre>
                                             <button class="btn btn-ghost"
                                                     style="font-size:9px;padding:0.15rem 0.5rem;"
                                                     @click="openGatewayPubkeyPrompt(hostDrawerKey)"
-                                                    :title="(gatewayForHost(hostDrawerKey) || {}).gateway_pubkey_b64 ? 'Pubkey captured: ' + ((gatewayForHost(hostDrawerKey) || {}).gateway_pubkey_b64 || '').slice(0, 12) + '… (click to replace)' : 'Paste the gateway\'s own Ed25519 public key (b64url, 43 chars) so FleetCom can verify attestation signatures. Required for hardened posture.'"
+                                                    :title="(gatewayForHost(hostDrawerKey) || {}).gateway_pubkey_b64 ? 'Pubkey pinned: ' + ((gatewayForHost(hostDrawerKey) || {}).gateway_pubkey_b64 || '').slice(0, 12) + '… (auto-pinned via TOFU; click to manually replace — destructive, only for rotation).' : 'FleetCom auto-pins the gateway\'s Ed25519 public key on first OpenClaw connect (TOFU — FLEET-123). Click to paste manually as a fallback. Required for hardened posture.'"
                                                     x-text="(gatewayForHost(hostDrawerKey) || {}).gateway_pubkey_b64 ? '✓ pubkey' : '+ pubkey'"></button>
                                         </template>
                                         <template x-if="!gatewayForHost(hostDrawerKey)">
@@ -6157,12 +6157,10 @@ WantedBy=multi-user.target</pre>
             <div class="modal-title" style="color:var(--warn);"
                  x-text="'Gateway pubkey · ' + (gatewayPubkeyCtx ? gatewayPubkeyCtx.host : '')"></div>
             <p style="font-size:11px;color:var(--ink-dim);line-height:1.5;">
-                Paste the gateway's raw Ed25519 public key (b64url-no-padding, 43 characters). Required for FLEET-114 attestation verification. Leave empty to clear.
+                FleetCom auto-pins this on first OpenClaw connect (TOFU — FLEET-123). Use this form only to paste manually (rotation, recovery, or before the gateway exposes <code style="font-size:10px;">gateway.identity.get</code>). b64url-no-padding, 43 characters. Leave empty to clear.
             </p>
             <p style="font-size:10px;color:var(--ink-faint);line-height:1.5;font-family:'JetBrains Mono',ui-monospace,monospace;background:rgba(0,0,0,0.18);padding:0.5rem 0.7rem;border-left:2px solid var(--line-2);">
-                Find it on the gateway host:<br>
-                <span style="color:var(--ink-dim);">cat /var/lib/openclaw/keys/public.pem</span><br>
-                then run <span style="color:var(--ink-dim);">openssl ec -pubin … -outform DER</span> + b64url, OR ask the gateway operator for the value emitted in pair-time logs.
+                OpenClaw stores its identity under <span style="color:var(--ink-dim);">~/.openclaw</span> on the gateway host (no user-readable PEM). To populate this column, simply (re)connect FleetCom — auto-pin runs on every operator handshake. As a manual fallback, ask the gateway operator for the device <span style="color:var(--ink-dim);">publicKey</span> reported in pair-time logs.
             </p>
             <input type="text"
                    class="modal-input"
@@ -6554,12 +6552,12 @@ WantedBy=multi-user.target</pre>
                         <tr>
                             <td style="padding:0.3rem 0.4rem;"><code style="font-size:10px;">+ pubkey</code></td>
                             <td style="padding:0.3rem 0.4rem;"><strong style="color:var(--ink-dim);">leave blank</strong></td>
-                            <td style="padding:0.3rem 0.4rem;">Nothing to paste until OpenClaw exports the gateway pubkey at pair time.</td>
+                            <td style="padding:0.3rem 0.4rem;">Auto-captured on first connect via TOFU (FLEET-123). Paste only as fallback for rotation/recovery.</td>
                         </tr>
                     </tbody>
                 </table>
                 <p style="font-size:10px;color:var(--ink-ghost);line-height:1.55;margin:0.5rem 0 0;">
-                    The three posture cards above the toggles are the recommended way to set your gateway's stance — one click flips the right combination of flags atomically. <strong>Reviewed</strong> is the default for production today; <strong>Hardened</strong> unlocks once you paste the gateway's public key. The Advanced toggles disclosure remains for non-canonical combinations.
+                    The three posture cards above the toggles are the recommended way to set your gateway's stance — one click flips the right combination of flags atomically. <strong>Reviewed</strong> is the default for production today; <strong>Hardened</strong> unlocks once the gateway pubkey is captured — FleetCom auto-pins on first connect (TOFU), with manual paste as a fallback. The Advanced toggles disclosure remains for non-canonical combinations.
                 </p>
             </div>
 
@@ -9084,7 +9082,7 @@ WantedBy=multi-user.target</pre>
                             locked: !hasPubkey,
                             lockReason: hasPubkey
                                 ? ''
-                                : 'Paste the gateway\'s public key first (+ pubkey) — without it, FleetCom can\'t verify attestation signatures.',
+                                : 'Gateway pubkey not yet captured. Reconnect FleetCom to auto-pin (TOFU), or paste manually via + pubkey — required so FleetCom can verify attestation signatures.',
                         },
                     ];
                 },

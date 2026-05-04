@@ -170,7 +170,8 @@ func (m *Manager) reconcile(ctx context.Context) {
 
 		cctx, cancel := context.WithCancel(ctx)
 		host := host // capture
-		cl := NewClient(ClientOptions{
+		var cl *Client
+		cl = NewClient(ClientOptions{
 			URL:           url,
 			Identity:      id,
 			OperatorToken: token,
@@ -186,6 +187,10 @@ func (m *Manager) reconcile(ctx context.Context) {
 			},
 			OnConnected: func(_ json.RawMessage) {
 				log.Printf("openclaw %s: operator session live", host)
+				// FLEET-123: TOFU auto-pin of the gateway's own Ed25519
+				// pubkey via the gateway.identity.get RPC. Run async so
+				// we don't block the read loop / handshake completion.
+				go m.autoPinGatewayPubkey(cctx, host, cl)
 			},
 		})
 		m.clients[host] = &clientHandle{client: cl, cancel: cancel}
@@ -419,6 +424,75 @@ func (m *Manager) RevokeBridgeOnGateway(ctx context.Context, host, deviceID stri
 		"deviceId": deviceID,
 	}, 10*time.Second)
 	return err
+}
+
+// autoPinGatewayPubkey (FLEET-123) calls gateway.identity.get on a freshly
+// connected operator session and TOFU-pins the gateway's own Ed25519
+// publicKey into openclaw_gateways.gateway_pubkey_b64. This replaces the
+// operator-paste flow that referenced a bogus on-disk path
+// (/var/lib/openclaw/keys/public.pem) which OpenClaw never wrote — see
+// docs/PAIRING-SECURITY-MODEL.md.
+//
+// Trust model: the publicKey we capture here came from a peer that
+// already proved possession of the matching Ed25519 private key by
+// signing OUR connect.challenge nonce in the handshake right before this
+// runs. So at first-pin time we have a same-session signature binding
+// the captured key to the gateway we just authenticated against. After
+// pinning, every subsequent reconnect's connect.challenge becomes a
+// continuity check against the pinned key (the gateway can only sign
+// with the matching private half).
+//
+// On a key mismatch (already-pinned gateway hands us a different key)
+// we log loudly and DO NOT overwrite — see SetGatewayPubkeyTOFU. The
+// operator's manual paste path remains available for legitimate key
+// rotation.
+func (m *Manager) autoPinGatewayPubkey(ctx context.Context, host string, cl *Client) {
+	if cl == nil {
+		return
+	}
+	rpcCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	resp, err := cl.Call(rpcCtx, "gateway.identity.get", map[string]interface{}{}, 10*time.Second)
+	if err != nil {
+		log.Printf("openclaw %s: gateway.identity.get failed: %v (skipping auto-pin)", host, err)
+		return
+	}
+	var ident struct {
+		PublicKey string `json:"publicKey"`
+		ID        string `json:"id"`
+	}
+	if err := json.Unmarshal(resp, &ident); err != nil {
+		log.Printf("openclaw %s: malformed gateway.identity.get response: %v", host, err)
+		return
+	}
+	if ident.PublicKey == "" {
+		log.Printf("openclaw %s: gateway.identity.get returned empty publicKey (skipping)", host)
+		return
+	}
+	res, err := m.store.SetGatewayPubkeyTOFU(host, ident.PublicKey)
+	if err != nil {
+		log.Printf("openclaw %s: TOFU pin failed: %v", host, err)
+		return
+	}
+	switch {
+	case res.Pinned:
+		log.Printf("openclaw %s: pinned gateway pubkey via TOFU (deviceId=%s prefix=%s…)",
+			host, truncate(ident.ID, 12), truncate(ident.PublicKey, 8))
+		// Push fresh gateway list so the dashboard's "+ pubkey" chip
+		// flips to "✓ pubkey" without a manual refresh.
+		if gs, err := m.store.AllGateways(); err == nil {
+			if data, err := json.Marshal(gs); err == nil {
+				m.hub.Broadcast("gateways", data)
+			}
+		}
+	case res.AlreadyMatches:
+		// Continuity confirmed — pinned key still matches what the
+		// gateway is presenting. No log; this is the steady-state
+		// path on every reconnect.
+	case res.Mismatch:
+		log.Printf("openclaw %s: WARNING gateway pubkey CHANGED — pinned=%s… new=%s… (auto-pin refused; operator must re-pin via PUT /api/gateways/%s/pubkey)",
+			host, truncate(res.Existing, 8), truncate(ident.PublicKey, 8), host)
+	}
 }
 
 func truncate(s string, n int) string {

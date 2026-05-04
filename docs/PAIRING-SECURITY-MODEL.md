@@ -74,6 +74,14 @@ The escape hatch is `POST /api/bridges/{host}/{agent}/approve-skip-oob` with a t
 
 **Status today:** FleetCom side fully shipped (FLEET-113, v0.9.0). Gateway side pending: OpenClaw needs the `bridge.confirmation_code` WS RPC handler. Until then, OOB is dormant — the server still mints codes but no delivery happens, and operators must use SKIP OOB on every approval.
 
+### How the gateway pubkey lands in `openclaw_gateways.gateway_pubkey_b64`
+
+**Trust-on-first-use auto-pin (FLEET-123).** After the operator-session connect handshake completes, FleetCom calls `gateway.identity.get` over the same WebSocket and stores the returned `publicKey` only when the column is currently empty (`SetGatewayPubkeyTOFU`). The captured key is bound to the just-authenticated peer because the gateway already proved possession of the matching Ed25519 private key by signing FleetCom's `connect.challenge` nonce in the handshake immediately preceding this call. Every subsequent reconnect re-runs the call as a continuity check — a divergent key logs a warning and refuses to overwrite.
+
+**Manual paste is the fallback.** The host-drawer `+ pubkey` chip opens a paste form for legitimate rotation, recovery, or use with gateway builds that don't yet expose `gateway.identity.get`. The manual path uses the destructive `SetGatewayPubkey` (PUT `/api/gateways/{host}/pubkey`); auto-pin uses the additive-only TOFU path.
+
+The bogus `cat /var/lib/openclaw/keys/public.pem` instruction in pre-FLEET-123 modal copy was wrong: OpenClaw stores its identity under `~/.openclaw` on the gateway host, with no user-readable PEM. Operators were never able to follow the original copy.
+
 ## Postures (FLEET-117 wizard collapses the toggles)
 
 Three named postures map to canonical toggle combinations:
@@ -97,7 +105,7 @@ For most production hosts, until the OpenClaw RFC ships:
 | auto-approve | OFF | The only working second factor right now |
 | OOB code | OFF | Gateway can't deliver codes yet → enabling forces SKIP OOB on every approval |
 | attest | ON or OFF | Equivalent until the env flag is true. Default ON. |
-| + PUBKEY | leave blank | Nothing to paste until OpenClaw exports it |
+| + PUBKEY | auto-pinned on first connect (TOFU, FLEET-123) | Manual paste remains as a fallback for rotation/recovery |
 
 Equivalent posture: **Reviewed (default)**.
 
