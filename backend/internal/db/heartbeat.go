@@ -82,9 +82,11 @@ func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64
 	}
 	defer tx.Rollback()
 
-	// Upsert host. deployment_shape and boot_id only update when bosun
-	// reports a non-empty value — old agents pre-FLEET-84/369.1 that omit
-	// the field don't clobber a previously-known value.
+	// Upsert host. agent_version, deployment_shape, and boot_id only update
+	// when the heartbeat reports a non-empty value — old/legacy agents that
+	// omit a field don't clobber a previously-known value. (FLEET-124: dsc0
+	// hit this when a stale NixOS fleetcom-agent.timer raced bosun, flipping
+	// agent_version between "0.6.0…" and "" every 60s.)
 	var hostID int64
 	err = tx.QueryRow(`
 		INSERT INTO hosts (hostname, os, kernel, uptime_seconds, agent_version, last_seen, deployment_shape, boot_id)
@@ -93,7 +95,7 @@ func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64
 			os = excluded.os,
 			kernel = excluded.kernel,
 			uptime_seconds = excluded.uptime_seconds,
-			agent_version = excluded.agent_version,
+			agent_version = CASE WHEN excluded.agent_version != '' THEN excluded.agent_version ELSE hosts.agent_version END,
 			last_seen = excluded.last_seen,
 			deployment_shape = CASE WHEN excluded.deployment_shape != '' THEN excluded.deployment_shape ELSE hosts.deployment_shape END,
 			boot_id = CASE WHEN excluded.boot_id != '' THEN excluded.boot_id ELSE hosts.boot_id END
