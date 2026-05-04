@@ -205,3 +205,86 @@ func TestSetGatewayPosture_NoSuchHost(t *testing.T) {
 		}
 	}
 }
+
+// FLEET-123 — TOFU auto-pin of the gateway pubkey from the connect
+// handshake. The store-side contract is: pin only when the column is
+// empty; never silently overwrite.
+func TestSetGatewayPubkeyTOFU_PinsOnEmpty(t *testing.T) {
+	store := newTestStore(t)
+	seedGateway(t, store, "dsc0")
+	const pk = "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE"
+
+	res, err := store.SetGatewayPubkeyTOFU("dsc0", pk)
+	if err != nil {
+		t.Fatalf("TOFU: %v", err)
+	}
+	if !res.Pinned || res.AlreadyMatches || res.Mismatch {
+		t.Fatalf("first call should report Pinned only; got %+v", res)
+	}
+	_, _, _, gotPk := gatewayFlags(t, store, "dsc0")
+	if gotPk != pk {
+		t.Fatalf("pubkey not stored: got %q want %q", gotPk, pk)
+	}
+}
+
+func TestSetGatewayPubkeyTOFU_NoOpOnSameValue(t *testing.T) {
+	store := newTestStore(t)
+	seedGateway(t, store, "dsc0")
+	const pk = "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE"
+	if err := store.SetGatewayPubkey("dsc0", pk); err != nil {
+		t.Fatalf("seed pubkey: %v", err)
+	}
+
+	res, err := store.SetGatewayPubkeyTOFU("dsc0", pk)
+	if err != nil {
+		t.Fatalf("TOFU: %v", err)
+	}
+	if res.Pinned || !res.AlreadyMatches || res.Mismatch {
+		t.Fatalf("re-pin of same value should report AlreadyMatches only; got %+v", res)
+	}
+	if res.Existing != pk {
+		t.Fatalf("Existing should echo stored value; got %q", res.Existing)
+	}
+}
+
+func TestSetGatewayPubkeyTOFU_RefusesToOverwrite(t *testing.T) {
+	store := newTestStore(t)
+	seedGateway(t, store, "dsc0")
+	const pkOld = "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE"
+	const pkNew = "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI"
+	if err := store.SetGatewayPubkey("dsc0", pkOld); err != nil {
+		t.Fatalf("seed pubkey: %v", err)
+	}
+
+	res, err := store.SetGatewayPubkeyTOFU("dsc0", pkNew)
+	if err != nil {
+		t.Fatalf("TOFU: %v", err)
+	}
+	// Mismatch must NOT silently overwrite — the operator's manual
+	// re-pin via PUT /api/gateways/{host}/pubkey is the only legitimate
+	// path to swap a key on a paired gateway.
+	if res.Pinned || res.AlreadyMatches || !res.Mismatch {
+		t.Fatalf("conflicting value should report Mismatch only; got %+v", res)
+	}
+	_, _, _, stored := gatewayFlags(t, store, "dsc0")
+	if stored != pkOld {
+		t.Fatalf("TOFU mutated key on mismatch: got %q want %q", stored, pkOld)
+	}
+}
+
+func TestSetGatewayPubkeyTOFU_NoSuchHost(t *testing.T) {
+	store := newTestStore(t)
+	// No seedGateway.
+	_, err := store.SetGatewayPubkeyTOFU("ghost", "QUFB")
+	if err == nil {
+		t.Fatalf("expected not-found error, got nil")
+	}
+}
+
+func TestSetGatewayPubkeyTOFU_RejectsEmpty(t *testing.T) {
+	store := newTestStore(t)
+	seedGateway(t, store, "dsc0")
+	if _, err := store.SetGatewayPubkeyTOFU("dsc0", ""); err == nil {
+		t.Fatalf("empty pubkey should be rejected")
+	}
+}

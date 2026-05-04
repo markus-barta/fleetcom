@@ -167,6 +167,67 @@ func (s *Store) SetGatewayPubkey(host, pubkeyB64 string) error {
 	return nil
 }
 
+// TOFUPubkeyResult reports the outcome of SetGatewayPubkeyTOFU. Exactly
+// one of Pinned/AlreadyMatches/Mismatch is true when err is nil.
+type TOFUPubkeyResult struct {
+	Pinned         bool   // column was empty, value just stored
+	AlreadyMatches bool   // column already held the same value
+	Mismatch       bool   // column held a different value (caller decides whether to log/alert)
+	Existing       string // current stored value (empty if Pinned)
+}
+
+// SetGatewayPubkeyTOFU is the trust-on-first-use path for the auto-pin
+// flow (FLEET-123). Behavior:
+//
+//   - column empty           → write the value, return Pinned=true
+//   - column == newPubkey    → no-op, return AlreadyMatches=true
+//   - column != newPubkey    → no-op, return Mismatch=true (caller logs)
+//
+// Why a dedicated method instead of plain SetGatewayPubkey: TOFU must
+// never silently overwrite a previously-pinned key. If the gateway's
+// identity changes mid-life (rotation, reinstall, MITM), the operator
+// has to clear-and-re-pin via the existing PUT /api/gateways/{host}/pubkey
+// endpoint (which calls SetGatewayPubkey and is intentionally
+// destructive). The auto-pin path stays additive-only.
+//
+// Mutation is gated by a SQL WHERE on the empty-string default so the
+// pin is atomic against concurrent writes.
+func (s *Store) SetGatewayPubkeyTOFU(host, newPubkey string) (TOFUPubkeyResult, error) {
+	if newPubkey == "" {
+		return TOFUPubkeyResult{}, errors.New("SetGatewayPubkeyTOFU: empty pubkey")
+	}
+	res, err := s.DB.Exec(
+		`UPDATE openclaw_gateways
+		    SET gateway_pubkey_b64 = ?
+		  WHERE host = ?
+		    AND gateway_pubkey_b64 = ''`,
+		newPubkey, host,
+	)
+	if err != nil {
+		return TOFUPubkeyResult{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 1 {
+		return TOFUPubkeyResult{Pinned: true}, nil
+	}
+	// Either the column was non-empty or the row doesn't exist. Probe to
+	// distinguish.
+	var existing string
+	err = s.DB.QueryRow(
+		`SELECT gateway_pubkey_b64 FROM openclaw_gateways WHERE host = ?`,
+		host,
+	).Scan(&existing)
+	if errors.Is(err, sql.ErrNoRows) {
+		return TOFUPubkeyResult{}, fmt.Errorf("gateway not found: %s", host)
+	}
+	if err != nil {
+		return TOFUPubkeyResult{}, err
+	}
+	if existing == newPubkey {
+		return TOFUPubkeyResult{AlreadyMatches: true, Existing: existing}, nil
+	}
+	return TOFUPubkeyResult{Mismatch: true, Existing: existing}, nil
+}
+
 // SetBridgeAttestationStatus persists the per-row outcome. Filters on
 // status='pending' so a re-registration with the same fp (which keeps
 // the row at status='approved') cannot downgrade an already-verified
