@@ -2,16 +2,31 @@ package openclaw
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
 )
+
+// operatorTLSClient returns an HTTP client whose TLS config skips hostname
+// verification. Gateway certs are self-signed without SANs; authentication
+// of the peer is the application-layer Ed25519 connect.challenge handshake
+// (see docs/PAIRING-SECURITY-MODEL.md "Layer 0 — transport (TLS)"). TLS is
+// kept for confidentiality + integrity, not for identity.
+func operatorTLSClient() *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // see comment above
+		},
+	}
+}
 
 // ClientOptions configures a single per-gateway WebSocket client.
 type ClientOptions struct {
@@ -102,6 +117,7 @@ func (c *Client) runOnce(ctx context.Context) error {
 	defer cancel()
 	conn, _, err := websocket.Dial(dialCtx, c.opts.URL, &websocket.DialOptions{
 		Subprotocols: []string{"openclaw-gateway.v3"},
+		HTTPClient:   operatorTLSClient(),
 	})
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
