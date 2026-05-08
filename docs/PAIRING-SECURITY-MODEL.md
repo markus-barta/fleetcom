@@ -12,6 +12,23 @@ The hard question: *"how does FleetCom know this `Ocean` bridge is the real Ocea
 
 The answer is N-of-3: an attacker must break **all three** of the layers below to plant a fake bridge. Breaking any one or two leaves the others as a backstop.
 
+## Layer 0 — transport (TLS): confidentiality, not authentication
+
+The operator-session WebSocket from FleetCom to each OpenClaw gateway runs over `wss://`. TLS here is intentionally configured with `InsecureSkipVerify=true` (`backend/internal/openclaw/client.go::operatorTLSClient`). FleetCom does **not** validate the gateway's certificate chain or hostname.
+
+That is a deliberate split between transport and identity:
+
+- **TLS gives us:** confidentiality against passive sniffing on the wire and integrity (MAC) against an in-path attacker tampering with bytes.
+- **TLS does NOT give us:** authentication of the gateway. That is the job of the `connect.challenge` handshake — the gateway must sign FleetCom's nonce with its Ed25519 private key, verified against the pinned `gateway_pubkey_b64` (auto-pinned via TOFU on first connect, FLEET-123). An MITM who can substitute a TLS cert still cannot forge that signature without the gateway's private key.
+
+Why not validate the cert? Three options were considered (FLEET-125):
+
+1. **Issue gateway certs with matching SANs** (Tailscale MagicDNS, in-cluster CA, or per-host self-signed). Adds permanent PKI ops on every gateway host — generation, rotation, distribution — to enforce a check that the spec does not name as the trust anchor. Cost without security delta.
+2. **Pin the cert fingerprint via TLS-layer TOFU.** Adds a second TOFU store running parallel to the existing Ed25519 pubkey TOFU. Both pin the same peer; they can drift apart on legitimate rotation and produce confusing failure modes. No incremental security against an attacker who would already need the Ed25519 private key to complete the handshake.
+3. **`InsecureSkipVerify` and rely on the Ed25519 challenge.** *(chosen)* Aligns transport with the stated trust model: identity is application-layer, transport is encrypted-but-anonymous. One trust factor, one source of truth.
+
+Going to option (1) or (2) would only strengthen the model if the Ed25519 trust factor itself were broken — at which point N-of-3 has already collapsed. The design floor for this system is N=3 (host token + operator + gateway co-sign); a hypothetical N=4 via TLS validation would not change any cell of the threat-model table at the bottom of this doc.
+
 ## The three layers
 
 ### Layer 1 — host bearer token *(always on, no toggle)*
