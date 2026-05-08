@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -60,7 +61,7 @@ type Client struct {
 
 	mu      sync.Mutex
 	ws      *websocket.Conn
-	pending map[int64]chan rpcResult
+	pending map[string]chan rpcResult
 	nonce   string
 	nextID  int64
 }
@@ -72,10 +73,13 @@ type rpcResult struct {
 
 // Frame is the union envelope on the wire. OpenClaw sends `type` as one
 // of "req", "res", "event" and only populates the fields relevant to
-// that frame kind.
+// that frame kind. The `id` field is a non-empty string in the gateway's
+// AJV schema (RequestFrameSchema / ResponseFrameSchema) — sending an
+// integer here causes the gateway to close the WS with reason
+// "invalid request frame".
 type frame struct {
 	Type    string          `json:"type"`
-	ID      int64           `json:"id,omitempty"`
+	ID      string          `json:"id,omitempty"`
 	Method  string          `json:"method,omitempty"`
 	Params  json.RawMessage `json:"params,omitempty"`
 	Payload json.RawMessage `json:"payload,omitempty"`
@@ -132,7 +136,7 @@ func (c *Client) runOnce(ctx context.Context) error {
 
 	c.mu.Lock()
 	c.ws = conn
-	c.pending = make(map[int64]chan rpcResult)
+	c.pending = make(map[string]chan rpcResult)
 	c.nonce = ""
 	c.mu.Unlock()
 
@@ -309,7 +313,7 @@ func (c *Client) sendConnect(ctx context.Context) error {
 // Call sends an RPC and waits for the matching response. Safe for
 // concurrent callers.
 func (c *Client) Call(ctx context.Context, method string, params interface{}, timeout time.Duration) (json.RawMessage, error) {
-	id := atomic.AddInt64(&c.nextID, 1)
+	id := strconv.FormatInt(atomic.AddInt64(&c.nextID, 1), 10)
 	paramsJSON, err := json.Marshal(params)
 	if err != nil {
 		return nil, fmt.Errorf("marshal params: %w", err)
