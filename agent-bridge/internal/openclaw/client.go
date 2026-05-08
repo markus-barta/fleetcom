@@ -2,16 +2,38 @@ package openclaw
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
+	"os"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
 )
+
+// operatorTLSClient returns an HTTP client whose TLS config skips hostname
+// verification. Gateway certs are self-signed without SANs; authentication
+// of the peer is the application-layer Ed25519 connect.challenge handshake
+// (see docs/PAIRING-SECURITY-MODEL.md "Layer 0 — transport (TLS)"). TLS is
+// kept for confidentiality + integrity, not for identity.
+func operatorTLSClient() *http.Client {
+	return &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // see comment above
+		},
+	}
+}
+
+// debugFrames toggles per-frame inbound logging. Off in production; flip
+// FLEETCOM_OPENCLAW_DEBUG=1 in the env to investigate handshake issues
+// against an unfamiliar gateway build.
+var debugFrames = os.Getenv("FLEETCOM_OPENCLAW_DEBUG") == "1"
 
 // ClientOptions configures a single per-gateway WebSocket client.
 type ClientOptions struct {
@@ -39,7 +61,7 @@ type Client struct {
 
 	mu      sync.Mutex
 	ws      *websocket.Conn
-	pending map[int64]chan rpcResult
+	pending map[string]chan rpcResult
 	nonce   string
 	nextID  int64
 }
@@ -51,10 +73,13 @@ type rpcResult struct {
 
 // Frame is the union envelope on the wire. OpenClaw sends `type` as one
 // of "req", "res", "event" and only populates the fields relevant to
-// that frame kind.
+// that frame kind. The `id` field is a non-empty string in the gateway's
+// AJV schema (RequestFrameSchema / ResponseFrameSchema) — sending an
+// integer here causes the gateway to close the WS with reason
+// "invalid request frame".
 type frame struct {
 	Type    string          `json:"type"`
-	ID      int64           `json:"id,omitempty"`
+	ID      string          `json:"id,omitempty"`
 	Method  string          `json:"method,omitempty"`
 	Params  json.RawMessage `json:"params,omitempty"`
 	Payload json.RawMessage `json:"payload,omitempty"`
@@ -102,6 +127,7 @@ func (c *Client) runOnce(ctx context.Context) error {
 	defer cancel()
 	conn, _, err := websocket.Dial(dialCtx, c.opts.URL, &websocket.DialOptions{
 		Subprotocols: []string{"openclaw-gateway.v3"},
+		HTTPClient:   operatorTLSClient(),
 	})
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
@@ -110,7 +136,7 @@ func (c *Client) runOnce(ctx context.Context) error {
 
 	c.mu.Lock()
 	c.ws = conn
-	c.pending = make(map[int64]chan rpcResult)
+	c.pending = make(map[string]chan rpcResult)
 	c.nonce = ""
 	c.mu.Unlock()
 
@@ -146,13 +172,35 @@ func (c *Client) runOnce(ctx context.Context) error {
 		}
 	}()
 
-	// Read loop runs inline; handshake kicks off when we see the
-	// challenge event.
+	// connectDone is closed exactly once — either when the challenge
+	// arrives (and the handshake goroutine takes over) or when the read
+	// loop exits. Track whether we've closed it so the deferred close
+	// below is safe.
+	var connectDoneClosed atomic.Bool
+	closeConnectDone := func() {
+		if connectDoneClosed.CompareAndSwap(false, true) {
+			close(connectDone)
+		}
+	}
+	defer closeConnectDone()
+
+	// Read loop runs inline; the connect RPC is dispatched in a separate
+	// goroutine when the challenge arrives so the read loop can keep
+	// draining frames (including the gateway's response to our connect).
+	// Calling sendConnect inline would deadlock: Call.write+wait blocks
+	// the same goroutine that delivers the response into the pending
+	// channel.
 	for {
 		_, data, err := conn.Read(ctx)
 		if err != nil {
-			close(connectDone)
 			return fmt.Errorf("read: %w", err)
+		}
+		if debugFrames {
+			preview := data
+			if len(preview) > 512 {
+				preview = preview[:512]
+			}
+			log.Printf("openclaw %s: <- %s", c.opts.URL, string(preview))
 		}
 		var env frame
 		if err := json.Unmarshal(data, &env); err != nil {
@@ -171,10 +219,13 @@ func (c *Client) runOnce(ctx context.Context) error {
 				c.mu.Lock()
 				c.nonce = p.Nonce
 				c.mu.Unlock()
-				close(connectDone)
-				if err := c.sendConnect(ctx); err != nil {
-					return fmt.Errorf("connect: %w", err)
-				}
+				closeConnectDone()
+				go func() {
+					if err := c.sendConnect(ctx); err != nil {
+						log.Printf("openclaw %s: connect failed: %v", c.opts.URL, err)
+						_ = conn.Close(websocket.StatusPolicyViolation, "connect failed")
+					}
+				}()
 				continue
 			}
 			if c.opts.OnEvent != nil {
@@ -262,7 +313,7 @@ func (c *Client) sendConnect(ctx context.Context) error {
 // Call sends an RPC and waits for the matching response. Safe for
 // concurrent callers.
 func (c *Client) Call(ctx context.Context, method string, params interface{}, timeout time.Duration) (json.RawMessage, error) {
-	id := atomic.AddInt64(&c.nextID, 1)
+	id := strconv.FormatInt(atomic.AddInt64(&c.nextID, 1), 10)
 	paramsJSON, err := json.Marshal(params)
 	if err != nil {
 		return nil, fmt.Errorf("marshal params: %w", err)
