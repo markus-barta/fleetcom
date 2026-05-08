@@ -8,12 +8,18 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
 )
+
+// debugFrames toggles per-frame inbound logging. Off in production; flip
+// FLEETCOM_OPENCLAW_DEBUG=1 in the env to investigate handshake issues
+// against an unfamiliar gateway build.
+var debugFrames = os.Getenv("FLEETCOM_OPENCLAW_DEBUG") == "1"
 
 // operatorTLSClient returns an HTTP client whose TLS config skips hostname
 // verification. Gateway certs are self-signed without SANs; authentication
@@ -162,13 +168,35 @@ func (c *Client) runOnce(ctx context.Context) error {
 		}
 	}()
 
-	// Read loop runs inline; handshake kicks off when we see the
-	// challenge event.
+	// connectDone is closed exactly once — either when the challenge
+	// arrives (and the handshake goroutine takes over) or when the read
+	// loop exits. Track whether we've closed it so the deferred close
+	// below is safe.
+	var connectDoneClosed atomic.Bool
+	closeConnectDone := func() {
+		if connectDoneClosed.CompareAndSwap(false, true) {
+			close(connectDone)
+		}
+	}
+	defer closeConnectDone()
+
+	// Read loop runs inline; the connect RPC is dispatched in a separate
+	// goroutine when the challenge arrives so the read loop can keep
+	// draining frames (including the gateway's response to our connect).
+	// Calling sendConnect inline would deadlock: Call.write+wait blocks
+	// the same goroutine that delivers the response into the pending
+	// channel.
 	for {
 		_, data, err := conn.Read(ctx)
 		if err != nil {
-			close(connectDone)
 			return fmt.Errorf("read: %w", err)
+		}
+		if debugFrames {
+			preview := data
+			if len(preview) > 512 {
+				preview = preview[:512]
+			}
+			log.Printf("openclaw %s: <- %s", c.opts.URL, string(preview))
 		}
 		var env frame
 		if err := json.Unmarshal(data, &env); err != nil {
@@ -187,10 +215,13 @@ func (c *Client) runOnce(ctx context.Context) error {
 				c.mu.Lock()
 				c.nonce = p.Nonce
 				c.mu.Unlock()
-				close(connectDone)
-				if err := c.sendConnect(ctx); err != nil {
-					return fmt.Errorf("connect: %w", err)
-				}
+				closeConnectDone()
+				go func() {
+					if err := c.sendConnect(ctx); err != nil {
+						log.Printf("openclaw %s: connect failed: %v", c.opts.URL, err)
+						_ = conn.Close(websocket.StatusPolicyViolation, "connect failed")
+					}
+				}()
 				continue
 			}
 			if c.opts.OnEvent != nil {
