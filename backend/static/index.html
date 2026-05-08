@@ -2514,12 +2514,29 @@
             transform: translateX(-100%);
         }
         .drawer.drawer-oplog.is-open { transform: translateX(0); }
+        /* FLEET-128: oplog drawer is left-anchored, so its resize handle lives
+           on the RIGHT edge (mirror of the right-side drawers' left-edge handle).
+           When pinned, the .app container reserves space via padding-left. */
+        .drawer.drawer-oplog .drawer-resize-handle {
+            left: auto; right: 0;
+            background: transparent;
+        }
+        .drawer.drawer-oplog .drawer-resize-handle:hover,
+        .drawer.drawer-oplog .drawer-resize-handle.is-dragging {
+            background: linear-gradient(to left, var(--accent, #7ec2ff), transparent);
+            opacity: 0.55;
+        }
         /* FLEET-108: dense console-style list. Fixed-width timestamp + verb
            + flexible target + outcome dot at end. Hover reveals full error. */
         .oplog-rows { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 11px; }
+        /* FLEET-128: verb column needs ~140px for the longest currently-emitted
+           labels (ATTESTATION_SKIPPED, POSTURE_HARDENED, BRIDGE_APPROVED, …).
+           Pre-fix it was 56px, so labels overflowed and visually rendered on top
+           of the target column. Both verb and target now have overflow:hidden +
+           ellipsis as a last-ditch clip if a future verb gets even longer. */
         .oplog-row {
             display: grid;
-            grid-template-columns: 60px 56px 1fr auto auto;
+            grid-template-columns: 60px 140px 1fr auto auto;
             gap: 0.5rem;
             padding: 0.35rem 0.85rem;
             align-items: center;
@@ -2539,7 +2556,7 @@
             100% { border-left-color: transparent; background: transparent; }
         }
         .oplog-ts { color: var(--ink-faint); }
-        .oplog-verb { font-weight: 600; letter-spacing: 0.04em; }
+        .oplog-verb { font-weight: 600; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
         .oplog-row.o-ok   .oplog-verb { color: var(--ok); }
         .oplog-row.o-err  .oplog-verb { color: var(--crit); }
         .oplog-row.o-pend .oplog-verb { color: var(--warn); }
@@ -3471,7 +3488,7 @@
         </defs>
     </svg>
 
-    <div x-data="fleetcom()" x-init="init()" class="app" :style="'padding-right:' + reservedRightPx() + 'px'">
+    <div x-data="fleetcom()" x-init="init()" class="app" :style="'padding-right:' + reservedRightPx() + 'px;padding-left:' + reservedLeftPx() + 'px'">
         <header>
             <div class="header-left">
                 <img x-show="orgLogoURL" :src="orgLogoURL" style="height:24px;border-radius:3px;margin-right:6px" alt="">
@@ -5711,17 +5728,24 @@ WantedBy=multi-user.target</pre>
 
         <!-- Global activity drawer -->
         <!-- FLEET-108: operator log drawer. Left-edge slide-in. Distinct from
-             the right-edge .drawer-activity which is AI-agent telemetry. -->
+             the right-edge .drawer-activity which is AI-agent telemetry.
+             FLEET-128: pin + drag-to-resize. Resize handle on the right edge
+             (mirror of right-side drawers). -->
         <aside class="drawer drawer-oplog"
-               :class="oplogOpen ? 'is-open' : ''"
-               @keydown.escape.window="oplogOpen = false"
+               :class="[oplogOpen ? 'is-open' : '', pinOplog ? 'is-pinned' : '']"
+               @keydown.escape.window="if (!pinOplog) oplogOpen = false"
                x-show="oplogOpen" style="display:none">
+            <!-- FLEET-128: drag-to-resize handle on right edge -->
+            <div class="drawer-resize-handle" :class="dragResize.side === 'oplog' && 'is-dragging'" @pointerdown="startDrawerResize('oplog', $event)" title="Drag to resize"></div>
             <div class="drawer-head">
                 <div>
                     <div class="subtitle">Audit · history</div>
                     <div class="title">Operator Log</div>
                 </div>
-                <button class="drawer-close" @click="oplogOpen = false" title="Close (Esc)">&times;</button>
+                <button class="drawer-pin" @click="togglePinOplog()" :class="pinOplog ? 'is-pinned' : ''" :title="pinOplog ? 'Unpin (drawer will close on outside click)' : 'Pin drawer (reserves space, stays open)'" style="margin-left:auto">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+                </button>
+                <button class="drawer-close" @click="oplogOpen = false; if (pinOplog) togglePinOplog()" title="Close (Esc)">&times;</button>
             </div>
             <div class="oplog-filters">
                 <template x-for="f in ['ALL','OPS','ADMIN','ERR']" :key="f">
@@ -6758,6 +6782,7 @@ WantedBy=multi-user.target</pre>
                 oplogList: [],          // most-recent first; ring buffer of last 200
                 oplogFilter: 'ALL',     // ALL | OPS | ADMIN | ERR
                 _oplogSeq: 0,           // local id for synthetic entries before server confirms
+                pinOplog: false,        // FLEET-128: pinned drawer reserves left padding on .app
                 // FLEET-112: secure-by-default agent-bridge pairing.
                 // pairListExpanded[host] = true → inline pending list shown
                 // in the host drawer Integrations row.
@@ -6832,7 +6857,9 @@ WantedBy=multi-user.target</pre>
                     if (!this.scaleList.includes(this.globalScale)) this.globalScale = '1h';
                     this.pinActivity = localStorage.getItem('fleetcom.pinActivity') === '1';
                     this.pinHost = localStorage.getItem('fleetcom.pinHost') === '1';
+                    this.pinOplog = localStorage.getItem('fleetcom.pinOplog') === '1';
                     if (this.pinActivity) this.activityOpen = true;
+                    if (this.pinOplog) { this.oplogOpen = true; this.loadOplog(); }
                     this.useUTC = localStorage.getItem('fleetcom.tz') !== 'local';
                     this.cardImgSize = parseInt(localStorage.getItem('fleetcom.imgSize')) || 170;
                     document.documentElement.style.setProperty('--card-img-size', this.cardImgSize + 'px');
@@ -7449,15 +7476,28 @@ WantedBy=multi-user.target</pre>
                     this.pinHost = !this.pinHost;
                     localStorage.setItem('fleetcom.pinHost', this.pinHost ? '1' : '0');
                 },
+                togglePinOplog() {
+                    this.pinOplog = !this.pinOplog;
+                    localStorage.setItem('fleetcom.pinOplog', this.pinOplog ? '1' : '0');
+                    if (this.pinOplog) this.oplogOpen = true;
+                },
 
                 // FLEET-102: drawer width state. Restored from localStorage on
                 // init; updated live via the resize handle. The CSS rules read
-                // these from --fc-drawer-{host,activity,agent}-w custom props.
-                drawerWidths: { host: 720, activity: 480, agent: 560 },
-                drawerWidthLimits: { host: { min: 380, max: 1400 }, activity: { min: 320, max: 1200 }, agent: { min: 380, max: 1200 } },
+                // these from --fc-drawer-{host,activity,agent,oplog}-w custom props.
+                // FLEET-128: oplog joins the same model with `anchor: left`
+                // (drag direction is flipped vs the right-side drawers).
+                drawerWidths: { host: 720, activity: 480, agent: 560, oplog: 400 },
+                drawerWidthLimits: {
+                    host: { min: 380, max: 1400 },
+                    activity: { min: 320, max: 1200 },
+                    agent: { min: 380, max: 1200 },
+                    oplog: { min: 320, max: 800 },
+                },
+                drawerAnchor: { host: 'right', activity: 'right', agent: 'right', oplog: 'left' },
 
                 restoreDrawerWidths() {
-                    for (const side of ['host', 'activity', 'agent']) {
+                    for (const side of ['host', 'activity', 'agent', 'oplog']) {
                         const stored = parseInt(localStorage.getItem('fleetcom.drawerWidth.' + side), 10);
                         if (Number.isFinite(stored) && stored >= this.drawerWidthLimits[side].min) {
                             this.drawerWidths[side] = stored;
@@ -7479,9 +7519,13 @@ WantedBy=multi-user.target</pre>
                     };
                     document.body.classList.add('fc-resizing');
                     const limits = this.drawerWidthLimits[side];
+                    const anchor = this.drawerAnchor[side] || 'right';
                     const onMove = (e) => {
-                        // Drawers anchor right; dragging left = wider.
-                        const delta = this.dragResize.startX - e.clientX;
+                        // Right-anchored drawers grow when dragged left; left-anchored
+                        // (oplog) grow when dragged right. Sign flips based on anchor.
+                        const delta = anchor === 'left'
+                            ? e.clientX - this.dragResize.startX
+                            : this.dragResize.startX - e.clientX;
                         let next = this.dragResize.startW + delta;
                         const cap = Math.min(limits.max, window.innerWidth - 80);
                         if (next < limits.min) next = limits.min;
@@ -7513,16 +7557,27 @@ WantedBy=multi-user.target</pre>
                     const cap = Math.floor(vw * 0.6);
                     return Math.min(w, cap);
                 },
+                // FLEET-128: oplog can be pinned on the left edge — same model
+                // as right-side drawers, mirrored. .app reserves left padding
+                // so main content shifts right rather than the drawer overlaying.
+                reservedLeftPx() {
+                    if (!(this.pinOplog && this.oplogOpen)) return 0;
+                    const vw = typeof window !== 'undefined' ? window.innerWidth : 1920;
+                    const cap = Math.floor(vw * 0.6);
+                    return Math.min(this.drawerWidths.oplog, cap);
+                },
                 backdropShouldShow() {
                     if (this.agentDrawerKey) return true;
                     if (this.activityOpen && !this.pinActivity) return true;
                     if (this.hostDrawerKey && !this.pinHost) return true;
+                    if (this.oplogOpen && !this.pinOplog) return true;
                     return false;
                 },
                 backdropClick() {
                     if (this.agentDrawerKey) this.closeAgentDrawer();
                     if (this.activityOpen && !this.pinActivity) this.activityOpen = false;
                     if (this.hostDrawerKey && !this.pinHost) this.closeHostDrawer();
+                    if (this.oplogOpen && !this.pinOplog) this.oplogOpen = false;
                 },
 
                 // Format ISO timestamp for display (tokens, shares, presets)
