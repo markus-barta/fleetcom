@@ -1,5 +1,15 @@
 # Agent-Bridge Pairing Architecture (FLEET-50/51/52)
 
+> **Status note (2026-05-09):** the design below describes the
+> FleetCom-side pairing flow as conceived pre-FLEET-111. It's still
+> accurate for the bridge-container side and the auto-approver. For
+> the **current** wire-level auth model — TLS as transport-only
+> (FLEET-125), the bridge → gateway shared-secret short-circuit
+> (FLEET-134), and agent-name discipline (FLEET-149) — see
+> `docs/PAIRING-SECURITY-MODEL.md`, which is the canonical source of
+> truth for the integration shipped in FLEET-111 / FLEET-127 /
+> FLEET-134 / FLEET-149.
+
 How FleetCom pairs with OpenClaw gateways once (per host) and then
 auto-approves every agent-bridge that boots on those hosts, resulting
 in a zero-touch deployment experience: `docker compose up -d` and the

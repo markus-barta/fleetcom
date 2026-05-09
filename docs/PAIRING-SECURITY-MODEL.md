@@ -29,6 +29,48 @@ Why not validate the cert? Three options were considered (FLEET-125):
 
 Going to option (1) or (2) would only strengthen the model if the Ed25519 trust factor itself were broken — at which point N-of-3 has already collapsed. The design floor for this system is N=3 (host token + operator + gateway co-sign); a hypothetical N=4 via TLS validation would not change any cell of the threat-model table at the bottom of this doc.
 
+## The bridge ↔ gateway connection
+
+The N-of-3 layers below describe the **bridge → FleetCom** trust chain. There is a second, independent authentication chain — the **bridge → its local OpenClaw gateway** WebSocket — that took until FLEET-127 / FLEET-134 to land cleanly and was historically undocumented. It's worth understanding because each of the layers below depends on the bridge actually being able to talk to its gateway in the first place.
+
+### What auth path the bridge uses today (FLEET-134)
+
+OpenClaw 2026.4.x's connect-policy short-circuits the device-identity (paired-pubkey) check when:
+
+```js
+roleCanSkipDeviceIdentity(role, sharedAuthOk) {
+    return role === "operator" && sharedAuthOk;
+}
+```
+
+i.e. *role=`operator`* AND *`auth.token` matches the gateway's configured `gateway.auth.token` shared secret*. The bridge claims `role: "operator"`, so the only thing that gates its connection is whether it can present the gateway's shared secret.
+
+That secret is the file the gateway already mounts at `/run/secrets/gateway-token` (sourced from `/run/agenix/<host>-ocean-gateway-token` at provisioning time). Bosun (FLEET-134) inspects the gateway container, finds the host-side path of that mount, and **mirrors the same bind-mount into the bridge container at the same destination**. Bosun never reads the file's contents; the bridge reads it on startup and sends it as `auth.token` in the connect frame.
+
+### Tradeoff
+
+Shared-secret auth grants the bridge the full operator scope on the gateway. A compromised bridge container has the same gateway-side capability as a compromised operator session. Mitigating factors:
+
+- **Co-located blast radius.** The bridge runs on the same host as the gateway. A compromise of one is roughly equivalent to a compromise of the other; isolating bridge-vs-gateway within one host doesn't add meaningful defense.
+- **Read-only intent.** The bridge requests a single scope, `operator.read`. Even though the shared-token path skips scope enforcement, the bridge code never makes write calls. A bridge that started writing would surface immediately in the audit-friendly gateway logs.
+- **Operator-asserted lifecycle.** Bridge install, reinstall, and remove all flow through bosun's command queue (FLEET-131); the gateway secret is never copied through FleetCom or the WAN.
+
+### Why not bootstrap-tokens
+
+The cleaner long-term model is OpenClaw's bootstrap-token flow (`auth.bootstrapToken` → server-issued `deviceToken` returned in `hello-ok.auth.deviceToken`). With that, each bridge would have its own paired identity in the gateway's `paired.json`, scoped to `operator.read` only, revocable per-bridge.
+
+OpenClaw exposes bootstrap-token issuance only via the `/pair` chat command (`extensions/device-pair/index.js`) or the plugin SDK — not as a callable WS RPC. Automating it from FleetCom requires writing an OpenClaw plugin that exposes `issueDeviceBootstrapToken` over the protocol. That's a bigger lift; tracked separately as a future-improvement candidate.
+
+## Agent-name discipline (FLEET-149)
+
+Independent of cryptographic layers below, the bridge's `agent_names` list — which dictates what `(host, agent)` rows it creates in `bridge_pairings` — is **operator-asserted**, not server-derived. Three rules keep this from drifting:
+
+1. **No defaults anywhere.** Bosun's `bridge.install` rejects an empty `agent_names` param (no fallback to `merlin,nimue` or any other guess). The bridge container itself refuses to start with an empty `BRIDGE_AGENT_NAMES` env. The sample compose uses `${BRIDGE_AGENT_NAMES:?}` so a misconfigured operator hits the failure at compose-up time, not at register time.
+2. **Reinstall preserves identity.** `bridge.reinstall` (FLEET-131) inspects the running container's existing `BRIDGE_AGENT_NAMES` env BEFORE tearing it down, and passes it through to the new install. A re-install can never silently change which agents the host claims to run.
+3. **Future enforcement (FLEET-149).** The server will validate operator-asserted agent_names against the heartbeat-reported `agents` list for that host, refusing or warning loudly on mismatch. Cross-host name collisions surface a banner. Until that lands, mismatch is caught only by operator eyeballing the dashboard — which is what triggered the ticket.
+
+The visible failure mode this prevents: a misconfigured (or hostile) bridge install registering itself as agents that don't belong on the host, polluting the dashboard with bogus pending pair-requests and mixing per-agent telemetry across hosts.
+
 ## The three layers
 
 ### Layer 1 — host bearer token *(always on, no toggle)*
@@ -155,6 +197,7 @@ Equivalent posture: **Reviewed (default)**.
 | Bosun host token (env leak) | Registers fake bridge, reads chats | Cannot — operator must approve and would see unfamiliar fingerprint | Cannot — gateway must endorse + OOB code must arrive |
 | Bosun token + gateway compromise | Spoofs as any agent | Operator approval still required | Cannot — attacker doesn't control the agent's user channel |
 | FleetCom admin session | Approves any bridge | Approves bridges (limited to gateways with auto-approve OFF — only matters for already-pending) | Same — but every approval is fingerprint-pinned + audit-logged + reversible |
+| Compromised bridge container | Operator-scope on its local gateway (read-only intent; co-located blast radius — bridge + gateway share a host) | Same; compromise bounded by host-isolation, not bridge-vs-gateway | Same; bootstrap-token model (future) would scope to operator.read only |
 | All three (host, gateway, FleetCom session) | Game over | Game over | Game over (acceptable design floor) |
 
 The design floor is N=3 because going to N=4 requires either an external HSM (out of scope for self-hosted) or a multi-operator ceremony (operationally unrealistic).
@@ -163,5 +206,11 @@ The design floor is N=3 because going to N=4 requires either an external HSM (ou
 
 - **FLEET-111** — security-primitives epic (this is what shipped)
 - **FLEET-115** — operator-UX epic (wizard built on top of these primitives)
+- **FLEET-125** — operator-session TLS = transport (Layer 0)
+- **FLEET-126** — wire protocol fixes (frame.id, read-loop deadlock)
+- **FLEET-127** — bridge-side mirror of the operator-session protocol fixes
+- **FLEET-134** — bridge → gateway shared-secret short-circuit (the "bridge ↔ gateway connection" section above)
+- **FLEET-149** — agent-name discipline (operator-asserted, no defaults)
+- **FLEET-150** — UI hygiene (every agent display surface host-qualified)
 - `docs/AGENT-BRIDGE-PAIRING.md` — the original (pre-FLEET-111) flow doc; superseded for the security model but still has accurate reference for the bridge-container side
 - `docs/AGENT-OBSERVABILITY.md` — what flows through after pairing (per-turn telemetry)
