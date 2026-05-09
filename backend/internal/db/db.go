@@ -17,22 +17,20 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 
-	// FLEET-135: serialize all queries through a single connection. With
-	// the default pool, concurrent writers from different connections
-	// race in WAL mode and the connection-string _busy_timeout param
-	// doesn't reliably kick in (observed: SQLITE_BUSY at 1ms despite a
-	// 5000ms timeout). One connection sidesteps the race entirely; reads
-	// and writes serialize through it. FleetCom's load is far below
-	// where parallel-read throughput matters.
-	db.SetMaxOpenConns(1)
-
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("ping db: %w", err)
 	}
 
-	// Defense-in-depth: set busy_timeout via PRAGMA even though
-	// MaxOpenConns(1) makes it largely moot. Keeps the safety net for
-	// any future code that opens a second connection deliberately.
+	// FLEET-135: explicitly set busy_timeout via PRAGMA. The connection-
+	// string _busy_timeout=5000 param is unreliable in modernc.org/sqlite
+	// (observed SQLITE_BUSY at 1ms in production). The PRAGMA applies to
+	// the connection it runs on; relying on it across the pool is best-
+	// effort. SetMaxOpenConns(1) was tried as a stronger guarantee but
+	// caused server-side deadlock — some long-running query holds the
+	// single connection forever and blocks all other handlers. The
+	// underlying race is rare; we accept it for now and address it in a
+	// follow-up that audits which call sites hold connections across
+	// non-trivial work.
 	if _, err := db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
 		return nil, fmt.Errorf("set busy_timeout: %w", err)
 	}
