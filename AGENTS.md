@@ -436,6 +436,13 @@ If you need to verify a secret exists: `test -n "$PPMAPIKEY"`. **Never print the
 - Session invalidation on password change/reset/user disable
 - Host communication over Tailscale mesh where possible
 - Audit logging on all auth events (including api_token_created / _revoked / _auth_failed)
+- Bridge → gateway WS: shared-secret short-circuit (FLEET-134). Bosun bind-mounts the gateway's `/run/secrets/gateway-token` into the bridge container at the same path; bridge sends as `auth.token`; gateway's `roleCanSkipDeviceIdentity(role=operator, sharedAuthOk)` lets it through without device-pairing. Read-only intent; co-located blast radius. See `docs/PAIRING-SECURITY-MODEL.md`.
+
+## Invariants worth knowing (non-obvious)
+
+- **Agent names are operator-asserted, no defaults (FLEET-149).** `bridge.install` rejects empty `agent_names`; the agent-bridge container refuses to start with empty `BRIDGE_AGENT_NAMES`. `bridge.reinstall` (FLEET-131) preserves the existing container's `BRIDGE_AGENT_NAMES` env across recreate. Never invent a default — agent identity must come from the host.
+- **`/healthz` probes the DB (FLEET-148).** A static "ok" responder hid an outage during the v1.0.10 SetMaxOpenConns deadlock; `/healthz` now does `SELECT 1` with a 2s timeout. External healthchecks can rely on it.
+- **Onboarding banner counts only agent-bearing hosts (FLEET-155).** Pure-infra hosts (no agents reported in heartbeats) are skipped from the "needs gateway pairing" / "ready to deploy a bridge" buckets.
 
 ## Dependencies
 
