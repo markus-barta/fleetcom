@@ -283,31 +283,14 @@ func EnqueueCommand(store *db.Store, ocMgr *openclaw.Manager) http.HandlerFunc {
 			paramsAny = pmap
 		}
 
-		// FLEET-129 / FLEET-131: bridge.install + bridge.reinstall need
-		// the gateway shared secret so the bridge can satisfy openclaw
-		// 2026.4.x's gateway.auth.token requirement. FleetCom is the
-		// only side that has it persisted (under
-		// <ocKeyDir>/<host>/operator-token); we relay it via the
-		// command queue. Silently no-op when the token isn't on disk —
-		// gateways without token mode work without it.
-		if (body.Kind == "bridge.install" || body.Kind == "bridge.reinstall") && ocMgr != nil {
-			tok, err := ocMgr.LookupOperatorToken(host)
-			if err != nil {
-				log.Printf("%s pre-flight (operator-token) for %s: %v", body.Kind, host, err)
-				http.Error(w, "internal error", http.StatusInternalServerError)
-				return
-			}
-			if tok != "" {
-				pmap, _ := paramsAny.(map[string]interface{})
-				if pmap == nil {
-					pmap = map[string]interface{}{}
-				}
-				if _, present := pmap["gateway_operator_token"]; !present {
-					pmap["gateway_operator_token"] = tok
-				}
-				paramsAny = pmap
-			}
-		}
+		// FLEET-134: bridge auth uses the gateway's own shared-secret,
+		// bind-mounted on the bridge host by bosun (not relayed through
+		// the command queue). FLEET-129's relay was the wrong secret —
+		// FleetCom's operator-token is a different artefact from the
+		// gateway's auth.token. Removed; the gateway_operator_token
+		// param is left wired in bosun's bridgeInstallParams as a
+		// dev/test fallback override but is no longer populated server-
+		// side.
 
 		id, err := store.EnqueueCommand(host, body.Kind, paramsAny, uid)
 		if err != nil {
