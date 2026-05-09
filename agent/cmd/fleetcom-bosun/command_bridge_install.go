@@ -13,12 +13,13 @@ import (
 // bridgeInstallParams is the shape FleetCom sends for bridge.install.
 // The FleetCom-side per-host token is NOT a param — bosun reuses its own
 // FLEETCOM_TOKEN env var (same per-host bearer the bridge needs to POST
-// /api/bridges/register). The gateway shared secret IS a param
-// (FLEET-129): FleetCom is the only side that has it persisted (under
-// /app/data/openclaw-keys/<host>/operator-token), and the bridge
-// container needs it to authenticate against openclaw 2026.4.x's
-// gateway.auth.token requirement. Travels over the command queue,
-// which is already bearer-authenticated (HTTPS + per-host token).
+// /api/bridges/register).
+//
+// The gateway's auth.token shared-secret is also NOT a param (after
+// FLEET-134). Bosun discovers it locally by inspecting the gateway
+// container for a bind-mount at /run/secrets/gateway-token, and mirrors
+// the same bind-mount into the bridge — secret never leaves the host.
+// GatewayOperatorToken below remains as a dev/test override only.
 type bridgeInstallParams struct {
 	AgentNames           string `json:"agent_names"`            // comma-separated, e.g. "merlin,nimue"
 	AgentType            string `json:"agent_type"`             // default "openclaw"
@@ -26,8 +27,8 @@ type bridgeInstallParams struct {
 	Image                string `json:"image"`                  // default "ghcr.io/markus-barta/fleetcom-agent-bridge:latest"
 	ContainerName        string `json:"container_name"`         // default "fleetcom-agent-bridge"
 	VolumeName           string `json:"volume_name"`            // default "fleetcom-agent-bridge-keys"
-	GatewayContainer     string `json:"gateway_container"`      // default "openclaw-gateway" — used for readiness check only
-	GatewayOperatorToken string `json:"gateway_operator_token"` // FLEET-129: shared secret for bridge → gateway auth.token (optional; gateways without token mode work without it)
+	GatewayContainer     string `json:"gateway_container"`      // default "openclaw-gateway" — also used by FLEET-134 to locate the gateway-token bind-mount
+	GatewayOperatorToken string `json:"gateway_operator_token"` // dev/test override; production hosts use the FLEET-134 bind-mount path
 }
 
 // handleBridgeInstall stands up the agent-bridge container on this host.
@@ -111,6 +112,16 @@ func handleBridgeInstall(_ int64, params json.RawMessage) (json.RawMessage, erro
 		return nil, fmt.Errorf("pull %s: %v · %s", p.Image, err, strings.TrimSpace(string(out)))
 	}
 
+	// FLEET-134: discover the gateway container's bind-mount source for
+	// /run/secrets/gateway-token (the openclaw shared-secret loaded from
+	// /run/agenix/<host>-ocean-gateway-token at provisioning time). When
+	// found, mirror the same bind-mount into the bridge container. The
+	// bridge then sends the value as auth.token in its connect frame and
+	// gets in via openclaw's role=operator + sharedAuthOk short-circuit
+	// (no device-pairing dance). The secret never leaves the host
+	// filesystem; bosun never reads its contents.
+	gatewayTokenSrc := findGatewayTokenSource(p.GatewayContainer)
+
 	// docker run with host network so the bridge can reach the sibling
 	// openclaw-gateway on localhost without depending on a specific
 	// compose project.
@@ -129,7 +140,12 @@ func handleBridgeInstall(_ int64, params json.RawMessage) (json.RawMessage, erro
 		"-e", "BRIDGE_AGENT_TYPE=" + p.AgentType,
 		"-l", "com.centurylinklabs.watchtower.enable=true",
 	}
+	if gatewayTokenSrc != "" {
+		args = append(args, "-v", gatewayTokenSrc+":/run/secrets/gateway-token:ro")
+	}
 	if p.GatewayOperatorToken != "" {
+		// Dev/test fallback (FLEET-129). Path 5 (the bind-mount above)
+		// is the canonical source on production hosts.
 		args = append(args, "-e", "BRIDGE_OPERATOR_TOKEN="+p.GatewayOperatorToken)
 	}
 	args = append(args, p.Image)
@@ -154,4 +170,30 @@ func inspectContainerState(name string) (bool, bool) {
 		return false, false
 	}
 	return true, strings.TrimSpace(string(out)) == "true"
+}
+
+// findGatewayTokenSource returns the host-side path of the openclaw
+// gateway container's bind-mount for /run/secrets/gateway-token, or ""
+// if the gateway container has no such mount (e.g. token-mode auth not
+// configured). Used by bridge.install (FLEET-134) to mirror the same
+// bind-mount into the bridge container so the bridge can authenticate
+// against the gateway via the shared-token short-circuit.
+//
+// Empty result is a normal outcome — the bridge just falls back to its
+// other token sources. We never read the file contents from this code
+// path; only the host-side path string crosses bosun's process memory.
+func findGatewayTokenSource(gatewayContainer string) string {
+	if gatewayContainer == "" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "docker", "inspect", "-f",
+		`{{range .Mounts}}{{if eq .Destination "/run/secrets/gateway-token"}}{{.Source}}{{end}}{{end}}`,
+		gatewayContainer,
+	).CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }

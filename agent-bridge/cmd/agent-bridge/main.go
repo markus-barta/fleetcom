@@ -84,15 +84,25 @@ func main() {
 		return
 	}
 
-	// Operator token (shared-secret with the gateway, FLEET-129). Two
-	// sources, in precedence order: the persistent file written by the
-	// hello-ok handler on a prior pair, OR a BRIDGE_OPERATOR_TOKEN env
-	// var injected by bosun's bridge.install. The env-var path covers
-	// the first-install case where the gateway requires a token before
-	// it will speak to us at all (openclaw 2026.4.x token mode).
-	operatorToken := readFile(filepath.Join(cfg.KeyDir, "operator-token"))
+	// Gateway shared-secret token. Three sources, in precedence order:
+	//
+	//  1. /run/secrets/gateway-token  (FLEET-134) — bind-mounted by bosun
+	//     from the gateway container's own agenix-mounted secret
+	//     (/run/agenix/<host>-ocean-gateway-token). The bridge runs on
+	//     the same host as its gateway, so this is the canonical
+	//     source. Auth flows through openclaw's role=operator + shared-
+	//     token short-circuit (roleCanSkipDeviceIdentity), no device
+	//     pairing required.
+	//  2. BRIDGE_OPERATOR_TOKEN env var (FLEET-129) — kept as a dev/
+	//     test fallback when the bind-mount is unavailable.
+	//  3. <keyDir>/operator-token — historical path, written by the
+	//     hello-ok handler in a prior bootstrap-token pair flow.
+	operatorToken := strings.TrimSpace(readFile("/run/secrets/gateway-token"))
 	if operatorToken == "" {
 		operatorToken = strings.TrimSpace(os.Getenv("BRIDGE_OPERATOR_TOKEN"))
+	}
+	if operatorToken == "" {
+		operatorToken = readFile(filepath.Join(cfg.KeyDir, "operator-token"))
 	}
 
 	trans := &translator{
