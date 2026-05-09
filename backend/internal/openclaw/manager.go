@@ -257,6 +257,24 @@ func (m *Manager) scanKeyDir() []string {
 //     Typical for /app/data/openclaw-keys, written by the POST /pair
 //     endpoint in FLEET-61 where the fleetcom container can own its
 //     own keypair directory.
+//
+// LookupOperatorToken returns the gateway shared-secret token paired
+// with this FleetCom instance for the given host, or "" if no token is
+// on disk. Used by FLEET-129 to relay the secret to bosun's
+// bridge.install so the agent-bridge can authenticate against
+// openclaw 2026.4.x's gateway.auth.token requirement. The error is
+// non-nil only on unexpected I/O (a missing file is "" + nil).
+func (m *Manager) LookupOperatorToken(host string) (string, error) {
+	_, tok, err := m.loadGatewayCreds(host)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", err
+	}
+	return tok, nil
+}
+
 func (m *Manager) loadGatewayCreds(host string) (*Identity, string, error) {
 	for _, dir := range m.keyDirs() {
 		// Try layout 1 (flat).

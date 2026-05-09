@@ -162,7 +162,7 @@ func newRouter(d *routerDeps) chi.Router {
 
 		// FLEET-60: bosun command channel — admin issues work, bosun
 		// picks it up via heartbeat response, reports back here.
-		r.With(auth.RequireAdmin).Post("/api/hosts/{host}/commands", api.EnqueueCommand(store))
+		r.With(auth.RequireAdmin).Post("/api/hosts/{host}/commands", api.EnqueueCommand(store, ocMgr))
 		r.With(auth.RequireAdmin).Get("/api/hosts/{host}/commands", api.ListCommands(store))
 		r.With(auth.RequireAdmin).Post("/api/commands/{id}/cancel", api.CancelCommand(store))
 		r.Get("/api/history", api.History(store))
