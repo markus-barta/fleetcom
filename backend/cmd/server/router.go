@@ -58,7 +58,7 @@ func newRouter(d *routerDeps) chi.Router {
 	r.Use(middleware.Recoverer)
 
 	// Public routes
-	r.Get("/healthz", api.Healthz)
+	r.Get("/healthz", api.Healthz(store))
 	r.Get("/api/version", api.Version)
 	// FLEET-80: self-describing API catalog for agent onboarding.
 	r.Get("/api/info", api.Info)
@@ -162,7 +162,7 @@ func newRouter(d *routerDeps) chi.Router {
 
 		// FLEET-60: bosun command channel — admin issues work, bosun
 		// picks it up via heartbeat response, reports back here.
-		r.With(auth.RequireAdmin).Post("/api/hosts/{host}/commands", api.EnqueueCommand(store, ocMgr))
+		r.With(auth.RequireAdmin).Post("/api/hosts/{host}/commands", api.EnqueueCommand(store))
 		r.With(auth.RequireAdmin).Get("/api/hosts/{host}/commands", api.ListCommands(store))
 		r.With(auth.RequireAdmin).Post("/api/commands/{id}/cancel", api.CancelCommand(store))
 		r.Get("/api/history", api.History(store))
