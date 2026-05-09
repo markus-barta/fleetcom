@@ -24,8 +24,10 @@ services:
       - FLEETCOM_HOSTNAME=${FLEETCOM_HOSTNAME:-hsb0}
       # Gateway WebSocket URL — usually the sibling container.
       - OPENCLAW_GATEWAY_URL=${OPENCLAW_GATEWAY_URL:-wss://openclaw-gateway:18789}
-      # Agents this host runs (informational, shown in /v1/agent-state).
-      - BRIDGE_AGENT_NAMES=merlin,nimue
+      # Agents this host runs. REQUIRED — no default. The bridge refuses
+      # to start without it (FLEET-149). Operator-asserted only; must
+      # match the agents actually running on this host.
+      - BRIDGE_AGENT_NAMES=${BRIDGE_AGENT_NAMES:?must be set, e.g. ocean or merlin or your-agent-id}
       - BRIDGE_AGENT_TYPE=openclaw
     ports:
       # Bosun scrapes /v1/agent-state on this port — bind to loopback

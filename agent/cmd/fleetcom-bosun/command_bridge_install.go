@@ -21,7 +21,7 @@ import (
 // the same bind-mount into the bridge — secret never leaves the host.
 // GatewayOperatorToken below remains as a dev/test override only.
 type bridgeInstallParams struct {
-	AgentNames           string `json:"agent_names"`            // comma-separated, e.g. "merlin,nimue"
+	AgentNames           string `json:"agent_names"`            // comma-separated, REQUIRED. No default — operator-asserted only (FLEET-149)
 	AgentType            string `json:"agent_type"`             // default "openclaw"
 	GatewayURL           string `json:"gateway_url"`            // default "wss://localhost:18789"
 	Image                string `json:"image"`                  // default "ghcr.io/markus-barta/fleetcom-agent-bridge:latest"
@@ -41,10 +41,15 @@ func handleBridgeInstall(_ int64, params json.RawMessage) (json.RawMessage, erro
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, fmt.Errorf("invalid params: %w", err)
 	}
-	// Defaults.
-	if p.AgentNames == "" {
-		p.AgentNames = "merlin,nimue"
+	// FLEET-149: agent_names MUST be operator-asserted. No default —
+	// a forgotten parameter must not silently install a bridge claiming
+	// to be agents from another host. Loud failure forces the caller
+	// (FLEET-115 wizard, dashboard re-install, scripted ops) to be
+	// explicit about which agents this host runs.
+	if strings.TrimSpace(p.AgentNames) == "" {
+		return nil, fmt.Errorf("bridge.install: agent_names is required (no default; operator must declare which agents this host runs)")
 	}
+	// Defaults (non-agent-identity params).
 	if p.AgentType == "" {
 		p.AgentType = "openclaw"
 	}
