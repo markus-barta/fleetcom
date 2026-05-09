@@ -321,6 +321,101 @@
         .signout:hover { color: var(--ink-dim); }
         .signout svg { width: 13px; height: 13px; flex-shrink: 0; }
 
+        /* FLEET-154: dropdown menu shared between the user-chip menu
+           (header right) and the sub-header more-menu. Anchored under
+           the trigger button via position:absolute on a relatively-
+           positioned wrapper. */
+        .menu-wrap { position: relative; }
+        .menu-trigger {
+            background: transparent;
+            border: 1px solid var(--line);
+            color: var(--ink-dim);
+            cursor: pointer;
+            border-radius: 4px;
+            padding: 4px 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-family: inherit;
+            font-size: 11px;
+        }
+        .menu-trigger:hover { color: var(--ink); border-color: var(--ink-faint); }
+        .menu-trigger svg { width: 14px; height: 14px; }
+        .menu-trigger.is-open { color: var(--ink); border-color: var(--accent, #7ec2ff); }
+        .menu-panel {
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            min-width: 200px;
+            background: var(--bg-1);
+            border: 1px solid var(--line);
+            border-radius: 4px;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+            padding: 0.3rem;
+            z-index: 50;
+        }
+        .menu-item {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: var(--ink-dim);
+            cursor: pointer;
+            padding: 0.45rem 0.6rem;
+            border-radius: 3px;
+            font-family: inherit;
+            font-size: 11px;
+            text-align: left;
+            text-decoration: none;
+            line-height: 1.2;
+        }
+        .menu-item:hover { background: var(--bg-2); color: var(--ink); }
+        .menu-item.is-danger { color: var(--crit); }
+        .menu-item.is-danger:hover { background: rgba(255, 77, 109, 0.08); }
+        .menu-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+        .menu-sep { height: 1px; background: var(--line); margin: 0.25rem 0.1rem; }
+
+        /* User chip becomes the trigger for the user menu. Subtle hover
+           cue so it's discoverable. */
+        .user-chip { cursor: pointer; padding: 2px; border-radius: 4px; transition: background 0.12s; }
+        .user-chip:hover { background: var(--bg-2); }
+        .user-chip.is-open { background: var(--bg-2); outline: 1px solid var(--accent, #7ec2ff); outline-offset: -1px; }
+
+        /* FLEET-154: responsive cell content. Wide viewports show .cell-full,
+           narrow viewports swap to .cell-compact. Two spans per cell — the
+           extra DOM is cheap and the alternative (JS-driven on resize) is
+           heavier. Breakpoint chosen so a typical 13" laptop in landscape
+           keeps the full strings; squeezing only kicks in on narrow
+           browser panes / portrait viewports. */
+        .cell-compact { display: none; }
+        @media (max-width: 1280px) {
+            .fleet-table .cell-full { display: none; }
+            .fleet-table .cell-compact { display: inline; }
+        }
+
+        /* FLEET-154: per-host agent.update ghost button in the table view.
+           Subtle until hovered; disappears on hosts where bosun cannot
+           self-update (deployment_shape unknown). */
+        .btn.agent-update-cell {
+            margin-left: 0.45rem;
+            padding: 1px 5px;
+            font-size: 9px;
+            color: var(--ink-faint);
+            border: 1px solid transparent;
+            border-radius: 3px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            background: transparent;
+            cursor: pointer;
+            vertical-align: middle;
+        }
+        .btn.agent-update-cell:hover { color: var(--accent, #7ec2ff); border-color: var(--ink-faint); }
+        .btn.agent-update-cell svg { width: 11px; height: 11px; }
+        .btn.agent-update-cell:disabled { opacity: 0.4; cursor: wait; }
+
         /* ============================================================
            SUB-HEADER
            ============================================================ */
@@ -3550,24 +3645,41 @@
                 <button class="theme-toggle" @click="cycleTheme()" :title="'Theme: ' + theme" style="background:none;border:1px solid var(--ink-faint);border-radius:4px;padding:2px 6px;cursor:pointer;color:var(--ink-dim);font-size:11px;font-family:inherit">
                     <span x-text="theme === 'dark' ? '&#9790;' : theme === 'light' ? '&#9788;' : '&#9681;'"></span>
                 </button>
-                <div class="user-chip" x-show="!shared && currentUser">
-                    <span class="user-chip-tip">
-                        <span x-text="currentUser ? currentUser.email : ''"></span>
-                        <span class="role-badge" x-text="currentUser ? currentUser.role : ''"></span>
-                    </span>
-                    <template x-if="currentUser && currentUser.avatar">
-                        <img class="user-avatar-img" :src="currentUser.avatar" alt="avatar">
-                    </template>
-                    <template x-if="currentUser && !currentUser.avatar">
-                        <div class="user-avatar"
-                             :style="'background:' + avatarColor(currentUser.email)"
-                             x-text="avatarInitials(currentUser.email)"></div>
-                    </template>
+                <!-- FLEET-154: user-chip is now the trigger for a dropdown
+                     menu containing Profile + Sign out. Clicking the avatar
+                     opens the menu; click outside or Escape closes. The
+                     standalone Sign out link is gone — moved into the menu. -->
+                <div class="menu-wrap" x-show="!shared && currentUser"
+                     @click.outside="userMenuOpen = false"
+                     @keydown.escape.window="userMenuOpen = false">
+                    <div class="user-chip" :class="userMenuOpen && 'is-open'"
+                         @click="userMenuOpen = !userMenuOpen"
+                         :title="currentUser ? currentUser.email + ' (' + currentUser.role + ')' : ''">
+                        <span class="user-chip-tip">
+                            <span x-text="currentUser ? currentUser.email : ''"></span>
+                            <span class="role-badge" x-text="currentUser ? currentUser.role : ''"></span>
+                        </span>
+                        <template x-if="currentUser && currentUser.avatar">
+                            <img class="user-avatar-img" :src="currentUser.avatar" alt="avatar">
+                        </template>
+                        <template x-if="currentUser && !currentUser.avatar">
+                            <div class="user-avatar"
+                                 :style="'background:' + avatarColor(currentUser.email)"
+                                 x-text="avatarInitials(currentUser.email)"></div>
+                        </template>
+                    </div>
+                    <div class="menu-panel" x-show="userMenuOpen" x-cloak>
+                        <button class="menu-item" @click="userMenuOpen = false; openProfile()">
+                            <i data-lucide="user-circle"></i>
+                            <span>Profile</span>
+                        </button>
+                        <div class="menu-sep"></div>
+                        <a class="menu-item is-danger" href="/logout">
+                            <i data-lucide="log-out"></i>
+                            <span>Sign out</span>
+                        </a>
+                    </div>
                 </div>
-                <a href="/logout" class="signout" x-show="!shared">
-                    <i data-lucide="log-out"></i>
-                    <span>Sign out</span>
-                </a>
             </div>
         </header>
 
@@ -3624,6 +3736,30 @@
                     <button :class="viewMode === 'normal' && 'active'" @click="setViewMode('normal')">Normal</button>
                     <button :class="viewMode === 'compact' && 'active'" @click="setViewMode('compact')">Compact</button>
                 </div>
+
+                <!-- FLEET-154: more-menu — fleet-wide actions that don't fit
+                     a single host's drawer. Admin-only since current items
+                     are all destructive-ish ops. -->
+                <template x-if="currentUser && currentUser.role === 'admin'">
+                    <div class="menu-wrap"
+                         @click.outside="moreMenuOpen = false"
+                         @keydown.escape.window="moreMenuOpen = false"
+                         style="margin-left: 0.4rem;">
+                        <button class="menu-trigger" :class="moreMenuOpen && 'is-open'"
+                                @click="moreMenuOpen = !moreMenuOpen"
+                                title="Fleet-wide actions">
+                            <i data-lucide="more-horizontal"></i>
+                        </button>
+                        <div class="menu-panel" x-show="moreMenuOpen" x-cloak>
+                            <button class="menu-item" @click="moreMenuOpen = false; updateAllAgents()"
+                                    :disabled="!!pending['updateAllAgents']"
+                                    :data-pending="!!pending['updateAllAgents']">
+                                <i data-lucide="refresh-cw"></i>
+                                <span>Update all agents</span>
+                            </button>
+                        </div>
+                    </div>
+                </template>
             </div>
         </div>
 
@@ -4098,10 +4234,32 @@
                                         <td>
                                             <span class="agent-version-badge compact" :class="isLegacyAgent(host) ? 'legacy' : (isOutdatedAgent(host) ? 'outdated' : 'current')">
                                                 <template x-if="isOutdatedAgent(host)"><svg class="agent-alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></template>
-                                                <span x-text="agentVersionLabel(host)"></span>
+                                                <!-- FLEET-154: dual-render for responsive narrowing.
+                                                     Wide viewports show full label (version + commit + build date);
+                                                     narrow viewports drop everything past the version. -->
+                                                <span class="cell-full" x-text="agentVersionLabel(host)"></span>
+                                                <span class="cell-compact" x-text="agentVersionShort(host)"></span>
                                             </span>
+                                            <!-- FLEET-154: per-host agent.update from the table. Admin-only,
+                                                 ghost button, no confirm — bosun's update is in-place +
+                                                 reversible. Disabled while in-flight to prevent double-fire. -->
+                                            <template x-if="currentUser && currentUser.role === 'admin' && host.deployment_shape && host.deployment_shape !== 'unknown'">
+                                                <button class="btn btn-ghost agent-update-cell"
+                                                        @click.stop="updateAgent(host.hostname)"
+                                                        :disabled="!!pending['updateAgent:' + host.hostname]"
+                                                        :data-pending="!!pending['updateAgent:' + host.hostname]"
+                                                        :title="'Update agent on ' + host.hostname + ' (pull latest image + restart bosun)'">
+                                                    <i data-lucide="refresh-cw"></i>
+                                                </button>
+                                            </template>
                                         </td>
-                                        <td x-text="host.os || '—'"></td>
+                                        <td>
+                                            <!-- FLEET-154: dual-render for OS cell. Wide viewports show
+                                                 full distro string (e.g. "NixOS 25.05 (Warbler)");
+                                                 narrow viewports drop the codename and distro name. -->
+                                            <span class="cell-full" x-text="host.os || '—'"></span>
+                                            <span class="cell-compact" x-text="osShort(host)"></span>
+                                        </td>
                                         <td x-text="formatUptime(host.uptime_seconds) || '—'"></td>
                                         <td x-text="formatAgo(host.last_seen)"></td>
                                         <td>
@@ -6155,11 +6313,15 @@ WantedBy=multi-user.target</pre>
          (set requireType=<exact string operator must type>). Title and
          body are operator-facing; level controls the title color and the
          primary-button styling (warn=primary blue, crit=red danger).
-         Lives inside x-data so x-show actually fires (FLEET-104). -->
+         Lives inside x-data so x-show actually fires (FLEET-104).
+         FLEET-153: z-index:200 keeps it above any other modal that may
+         open it (e.g. PENDING PAIR REQUESTS at z-100 → REJECT triggers
+         confirmModal which previously rendered BEHIND the pair-requests
+         modal, blocking the workflow). -->
     <div x-show="confirmCtx" x-cloak
          @keydown.escape.window="confirmCtx && confirmCtx.onCancel()"
          class="modal-backdrop"
-         style="display:none">
+         style="display:none; z-index: 200;">
         <div class="modal-card" @click.stop>
             <div class="modal-title"
                  :style="confirmCtx && confirmCtx.level === 'crit' ? 'color:var(--crit);' : 'color:var(--warn);'"
@@ -6807,6 +6969,9 @@ WantedBy=multi-user.target</pre>
                 // pairListExpanded[host] = true → inline pending list shown
                 // in the host drawer Integrations row.
                 pairDrawerOpen: false,
+                // FLEET-154: header / sub-header menu state.
+                userMenuOpen: false,
+                moreMenuOpen: false,
                 pairListExpanded: {},
                 // FLEET-116: 'What is this?' explainer modal opened from the
                 // host-drawer Integrations row. Mirrors docs/PAIRING-SECURITY-MODEL.md
@@ -7864,6 +8029,96 @@ WantedBy=multi-user.target</pre>
                     // loadBridges still kept on the Alpine state (called from
                     // SSE handlers + the drawer-initiated pair flow), so no
                     // need to land them here anymore.
+                },
+
+                // FLEET-154: open Settings on the Account tab. Used by the
+                // user-menu Profile item.
+                openProfile() {
+                    this.view = 'settings';
+                    this.settingsTab = 'account';
+                    if (typeof this.loadMySessions === 'function') this.loadMySessions();
+                    if (typeof this.loadApiTokens === 'function') this.loadApiTokens();
+                },
+
+                // FLEET-154: enqueue agent.update for every eligible host
+                // in one click. Eligible = not ignored AND deployment_shape
+                // is something bosun can self-update from (anything other
+                // than empty / unknown). Confirms with a count before
+                // firing N commands; one toast per host (success or fail);
+                // OPLOG row per host via busy() helper.
+                async updateAllAgents() {
+                    const eligible = this.activeHosts().filter(h =>
+                        h.deployment_shape && h.deployment_shape !== 'unknown'
+                    );
+                    if (eligible.length === 0) {
+                        this.toast('No hosts eligible for agent.update', 'warn');
+                        return;
+                    }
+                    const ok = await this.confirmModal({
+                        title: 'Update all agents',
+                        body: 'Enqueue agent.update on ' + eligible.length + ' host'
+                            + (eligible.length === 1 ? '' : 's')
+                            + ': ' + eligible.map(h => h.hostname).join(', ')
+                            + '.\n\nEach bosun will pull the latest image + recreate itself. '
+                            + 'Hosts with deployment_shape=unknown are skipped.',
+                        confirmLabel: 'Update ' + eligible.length,
+                        level: 'warn',
+                    });
+                    if (!ok) return;
+                    return this.busy('updateAllAgents',
+                        'Enqueued agent.update on ' + eligible.length + ' host' + (eligible.length === 1 ? '' : 's'),
+                        async () => {
+                            const results = await Promise.allSettled(
+                                eligible.map(h => fetch('/api/hosts/' + encodeURIComponent(h.hostname) + '/commands', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ kind: 'agent.update', params: {} }),
+                                }).then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+                            );
+                            const failed = results.filter(r => r.status === 'rejected');
+                            if (failed.length > 0) {
+                                throw new Error(failed.length + ' of ' + eligible.length + ' failed: ' +
+                                    failed.map(f => f.reason && f.reason.message || 'unknown').slice(0, 3).join('; '));
+                            }
+                            return { ok: true, count: eligible.length };
+                        },
+                        { verb: 'EXEC', target: 'fleet/agent.update' });
+                },
+
+                // FLEET-154: short OS string for narrow viewports. Strips
+                // the distro name + codename, keeps the version (the part
+                // operators actually use to spot drift). Falls back to the
+                // full string when the shape doesn't match expectations.
+                osShort(host) {
+                    const s = (host && host.os) ? host.os.trim() : '';
+                    if (!s) return '—';
+                    // Match a leading version-like token after the distro name:
+                    // "NixOS 25.05 (Warbler)" → "25.05"
+                    // "Ubuntu 24.04 LTS"     → "24.04"
+                    // "Debian GNU/Linux 12"  → "12"
+                    const m = s.match(/(\d+\.\d+(?:\.\d+)?|\d+)/);
+                    return m ? m[1] : s;
+                },
+
+                // FLEET-154: per-host agent.update from the table view. Same
+                // command, scoped to one host. No confirm — bosun's update
+                // is in-place + reversible.
+                async updateAgent(hostname) {
+                    return this.busy('updateAgent:' + hostname,
+                        'Enqueued agent.update on ' + hostname,
+                        async () => {
+                            const res = await fetch('/api/hosts/' + encodeURIComponent(hostname) + '/commands', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ kind: 'agent.update', params: {} }),
+                            });
+                            if (!res.ok) {
+                                const txt = (await res.text()).trim();
+                                throw new Error('HTTP ' + res.status + ': ' + (txt || 'agent.update rejected'));
+                            }
+                            return await res.json();
+                        },
+                        { verb: 'EXEC', target: 'commands/' + hostname + ':agent.update' });
                 },
 
                 // ---------- ignored entities ----------
