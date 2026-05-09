@@ -70,6 +70,16 @@ func OnboardingState(store *db.Store) http.HandlerFunc {
 			http.Error(w, "onboarding: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
+		// FLEET-155: only count hosts that actually run AI agents. Pure
+		// infra hosts (web servers, build machines, etc.) shouldn't be
+		// told to pair an OpenClaw gateway — operators just monitor
+		// uptime + containers via FleetCom; the agent-bridge story
+		// doesn't apply.
+		hostsWithAgents, err := store.HostnamesWithAgents()
+		if err != nil {
+			http.Error(w, "onboarding: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 
 		// Index: hostname -> gateway row (or nil).
 		gwByHost := make(map[string]*db.OpenClawGateway, len(gws))
@@ -98,6 +108,13 @@ func OnboardingState(store *db.Store) http.HandlerFunc {
 			// the operator's first task is bringing bosun up, which
 			// happens outside FleetCom.
 			if h.LastSeen == "" {
+				continue
+			}
+			// FLEET-155: skip hosts that don't run AI agents — they
+			// don't need an OpenClaw gateway or a bridge. Was a
+			// banner-noise source (e.g. "6 hosts need gateway pairing"
+			// when only 3 actually had agents).
+			if !hostsWithAgents[h.Hostname] {
 				continue
 			}
 			gw := gwByHost[h.Hostname]

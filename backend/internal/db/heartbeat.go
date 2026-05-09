@@ -261,6 +261,33 @@ func (s *Store) HostsBareList() ([]HostBare, error) {
 	return out, rows.Err()
 }
 
+// HostnamesWithAgents returns the set of hostnames whose latest heartbeat
+// reported at least one agent. Used by the FLEET-121 onboarding banner
+// (FLEET-155) to scope its "needs gateway pairing" / "ready to deploy
+// a bridge" counts: pure-infra hosts (no AI agents) shouldn't be told
+// to pair an OpenClaw gateway. The query is a single DISTINCT join on
+// the agents → hosts foreign key — no per-host iteration in Go.
+func (s *Store) HostnamesWithAgents() (map[string]bool, error) {
+	rows, err := s.DB.Query(`
+		SELECT DISTINCT h.hostname
+		FROM hosts h
+		INNER JOIN agents a ON a.host_id = h.id
+	`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]bool)
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		out[name] = true
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) AllHosts() ([]Host, error) {
 	rows, err := s.DB.Query(`SELECT id, hostname, os, kernel, uptime_seconds, agent_version, last_seen, hw_live, hw_live_at, created_at, update_requested_at, deployment_shape, boot_id, allow_reboot FROM hosts ORDER BY hostname`)
 	if err != nil {

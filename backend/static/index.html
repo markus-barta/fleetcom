@@ -3683,17 +3683,6 @@
             </div>
         </header>
 
-        <!-- FLEET-121: first-run banner. Renders only for admins when
-             the onboarding endpoint reports actionable work AND the
-             current state's signature isn't in the dismissed set. -->
-        <template x-if="currentUser && currentUser.role === 'admin' && onboarding.actionable && onboardingSignature() !== onboardingDismissedSig">
-            <div class="fleet-banner" x-cloak>
-                <span class="fleet-banner-flag">[!]</span>
-                <span class="fleet-banner-msg" x-html="onboardingBannerMessage()"></span>
-                <button class="primary" @click="startOnboarding()">Start setup →</button>
-                <button @click="dismissOnboarding()">Dismiss</button>
-            </div>
-        </template>
 
         <div class="sub-header" x-show="view === 'dashboard'">
             <div class="sub-header-center">
@@ -3762,6 +3751,17 @@
                 </template>
             </div>
         </div>
+
+        <!-- FLEET-121 banner. FLEET-155: moved below the sub-header so
+             it doesn't push the entire dashboard down on first sight. -->
+        <template x-if="currentUser && currentUser.role === 'admin' && onboarding.actionable && onboardingSignature() !== onboardingDismissedSig">
+            <div class="fleet-banner" x-cloak>
+                <span class="fleet-banner-flag">[!]</span>
+                <span class="fleet-banner-msg" x-html="onboardingBannerMessage()"></span>
+                <button class="primary" @click="startOnboarding()">Start setup →</button>
+                <button @click="dismissOnboarding()">Dismiss</button>
+            </div>
+        </template>
 
         <main>
             <!-- Dashboard view -->
