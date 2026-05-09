@@ -144,8 +144,11 @@
             padding: 0.75rem 1.5rem;
             border-bottom: 1px solid var(--line);
             background: var(--header-bg);
-            backdrop-filter: blur(6px);
-            -webkit-backdrop-filter: blur(6px);
+            /* FLEET-152: removed backdrop-filter blur(6px). Sticky element
+               with backdrop-filter forces the GPU to recompose the entire
+               area below it on every paint — combined with constant SSE-
+               driven dashboard updates, this stacked with .modal-backdrop
+               and .sub-header blurs to slow whole machines to a crawl. */
             gap: 1.5rem;
             position: sticky;
             top: 0;
@@ -328,8 +331,7 @@
             padding: 0.5rem 1.5rem;
             border-bottom: 1px solid var(--line);
             background: var(--subheader-bg);
-            backdrop-filter: blur(6px);
-            -webkit-backdrop-filter: blur(6px);
+            /* FLEET-152: removed backdrop-filter blur(6px). See header rule. */
             gap: 1.5rem;
             position: sticky;
             top: 47px;
@@ -2057,7 +2059,11 @@
         .modal-backdrop {
             position: fixed; inset: 0;
             background: rgba(0, 0, 0, 0.55);
-            backdrop-filter: blur(2px);
+            /* FLEET-152: removed backdrop-filter blur(2px). The 0.55 dim
+               already provides ample contrast against modal content; the
+               blur was ~invisible perceptually but expensive on every
+               paint frame, especially while the dashboard SSE pushes
+               continuous updates behind the modal. */
             z-index: 100;
             display: flex; align-items: center; justify-content: center;
             padding: 1rem;
