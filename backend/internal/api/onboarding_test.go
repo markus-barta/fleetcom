@@ -40,6 +40,25 @@ func seedOnboardingHost(t *testing.T, store *db.Store, hostname string, lastSeen
 	}
 }
 
+// seedOnboardingAgent associates an agent with a host so the FLEET-155
+// "must run agents to be onboarding-actionable" filter passes. Tests
+// that want a host to appear in any bucket must call this. Pure-infra
+// hosts (skipped by the filter) call it not.
+func seedOnboardingAgent(t *testing.T, store *db.Store, host, agent string) {
+	t.Helper()
+	row := store.DB.QueryRow(`SELECT id FROM hosts WHERE hostname = ?`, host)
+	var hostID int64
+	if err := row.Scan(&hostID); err != nil {
+		t.Fatalf("lookup host id for %q: %v", host, err)
+	}
+	if _, err := store.DB.Exec(
+		`INSERT INTO agents (host_id, name, agent_type, status, last_seen) VALUES (?, ?, 'openclaw', 'idle', ?)`,
+		hostID, agent, time.Now().UTC().Format(time.RFC3339),
+	); err != nil {
+		t.Fatalf("seed agent: %v", err)
+	}
+}
+
 func seedOnboardingGateway(t *testing.T, store *db.Store, host, status string) {
 	t.Helper()
 	if _, err := store.UpsertGateway(host, "wss://"+host+":18789"); err != nil {
@@ -107,9 +126,34 @@ func TestOnboarding_HostNeverSeen_Skipped(t *testing.T) {
 	}
 }
 
+// FLEET-155: pure-infra hosts (no AI agents reported in heartbeats)
+// must NOT appear in the onboarding-actionable buckets — they don't
+// need an OpenClaw gateway or a bridge. Regression test: prior to
+// FLEET-155 every seen host showed up in HostsWithBosunNoGateway,
+// inflating the banner count and confusing operators ("why does my
+// web server need a gateway?").
+func TestOnboarding_PureInfraHost_Skipped(t *testing.T) {
+	store, h := newOnboardingServer(t)
+	now := time.Now().UTC().Format(time.RFC3339)
+	// Two hosts: one runs an agent, one is pure infra.
+	seedOnboardingHost(t, store, "agent-host", now)
+	seedOnboardingAgent(t, store, "agent-host", "ocean")
+	seedOnboardingHost(t, store, "infra-host", now)
+
+	out := callOnboarding(t, h)
+	if len(out.HostsWithBosunNoGateway) != 1 ||
+		out.HostsWithBosunNoGateway[0].Hostname != "agent-host" {
+		t.Fatalf("only agent-host should appear; got %+v", out.HostsWithBosunNoGateway)
+	}
+	if !out.WizardActionable {
+		t.Fatalf("agent-host without gateway should be actionable")
+	}
+}
+
 func TestOnboarding_HostNeedsGateway(t *testing.T) {
 	store, h := newOnboardingServer(t)
 	seedOnboardingHost(t, store, "dsc0", time.Now().UTC().Format(time.RFC3339))
+	seedOnboardingAgent(t, store, "dsc0", "ocean")
 
 	out := callOnboarding(t, h)
 	if !out.WizardActionable {
@@ -124,6 +168,7 @@ func TestOnboarding_HostNeedsGateway(t *testing.T) {
 func TestOnboarding_UnpairedGatewayCountsAsNoGateway(t *testing.T) {
 	store, h := newOnboardingServer(t)
 	seedOnboardingHost(t, store, "dsc0", time.Now().UTC().Format(time.RFC3339))
+	seedOnboardingAgent(t, store, "dsc0", "ocean")
 	// Gateway row exists but status is unpaired (default after UpsertGateway
 	// without MarkGatewayPaired). Should still surface as needing pairing.
 	seedOnboardingGateway(t, store, "dsc0", "unpaired")
@@ -137,6 +182,7 @@ func TestOnboarding_UnpairedGatewayCountsAsNoGateway(t *testing.T) {
 func TestOnboarding_PairedGatewayNeedsBridge(t *testing.T) {
 	store, h := newOnboardingServer(t)
 	seedOnboardingHost(t, store, "dsc0", time.Now().UTC().Format(time.RFC3339))
+	seedOnboardingAgent(t, store, "dsc0", "ocean")
 	seedOnboardingGateway(t, store, "dsc0", "paired")
 
 	out := callOnboarding(t, h)
@@ -155,6 +201,7 @@ func TestOnboarding_PairedGatewayNeedsBridge(t *testing.T) {
 func TestOnboarding_PendingBridgeAndApprovedBridge(t *testing.T) {
 	store, h := newOnboardingServer(t)
 	seedOnboardingHost(t, store, "dsc0", time.Now().UTC().Format(time.RFC3339))
+	seedOnboardingAgent(t, store, "dsc0", "ocean")
 	seedOnboardingGateway(t, store, "dsc0", "paired")
 	seedOnboardingBridge(t, store, "dsc0", "merlin", "approved")
 	seedOnboardingBridge(t, store, "dsc0", "ocean", "pending")
@@ -178,6 +225,7 @@ func TestOnboarding_PendingBridgeAndApprovedBridge(t *testing.T) {
 func TestOnboarding_FullSetup_NotActionable(t *testing.T) {
 	store, h := newOnboardingServer(t)
 	seedOnboardingHost(t, store, "dsc0", time.Now().UTC().Format(time.RFC3339))
+	seedOnboardingAgent(t, store, "dsc0", "merlin")
 	seedOnboardingGateway(t, store, "dsc0", "paired")
 	seedOnboardingBridge(t, store, "dsc0", "merlin", "approved")
 
@@ -219,6 +267,10 @@ func TestOnboarding_StableSortOrder(t *testing.T) {
 	seedOnboardingHost(t, store, "zeta", now)
 	seedOnboardingHost(t, store, "alpha", now)
 	seedOnboardingHost(t, store, "midi", now)
+	// All three need agents to clear the FLEET-155 filter.
+	seedOnboardingAgent(t, store, "zeta", "ocean")
+	seedOnboardingAgent(t, store, "alpha", "ocean")
+	seedOnboardingAgent(t, store, "midi", "ocean")
 
 	out := callOnboarding(t, h)
 	if len(out.HostsWithBosunNoGateway) != 3 {
