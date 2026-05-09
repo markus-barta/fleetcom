@@ -5610,7 +5610,21 @@ WantedBy=multi-user.target</pre>
                                                                   :title="attestationBadgeTitle(b.attestation_status)"
                                                                   x-text="b.attestation_status"></span>
                                                         </template>
-                                                        <button class="btn btn-ghost" style="font-size:8px;padding:0.1rem 0.35rem;margin-left:0.3rem;" @click="revokeBridge(hostDrawerKey, b.agent)">revoke</button>
+                                                        <!-- FLEET-131: lifecycle actions per bridge row.
+                                                             ↻ reinstall  — non-destructive, no confirm, picks up new image/env.
+                                                             ✕ remove     — destructive, typed-confirm, optionally drops state volume. -->
+                                                        <button class="btn btn-ghost"
+                                                                style="font-size:8px;padding:0.1rem 0.35rem;margin-left:0.3rem;"
+                                                                title="Reinstall the bridge container (picks up new image + env). Pairing + state volume preserved."
+                                                                :data-pending="!!pending['reinstallBridge:' + hostDrawerKey]"
+                                                                :disabled="!!pending['reinstallBridge:' + hostDrawerKey]"
+                                                                @click="reinstallBridge(hostDrawerKey)">↻ reinstall</button>
+                                                        <button class="btn btn-ghost"
+                                                                style="font-size:8px;padding:0.1rem 0.35rem;margin-left:0.2rem;color:var(--crit);"
+                                                                title="Remove the bridge: drop pairing, stop+remove container. Optionally delete the state volume."
+                                                                :data-pending="!!pending['removeBridge:' + hostDrawerKey + ':' + b.agent]"
+                                                                :disabled="!!pending['removeBridge:' + hostDrawerKey + ':' + b.agent]"
+                                                                @click="removeBridge(hostDrawerKey, b.agent)">✕ remove</button>
                                                     </span>
                                                 </template>
                                             </div>
@@ -10078,20 +10092,68 @@ WantedBy=multi-user.target</pre>
                     } catch (_) { this.toast('Network error', 'err'); }
                 },
 
-                async revokeBridge(host, agent) {
+                // FLEET-131: bridge lifecycle ops.
+                //   reinstallBridge — non-destructive. Fires bridge.reinstall;
+                //     bosun stops+rms the container and re-runs install with
+                //     the latest image + env (FLEET-129 gateway_operator_token
+                //     relay included). Pairing fingerprint preserved, state
+                //     volume preserved.
+                //   removeBridge — destructive. Drops the bridge_pairings row,
+                //     enqueues bridge.uninstall to tear down the container, and
+                //     optionally deletes the state volume. Typed-confirm gated.
+                async reinstallBridge(host) {
+                    return this.busy('reinstallBridge:' + host, 'bridge.reinstall enqueued',
+                        async () => {
+                            const res = await fetch('/api/hosts/' + encodeURIComponent(host) + '/commands', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ kind: 'bridge.reinstall', params: {} })
+                            });
+                            if (!res.ok) {
+                                const txt = (await res.text()).trim();
+                                throw new Error('Reinstall failed: ' + (txt || 'HTTP ' + res.status));
+                            }
+                            const body = await res.json();
+                            return { ok: true, id: body.id };
+                        },
+                        { verb: 'EXEC', target: 'commands/' + host + ':bridge.reinstall' });
+                },
+
+                async removeBridge(host, agent) {
+                    // FLEET-131 v1: drop the pairing record AND tear down the
+                    // container. State volume is preserved so a later reinstall
+                    // can resume the same identity. Volume deletion is a
+                    // future-ticket option (rare; operator can ssh+docker-volume-rm).
                     if (!await this.confirmModal({
-                        title: 'Revoke bridge',
-                        body: 'Revoke bridge ' + agent + ' on ' + host + '?\nThe bridge will re-register on next boot.',
-                        confirmLabel: 'Revoke', level: 'warn',
+                        title: 'Remove bridge',
+                        body: 'Remove bridge ' + agent + ' on ' + host + '?\n\n' +
+                              '• Drops the FleetCom pairing record.\n' +
+                              '• Stops + removes the bridge container on the host (bridge.uninstall).\n' +
+                              '• Keeps the on-host state volume so a later reinstall can resume the same identity.',
+                        confirmLabel: 'Remove', level: 'crit',
+                        requireType: host,
                     })) return;
-                    try {
-                        const res = await fetch('/api/bridges/' + encodeURIComponent(host) + '/' + encodeURIComponent(agent), { method: 'DELETE' });
-                        if (res.ok || res.status === 204) {
-                            this.toast('Bridge revoked');
-                        } else {
-                            this.toast('Failed to revoke bridge', 'err');
-                        }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    return this.busy('removeBridge:' + host + ':' + agent, 'Bridge removed',
+                        async () => {
+                            // 1. Drop the pairing row.
+                            const dr = await fetch('/api/bridges/' + encodeURIComponent(host) + '/' + encodeURIComponent(agent), { method: 'DELETE' });
+                            if (!dr.ok && dr.status !== 204) {
+                                const txt = (await dr.text()).trim();
+                                throw new Error('Drop pairing failed: ' + (txt || 'HTTP ' + dr.status));
+                            }
+                            // 2. Enqueue uninstall so bosun tears down the container.
+                            const cr = await fetch('/api/hosts/' + encodeURIComponent(host) + '/commands', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ kind: 'bridge.uninstall', params: {} })
+                            });
+                            if (!cr.ok) {
+                                const txt = (await cr.text()).trim();
+                                throw new Error('Pairing dropped but uninstall command rejected: ' + (txt || 'HTTP ' + cr.status));
+                            }
+                            return { ok: true };
+                        },
+                        { verb: 'REMOVE', target: 'bridge/' + host + '/' + agent });
                 },
 
                 async createShare() {
