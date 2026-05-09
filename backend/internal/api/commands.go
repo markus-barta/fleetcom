@@ -12,6 +12,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/markus-barta/fleetcom/internal/auth"
 	"github.com/markus-barta/fleetcom/internal/db"
+	"github.com/markus-barta/fleetcom/internal/openclaw"
 	"github.com/markus-barta/fleetcom/internal/sse"
 )
 
@@ -124,7 +125,7 @@ func redactCommandParams(kind string, params json.RawMessage) json.RawMessage {
 	}
 	sensitive := map[string][]string{
 		"openclaw.pair":  {"operator_token"},
-		"bridge.install": {"fleetcom_token"},
+		"bridge.install": {"fleetcom_token", "gateway_operator_token"},
 	}
 	fields, ok := sensitive[kind]
 	if !ok {
@@ -174,7 +175,11 @@ type EnqueueCommandRequest struct {
 
 // EnqueueCommand is the admin endpoint to issue a new command for a
 // host. Status recording (issued_by_user_id) comes from the session.
-func EnqueueCommand(store *db.Store) http.HandlerFunc {
+// ocMgr is consulted for bridge.install to inject the gateway shared
+// secret (FLEET-129) — pass nil if openclaw integration is disabled
+// and the bridge will run in unauthenticated mode (gateway must be
+// configured without auth.token in that case).
+func EnqueueCommand(store *db.Store, ocMgr *openclaw.Manager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host := chi.URLParam(r, "host")
 		if host == "" {
@@ -275,6 +280,31 @@ func EnqueueCommand(store *db.Store) http.HandlerFunc {
 				pmap["source"] = "ghcr"
 			}
 			paramsAny = pmap
+		}
+
+		// FLEET-129: bridge.install needs the gateway shared secret so
+		// the bridge can satisfy openclaw 2026.4.x's gateway.auth.token
+		// requirement. FleetCom is the only side that has it persisted
+		// (under <ocKeyDir>/<host>/operator-token); we relay it via
+		// the command queue. Silently no-op when the token isn't on
+		// disk — gateways without token mode work without it.
+		if body.Kind == "bridge.install" && ocMgr != nil {
+			tok, err := ocMgr.LookupOperatorToken(host)
+			if err != nil {
+				log.Printf("bridge.install pre-flight (operator-token) for %s: %v", host, err)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			if tok != "" {
+				pmap, _ := paramsAny.(map[string]interface{})
+				if pmap == nil {
+					pmap = map[string]interface{}{}
+				}
+				if _, present := pmap["gateway_operator_token"]; !present {
+					pmap["gateway_operator_token"] = tok
+				}
+				paramsAny = pmap
+			}
 		}
 
 		id, err := store.EnqueueCommand(host, body.Kind, paramsAny, uid)

@@ -84,9 +84,16 @@ func main() {
 		return
 	}
 
-	// Load any persisted operator token the gateway gave us in a prior
-	// hello-ok — lets us skip first-time pairing on reconnect.
+	// Operator token (shared-secret with the gateway, FLEET-129). Two
+	// sources, in precedence order: the persistent file written by the
+	// hello-ok handler on a prior pair, OR a BRIDGE_OPERATOR_TOKEN env
+	// var injected by bosun's bridge.install. The env-var path covers
+	// the first-install case where the gateway requires a token before
+	// it will speak to us at all (openclaw 2026.4.x token mode).
 	operatorToken := readFile(filepath.Join(cfg.KeyDir, "operator-token"))
+	if operatorToken == "" {
+		operatorToken = strings.TrimSpace(os.Getenv("BRIDGE_OPERATOR_TOKEN"))
+	}
 
 	trans := &translator{
 		fc:    fc,

@@ -11,17 +11,23 @@ import (
 )
 
 // bridgeInstallParams is the shape FleetCom sends for bridge.install.
-// The token is NOT a param — bosun uses its own FLEETCOM_TOKEN env
-// var (same token the bridge needs, since it's a per-host token).
-// Keeps secrets off the command queue.
+// The FleetCom-side per-host token is NOT a param — bosun reuses its own
+// FLEETCOM_TOKEN env var (same per-host bearer the bridge needs to POST
+// /api/bridges/register). The gateway shared secret IS a param
+// (FLEET-129): FleetCom is the only side that has it persisted (under
+// /app/data/openclaw-keys/<host>/operator-token), and the bridge
+// container needs it to authenticate against openclaw 2026.4.x's
+// gateway.auth.token requirement. Travels over the command queue,
+// which is already bearer-authenticated (HTTPS + per-host token).
 type bridgeInstallParams struct {
-	AgentNames       string `json:"agent_names"`       // comma-separated, e.g. "merlin,nimue"
-	AgentType        string `json:"agent_type"`        // default "openclaw"
-	GatewayURL       string `json:"gateway_url"`       // default "wss://localhost:18789"
-	Image            string `json:"image"`             // default "ghcr.io/markus-barta/fleetcom-agent-bridge:latest"
-	ContainerName    string `json:"container_name"`    // default "fleetcom-agent-bridge"
-	VolumeName       string `json:"volume_name"`       // default "fleetcom-agent-bridge-keys"
-	GatewayContainer string `json:"gateway_container"` // default "openclaw-gateway" — used for readiness check only
+	AgentNames           string `json:"agent_names"`            // comma-separated, e.g. "merlin,nimue"
+	AgentType            string `json:"agent_type"`             // default "openclaw"
+	GatewayURL           string `json:"gateway_url"`            // default "wss://localhost:18789"
+	Image                string `json:"image"`                  // default "ghcr.io/markus-barta/fleetcom-agent-bridge:latest"
+	ContainerName        string `json:"container_name"`         // default "fleetcom-agent-bridge"
+	VolumeName           string `json:"volume_name"`            // default "fleetcom-agent-bridge-keys"
+	GatewayContainer     string `json:"gateway_container"`      // default "openclaw-gateway" — used for readiness check only
+	GatewayOperatorToken string `json:"gateway_operator_token"` // FLEET-129: shared secret for bridge → gateway auth.token (optional; gateways without token mode work without it)
 }
 
 // handleBridgeInstall stands up the agent-bridge container on this host.
@@ -110,20 +116,24 @@ func handleBridgeInstall(_ int64, params json.RawMessage) (json.RawMessage, erro
 	// compose project.
 	runCtx, rcancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer rcancel()
-	out, err := exec.CommandContext(runCtx, "docker", "run", "-d",
+	args := []string{"run", "-d",
 		"--name", p.ContainerName,
 		"--restart", "unless-stopped",
 		"--network", "host",
-		"-v", p.VolumeName+":/var/lib/fleetcom-agent-bridge",
-		"-e", "FLEETCOM_URL="+fleetcomURL,
-		"-e", "FLEETCOM_TOKEN="+token,
-		"-e", "FLEETCOM_HOSTNAME="+hostname,
-		"-e", "OPENCLAW_GATEWAY_URL="+p.GatewayURL,
-		"-e", "BRIDGE_AGENT_NAMES="+p.AgentNames,
-		"-e", "BRIDGE_AGENT_TYPE="+p.AgentType,
+		"-v", p.VolumeName + ":/var/lib/fleetcom-agent-bridge",
+		"-e", "FLEETCOM_URL=" + fleetcomURL,
+		"-e", "FLEETCOM_TOKEN=" + token,
+		"-e", "FLEETCOM_HOSTNAME=" + hostname,
+		"-e", "OPENCLAW_GATEWAY_URL=" + p.GatewayURL,
+		"-e", "BRIDGE_AGENT_NAMES=" + p.AgentNames,
+		"-e", "BRIDGE_AGENT_TYPE=" + p.AgentType,
 		"-l", "com.centurylinklabs.watchtower.enable=true",
-		p.Image,
-	).CombinedOutput()
+	}
+	if p.GatewayOperatorToken != "" {
+		args = append(args, "-e", "BRIDGE_OPERATOR_TOKEN="+p.GatewayOperatorToken)
+	}
+	args = append(args, p.Image)
+	out, err := exec.CommandContext(runCtx, "docker", args...).CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("docker run failed: %v · %s", err, strings.TrimSpace(string(out)))
 	}
