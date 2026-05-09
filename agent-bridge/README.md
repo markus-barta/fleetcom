@@ -31,7 +31,7 @@ direct push.
 | `FLEETCOM_TOKEN` | *(required for push)* | Shared with Bosun on this host |
 | `FLEETCOM_HOSTNAME` | os hostname | Identity reported in events |
 | `BRIDGE_LOG_CONTAINER` | `openclaw-gateway` | Container whose logs to tail |
-| `BRIDGE_AGENT_NAMES` | `merlin,nimue` | Agents to track |
+| `BRIDGE_AGENT_NAMES` | *(required, no default)* | Agents this host runs (e.g. `ocean`). FLEET-149: bridge refuses to start without it. |
 | `BRIDGE_AGENT_TYPE` | `openclaw` | Reported as `agent_type` |
 | `BRIDGE_BIND_ADDR` | `:9180` | Where `/v1/agent-state` binds |
 

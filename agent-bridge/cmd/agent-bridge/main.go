@@ -43,6 +43,14 @@ func main() {
 	log.Printf("fleetcom agent-bridge %s starting: host=%s agents=%v fc=%s gw=%s keys=%s",
 		version, cfg.HostName, cfg.AgentNames, cfg.FleetcomURL, cfg.GatewayURL, cfg.KeyDir)
 
+	// FLEET-149: refuse to register without explicit agent names. Any
+	// previous default would invent agent identities that don't belong
+	// on this host, polluting the dashboard with bogus pending pair
+	// requests for someone else's agents.
+	if len(cfg.AgentNames) == 0 {
+		log.Fatalf("BRIDGE_AGENT_NAMES is empty — refusing to start. Set it via operator-driven bridge.install (no default; agent identities must be host-asserted).")
+	}
+
 	// Load or generate persistent Ed25519 identity.
 	id, err := loadOrGenerateIdentity(cfg.KeyDir)
 	if err != nil {
@@ -161,10 +169,15 @@ func loadConfig() config {
 		FleetcomToken: os.Getenv("FLEETCOM_TOKEN"),
 		GatewayURL:    getenv("OPENCLAW_GATEWAY_URL", "wss://127.0.0.1:18789"),
 		HostName:      getenv("FLEETCOM_HOSTNAME", hostname()),
-		AgentNames:    splitCSV(getenv("BRIDGE_AGENT_NAMES", "merlin,nimue")),
-		AgentType:     getenv("BRIDGE_AGENT_TYPE", "openclaw"),
-		BindAddr:      getenv("BRIDGE_BIND_ADDR", ":9180"),
-		KeyDir:        getenv("BRIDGE_KEY_DIR", "/var/lib/fleetcom-agent-bridge"),
+		// FLEET-149: no default — env must come from the operator-driven
+		// install flow (bosun bridge.install with explicit agent_names).
+		// Empty BRIDGE_AGENT_NAMES will be caught at run() and the bridge
+		// refuses to register, instead of inventing names that don't
+		// belong on this host.
+		AgentNames: splitCSV(os.Getenv("BRIDGE_AGENT_NAMES")),
+		AgentType:  getenv("BRIDGE_AGENT_TYPE", "openclaw"),
+		BindAddr:   getenv("BRIDGE_BIND_ADDR", ":9180"),
+		KeyDir:     getenv("BRIDGE_KEY_DIR", "/var/lib/fleetcom-agent-bridge"),
 	}
 	return c
 }
