@@ -124,8 +124,9 @@ func redactCommandParams(kind string, params json.RawMessage) json.RawMessage {
 		return params
 	}
 	sensitive := map[string][]string{
-		"openclaw.pair":  {"operator_token"},
-		"bridge.install": {"fleetcom_token", "gateway_operator_token"},
+		"openclaw.pair":    {"operator_token"},
+		"bridge.install":   {"fleetcom_token", "gateway_operator_token"},
+		"bridge.reinstall": {"fleetcom_token", "gateway_operator_token"},
 	}
 	fields, ok := sensitive[kind]
 	if !ok {
@@ -282,16 +283,17 @@ func EnqueueCommand(store *db.Store, ocMgr *openclaw.Manager) http.HandlerFunc {
 			paramsAny = pmap
 		}
 
-		// FLEET-129: bridge.install needs the gateway shared secret so
-		// the bridge can satisfy openclaw 2026.4.x's gateway.auth.token
-		// requirement. FleetCom is the only side that has it persisted
-		// (under <ocKeyDir>/<host>/operator-token); we relay it via
-		// the command queue. Silently no-op when the token isn't on
-		// disk — gateways without token mode work without it.
-		if body.Kind == "bridge.install" && ocMgr != nil {
+		// FLEET-129 / FLEET-131: bridge.install + bridge.reinstall need
+		// the gateway shared secret so the bridge can satisfy openclaw
+		// 2026.4.x's gateway.auth.token requirement. FleetCom is the
+		// only side that has it persisted (under
+		// <ocKeyDir>/<host>/operator-token); we relay it via the
+		// command queue. Silently no-op when the token isn't on disk —
+		// gateways without token mode work without it.
+		if (body.Kind == "bridge.install" || body.Kind == "bridge.reinstall") && ocMgr != nil {
 			tok, err := ocMgr.LookupOperatorToken(host)
 			if err != nil {
-				log.Printf("bridge.install pre-flight (operator-token) for %s: %v", host, err)
+				log.Printf("%s pre-flight (operator-token) for %s: %v", body.Kind, host, err)
 				http.Error(w, "internal error", http.StatusInternalServerError)
 				return
 			}

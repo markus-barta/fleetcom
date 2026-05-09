@@ -99,6 +99,8 @@ var commandAllowlist = map[string]commandHandler{
 	"openclaw.pair":     handleOpenclawPair,     // FLEET-61
 	"container.restart": handleContainerRestart, // FLEET-62
 	"bridge.install":    handleBridgeInstall,    // FLEET-63
+	"bridge.uninstall":  handleBridgeUninstall,  // FLEET-131
+	"bridge.reinstall":  handleBridgeReinstall,  // FLEET-131
 	"agent.update":      handleAgentUpdate,      // FLEET-86
 	"host.reboot":       handleHostReboot,       // FLEET-369.1
 }
