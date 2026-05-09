@@ -12,7 +12,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/markus-barta/fleetcom/internal/auth"
 	"github.com/markus-barta/fleetcom/internal/db"
-	"github.com/markus-barta/fleetcom/internal/openclaw"
 	"github.com/markus-barta/fleetcom/internal/sse"
 )
 
@@ -176,11 +175,12 @@ type EnqueueCommandRequest struct {
 
 // EnqueueCommand is the admin endpoint to issue a new command for a
 // host. Status recording (issued_by_user_id) comes from the session.
-// ocMgr is consulted for bridge.install to inject the gateway shared
-// secret (FLEET-129) — pass nil if openclaw integration is disabled
-// and the bridge will run in unauthenticated mode (gateway must be
-// configured without auth.token in that case).
-func EnqueueCommand(store *db.Store, ocMgr *openclaw.Manager) http.HandlerFunc {
+//
+// FLEET-138 cleanup: the ocMgr parameter that FLEET-129 added has been
+// removed — bridge auth via shared-secret bind-mount (FLEET-134) is
+// handled entirely on the bosun side now and the server doesn't need
+// to relay any token through this endpoint.
+func EnqueueCommand(store *db.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		host := chi.URLParam(r, "host")
 		if host == "" {
