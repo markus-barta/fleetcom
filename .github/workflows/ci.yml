@@ -12,7 +12,7 @@ permissions:
   packages: write
 
 env:
-  VERSION: 1.1.2
+  VERSION: 1.1.3
   AGENT_VERSION: 0.6.5
 
 jobs:
@@ -82,6 +82,24 @@ jobs:
             echo "Silent error swallow (catch (_) {}) is banned (FLEET-106). Wrap the call in this.busy(...) so the failure surfaces as a toast + activity-log entry."
             echo "Allow only with the comment '// silent: pure background load' on the same or next line."
             echo "$unapproved"
+            exit 1
+          fi
+
+      # FLEET-158: ban the bare-Network-error toast pattern. The string
+      # `catch (_) { this.toast('Network error'...` swallows every error
+      # class (network, HTTP, parse, app) into a meaningless 13-char toast
+      # with no host/operation context. Use busy() (full OPLOG instrumentation)
+      # or this._rpcError(label, e) (named, error-message-preserving) instead.
+      - name: ban-bare-network-error-toast
+        working-directory: backend
+        run: |
+          # Strip comment lines (// …) before checking — the rule itself
+          # references the banned pattern in its own documentation.
+          hits=$(grep -nE "catch\s*\(\s*_\s*\)\s*\{[^}]*toast\(['\"]Network error" static/index.html | grep -vE '^\s*[0-9]+:\s*//' || true)
+          if [ -n "$hits" ]; then
+            echo "Silent-swallow toast 'Network error' is banned (FLEET-158)."
+            echo "Use this.busy(...) for full instrumentation or this._rpcError('<Operation>', e) for named errors."
+            echo "$hits"
             exit 1
           fi
 
