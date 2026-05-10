@@ -7394,7 +7394,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast(await res.text() || 'Revoke failed', 'err');
                         }
-                    } catch (e) { this._rpcError('Revoke API token', e); }
+                    } catch (e) { this._rpcError('Revoke API token', e, t && (t.label || t.prefix)); }
                 },
 
                 async loadUsers() {
@@ -7446,7 +7446,7 @@ WantedBy=multi-user.target</pre>
                         const res = await fetch('/api/users/' + u.id + '/reset-totp', { method: 'POST' });
                         if (res.ok) { this.toast('2FA disabled for ' + u.email); await this.loadUsers(); }
                         else this.toast('Failed to disable 2FA', 'err');
-                    } catch (e) { this._rpcError('Disable user TOTP', e); }
+                    } catch (e) { this._rpcError('Disable user TOTP', e, u.email); }
                 },
 
                 async setUserPassword(u) {
@@ -7461,7 +7461,7 @@ WantedBy=multi-user.target</pre>
                         });
                         if (res.ok) this.toast('Password updated — all sessions killed');
                         else this.toast(await res.text() || 'Failed to set password', 'err');
-                    } catch (e) { this._rpcError('Set user password', e); }
+                    } catch (e) { this._rpcError('Set user password', e, u.email); }
                 },
 
                 async deleteUser(u) {
@@ -7478,7 +7478,7 @@ WantedBy=multi-user.target</pre>
                             if (this.selectedUser && this.selectedUser.id === u.id) this.selectedUser = null;
                             await this.loadUsers();
                         } else this.toast(await res.text() || 'Failed to delete user', 'err');
-                    } catch (e) { this._rpcError('Delete user', e); }
+                    } catch (e) { this._rpcError('Delete user', e, u.email); }
                 },
 
                 async invalidateUserSessions(u) {
@@ -7486,7 +7486,7 @@ WantedBy=multi-user.target</pre>
                         const res = await fetch('/api/users/' + u.id + '/sessions', { method: 'DELETE' });
                         if (res.ok) this.toast('Sessions killed for ' + u.email);
                         else this.toast('Failed to kill sessions', 'err');
-                    } catch (e) { this._rpcError('Invalidate user sessions', e); }
+                    } catch (e) { this._rpcError('Invalidate user sessions', e, u.email); }
                 },
 
                 get availableHosts() {
@@ -7553,7 +7553,7 @@ WantedBy=multi-user.target</pre>
                             this.toast('Granted ' + (data.added ?? '') + ' host(s) to ' + this.selectedUser.email);
                             await this.loadUserHosts();
                         } else this.toast('Grant all failed', 'err');
-                    } catch (e) { this._rpcError('Grant all host access', e); }
+                    } catch (e) { this._rpcError('Grant all host access', e, this.selectedUser && this.selectedUser.email); }
                 },
 
                 async revokeAllHostAccess() {
@@ -7569,7 +7569,7 @@ WantedBy=multi-user.target</pre>
                             this.toast('All host access revoked for ' + this.selectedUser.email);
                             await this.loadUserHosts();
                         } else this.toast('Revoke all failed', 'err');
-                    } catch (e) { this._rpcError('Revoke all host access', e); }
+                    } catch (e) { this._rpcError('Revoke all host access', e, this.selectedUser && this.selectedUser.email); }
                 },
 
                 configInstanceLabel: '',
@@ -7997,7 +7997,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Failed to add host', 'err');
                         }
-                    } catch (e) { this._rpcError('Add host', e); }
+                    } catch (e) { this._rpcError('Add host', e, this.newHostname.trim()); }
                 },
 
                 // Ghost tile "+ Add Host" on dashboard views (FLEET-56).
@@ -8038,7 +8038,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Failed to regenerate token', 'err');
                         }
-                    } catch (e) { this._rpcError('Regenerate host token', e); }
+                    } catch (e) { this._rpcError('Regenerate host token', e, hostname); }
                 },
 
                 // ---------- settings ----------
@@ -8185,7 +8185,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Failed to ignore', 'err');
                         }
-                    } catch (e) { this._rpcError('Ignore entity', e); }
+                    } catch (e) { this._rpcError('Ignore entity', e, entityKey); }
                 },
 
                 async unignoreEntity(entityType, entityKey) {
@@ -8202,7 +8202,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Failed to unignore', 'err');
                         }
-                    } catch (e) { this._rpcError('Unignore entity', e); }
+                    } catch (e) { this._rpcError('Unignore entity', e, entityKey); }
                 },
 
                 async loadIgnoredList() {
@@ -8723,7 +8723,7 @@ WantedBy=multi-user.target</pre>
                         });
                         if (res.ok) this.toast('Host config saved');
                         else this.toast('Failed to save config', 'err');
-                    } catch (e) { this._rpcError('Save host config', e); }
+                    } catch (e) { this._rpcError('Save host config', e, this.hostDrawerKey); }
                 },
 
                 // ---------- image presets ----------
@@ -8761,7 +8761,7 @@ WantedBy=multi-user.target</pre>
                         const res = await fetch('/api/image-presets/' + id, { method: 'DELETE' });
                         if (res.ok) { this.loadImagePresets(); this.toast('Icon deleted'); }
                         else this.toast('Delete failed', 'err');
-                    } catch (e) { this._rpcError('Delete preset', e); }
+                    } catch (e) { this._rpcError('Delete preset', e, '#' + id); }
                 },
 
                 exportPresets() {
@@ -9157,7 +9157,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Failed to remove host', 'err');
                         }
-                    } catch (e) { this._rpcError('Remove host', e); }
+                    } catch (e) { this._rpcError('Remove host', e, hostname); }
                 },
 
                 async loadShares() {
@@ -9964,7 +9964,7 @@ WantedBy=multi-user.target</pre>
                             const msg = await res.text();
                             this.toast('Pair failed: ' + msg.slice(0, 160), 'err');
                         }
-                    } catch (e) { this._rpcError('Pair gateway', e); }
+                    } catch (e) { this._rpcError('Pair gateway', e, host); }
                 },
 
                 // QA-AUDIT-FIX: legacy openPairGatewayFromDrawer removed
@@ -9998,7 +9998,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Restart failed: ' + (await res.text()).slice(0, 120), 'err');
                         }
-                    } catch (e) { this._rpcError('Restart container', e); }
+                    } catch (e) { this._rpcError('Restart container', e, host); }
                 },
 
                 // FLEET-60/…: open the command-history drawer for a host.
@@ -10010,7 +10010,7 @@ WantedBy=multi-user.target</pre>
                             const cmds = await res.json() || [];
                             this.commandsByHost = { ...this.commandsByHost, [host]: cmds };
                         }
-                    } catch (e) { this._rpcError('Open host commands', e); }
+                    } catch (e) { this._rpcError('Open host commands', e, host); }
                 },
 
                 // Truthy if this host has an in-flight command (pending
@@ -10060,7 +10060,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Cancel failed: ' + (await res.text()).slice(0, 120), 'err');
                         }
-                    } catch (e) { this._rpcError('Cancel command', e); }
+                    } catch (e) { this._rpcError('Cancel command', e, '#' + id); }
                 },
 
                 // FLEET-63: truthy if any bridge row belongs to this host.
@@ -10392,7 +10392,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Unpair failed', 'err');
                         }
-                    } catch (e) { this._rpcError('Unpair gateway', e); }
+                    } catch (e) { this._rpcError('Unpair gateway', e, host); }
                 },
 
                 // FLEET-131: bridge lifecycle ops.
@@ -10487,7 +10487,7 @@ WantedBy=multi-user.target</pre>
                         const res = await fetch('/api/shares?id=' + id, { method: 'DELETE' });
                         if (res.ok) { this.loadShares(); this.toast('Share link revoked'); }
                         else this.toast('Failed to revoke', 'err');
-                    } catch (e) { this._rpcError('Delete share', e); }
+                    } catch (e) { this._rpcError('Delete share', e, '#' + id); }
                 },
 
                 // ---------- derived stats (ignored entities excluded) ----------
@@ -10688,7 +10688,7 @@ WantedBy=multi-user.target</pre>
                             const res = await fetch('/api/hosts/' + encodeURIComponent(hostname) + '/update', { method: 'POST' });
                             if (res.ok) this.toast('Update requested for ' + hostname);
                             else this.toast('Failed to request update', 'err');
-                        } catch (e) { this._rpcError('Request host update (sub-call)', e); }
+                        } catch (e) { this._rpcError('Request host update (sub-call)', e, hostname); }
                         return;
                     }
                     // FLEET-86/87 path — agent.update command via FLEET-59 channel.
@@ -10709,7 +10709,7 @@ WantedBy=multi-user.target</pre>
                             const text = await res.text().catch(() => '');
                             this.toast('Update rejected: ' + (text.slice(0, 200) || 'HTTP ' + res.status), 'err');
                         }
-                    } catch (e) { this._rpcError('Request host update', e); }
+                    } catch (e) { this._rpcError('Request host update', e, hostname); }
                 },
                 async requestUpdateAll() {
                     if (!await this.confirmModal({
@@ -10750,7 +10750,7 @@ WantedBy=multi-user.target</pre>
                             const text = await res.text().catch(() => '');
                             this.toast('Reboot rejected: ' + (text.slice(0, 200) || 'HTTP ' + res.status), 'err');
                         }
-                    } catch (e) { this._rpcError('Submit reboot', e); }
+                    } catch (e) { this._rpcError('Submit reboot', e, host); }
                 },
                 async setAllowReboot(hostname, on) {
                     try {
@@ -10765,7 +10765,7 @@ WantedBy=multi-user.target</pre>
                         // Optimistic update — host will refresh on next SSE heartbeat.
                         const h = this.hostByName(hostname);
                         if (h) h.allow_reboot = !!on;
-                    } catch (e) { this._rpcError('Set allow-reboot', e); }
+                    } catch (e) { this._rpcError('Set allow-reboot', e, hostname); }
                 },
                 agentStatus(a) {
                     if (a.status === 'online') return 'ok';
@@ -11036,12 +11036,27 @@ WantedBy=multi-user.target</pre>
                 // that haven't (yet) been migrated to busy(). Replaces the
                 // bare `catch (_) { toast('Network error') }` pattern with
                 // an operation-named, error-message-preserving toast so
-                // the operator always sees what failed. New code should
-                // prefer busy() (full OPLOG instrumentation) or
-                // fetchJSONWithDetail() (typed errors).
-                _rpcError(label, e) {
+                // the operator always sees what failed.
+                //
+                // FLEET-162: optional `target` argument names the host /
+                // user / object the call was for (e.g. 'dsc0',
+                // 'admin@example.com', 'dsc0/merlin'). The target appears
+                // in the toast head's monospace slot AND inline in the
+                // body (between brackets) so the operator can identify
+                // the offender without squinting at the head row.
+                //
+                // New code should still prefer busy() (full OPLOG
+                // instrumentation) or fetchJSONWithDetail() (typed
+                // errors with auto-prefixed scope).
+                _rpcError(label, e, target) {
                     const msg = (e && e.message) || 'network error';
-                    this.toast(label + ': ' + msg, 'err');
+                    const hosted = target ? label + ' [' + target + ']' : label;
+                    this.toast({
+                        level: 'err',
+                        verb: 'FAIL',
+                        target: target || '',
+                        msg: hosted + ': ' + msg,
+                    });
                 },
 
                 // FLEET-157: typed-error fetch helper. Every error message
