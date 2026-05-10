@@ -12,27 +12,19 @@ type Store struct {
 }
 
 func Open(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", path+"?_journal_mode=WAL&_foreign_keys=on&_busy_timeout=5000")
+	// FLEET-155: use modernc.org/sqlite's `_pragma` query param so
+	// busy_timeout is applied to *every* new pool connection. The older
+	// `_busy_timeout=5000` form is unreliable across the pool (FLEET-135);
+	// relying on a single db.Exec(`PRAGMA …`) only set the timeout on one
+	// connection, so concurrent writers (e.g. updateAllAgents fan-out)
+	// raced past it and hit SQLITE_BUSY in 1-9ms.
+	db, err := sql.Open("sqlite", path+"?_journal_mode=WAL&_foreign_keys=on&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 
 	if err := db.Ping(); err != nil {
 		return nil, fmt.Errorf("ping db: %w", err)
-	}
-
-	// FLEET-135: explicitly set busy_timeout via PRAGMA. The connection-
-	// string _busy_timeout=5000 param is unreliable in modernc.org/sqlite
-	// (observed SQLITE_BUSY at 1ms in production). The PRAGMA applies to
-	// the connection it runs on; relying on it across the pool is best-
-	// effort. SetMaxOpenConns(1) was tried as a stronger guarantee but
-	// caused server-side deadlock — some long-running query holds the
-	// single connection forever and blocks all other handlers. The
-	// underlying race is rare; we accept it for now and address it in a
-	// follow-up that audits which call sites hold connections across
-	// non-trivial work.
-	if _, err := db.Exec(`PRAGMA busy_timeout = 5000`); err != nil {
-		return nil, fmt.Errorf("set busy_timeout: %w", err)
 	}
 
 	if err := migrate(db); err != nil {

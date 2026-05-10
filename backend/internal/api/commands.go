@@ -294,6 +294,10 @@ func EnqueueCommand(store *db.Store) http.HandlerFunc {
 
 		id, err := store.EnqueueCommand(host, body.Kind, paramsAny, uid)
 		if err != nil {
+			// FLEET-155: silent 500 here masked a SQLITE_BUSY race during
+			// the Update-all-agents fan-out — log the underlying error so
+			// future contention is greppable in the container log.
+			log.Printf("EnqueueCommand failed host=%s kind=%s: %v", host, body.Kind, err)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}

@@ -8068,12 +8068,17 @@ WantedBy=multi-user.target</pre>
                     return this.busy('updateAllAgents',
                         'Enqueued agent.update on ' + eligible.length + ' host' + (eligible.length === 1 ? '' : 's'),
                         async () => {
-                            const results = await Promise.allSettled(
-                                eligible.map(h => fetch('/api/hosts/' + encodeURIComponent(h.hostname) + '/commands', {
+                            // FLEET-155: cap fan-out at 2 in flight. The server's
+                            // SQLite store is a single WAL writer; 9-wide POSTs
+                            // raced past busy_timeout and returned 500s. The DSN
+                            // fix lands the pool-wide timeout, but client-side
+                            // pacing keeps tail latency predictable.
+                            const results = await this.runWithConcurrency(eligible, 2, h =>
+                                fetch('/api/hosts/' + encodeURIComponent(h.hostname) + '/commands', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
                                     body: JSON.stringify({ kind: 'agent.update', params: {} }),
-                                }).then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status))))
+                                }).then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
                             );
                             const failed = results.filter(r => r.status === 'rejected');
                             if (failed.length > 0) {
@@ -10920,6 +10925,30 @@ WantedBy=multi-user.target</pre>
                 //     races)
                 //   - re-throws so the caller can do additional cleanup if it
                 //     wants; callers that don't care can ignore the rejection
+                // FLEET-155: small concurrency-limited Promise.allSettled.
+                // Returns an array of {status,value|reason} matching the
+                // input order. Used by updateAllAgents to keep N concurrent
+                // POSTs from racing past the SQLite WAL writer.
+                async runWithConcurrency(items, limit, worker) {
+                    const results = new Array(items.length);
+                    let i = 0;
+                    const next = async () => {
+                        while (true) {
+                            const idx = i++;
+                            if (idx >= items.length) return;
+                            try {
+                                results[idx] = { status: 'fulfilled', value: await worker(items[idx]) };
+                            } catch (e) {
+                                results[idx] = { status: 'rejected', reason: e };
+                            }
+                        }
+                    };
+                    const lanes = [];
+                    for (let k = 0; k < Math.min(limit, items.length); k++) lanes.push(next());
+                    await Promise.all(lanes);
+                    return results;
+                },
+
                 async busy(key, label, fn, opts = {}) {
                     if (this.pending[key]) return; // double-click guard
                     // Object-replacement so Alpine reactivity always sees the change
