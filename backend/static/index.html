@@ -2684,6 +2684,11 @@
         }
         .oplog-chip:hover { color: var(--ink); border-color: var(--ink-dim); }
         .oplog-chip.is-active { color: var(--accent); border-color: var(--accent); }
+        /* FLEET-159: queued-events indicator turns warning-colored to
+           signal the operator that some recent activity has not yet
+           landed on the server. */
+        .oplog-chip.oplog-queue-chip { color: var(--warn, #f0b400); border-color: var(--warn, #f0b400); margin-left: auto; }
+        .oplog-chip.oplog-queue-chip:hover { background: rgba(240, 180, 0, 0.08); }
         /* Header toggle (left-edge, mirrors the right-edge open buttons). */
         .oplog-toggle {
             background: transparent;
@@ -5932,6 +5937,14 @@ WantedBy=multi-user.target</pre>
                             @click="oplogFilter = f"
                             x-text="f"></button>
                 </template>
+                <!-- FLEET-159: queued-events indicator. Shown only when
+                     /api/activity is unreachable and entries have been
+                     buffered locally. Click to retry the replay. -->
+                <button class="oplog-chip oplog-queue-chip"
+                        x-show="oplogQueueSize > 0"
+                        @click="_oplogBufferReplay()"
+                        :title="oplogQueueSize + ' event' + (oplogQueueSize === 1 ? '' : 's') + ' queued — server unreachable. Click to retry.'"
+                        x-text="'⌚ ' + oplogQueueSize + ' queued'"></button>
             </div>
             <div class="drawer-body" style="padding:0">
                 <template x-if="filteredOplog().length === 0">
@@ -6964,6 +6977,8 @@ WantedBy=multi-user.target</pre>
                 oplogList: [],          // most-recent first; ring buffer of last 200
                 oplogFilter: 'ALL',     // ALL | OPS | ADMIN | ERR
                 _oplogSeq: 0,           // local id for synthetic entries before server confirms
+                oplogQueueSize: 0,      // FLEET-159: count of buffered events awaiting replay
+                _oplogBufferReplaying: false,
                 pinOplog: false,        // FLEET-128: pinned drawer reserves left padding on .app
                 // FLEET-112: secure-by-default agent-bridge pairing.
                 // pairListExpanded[host] = true → inline pending list shown
@@ -7057,6 +7072,11 @@ WantedBy=multi-user.target</pre>
                     this.initTheme();
                     this.connect();
                     this.startConnWatchdog();
+                    // FLEET-159: replay any OPLOG events buffered during a
+                    // previous outage. Fire-and-forget — failures simply
+                    // leave the queue intact for the next attempt.
+                    this.oplogQueueSize = this._oplogBufferRead().length;
+                    if (this.oplogQueueSize > 0) this._oplogBufferReplay();
                     // FLEET-119: auto-advance the deploy modal when SSE
                     // pushes a new bridge row. The watcher is no-op when
                     // the modal is closed or in pick phase; it only fires
@@ -7335,7 +7355,7 @@ WantedBy=multi-user.target</pre>
                         this.newApiTokenScopes = ['read:hosts'];
                         this.newApiTokenExpiry = '90d';
                         await this.loadApiTokens();
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Create API token', e); }
                 },
 
                 async revokeApiToken(t) {
@@ -7352,7 +7372,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast(await res.text() || 'Revoke failed', 'err');
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Revoke API token', e); }
                 },
 
                 async loadUsers() {
@@ -7404,7 +7424,7 @@ WantedBy=multi-user.target</pre>
                         const res = await fetch('/api/users/' + u.id + '/reset-totp', { method: 'POST' });
                         if (res.ok) { this.toast('2FA disabled for ' + u.email); await this.loadUsers(); }
                         else this.toast('Failed to disable 2FA', 'err');
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Disable user TOTP', e); }
                 },
 
                 async setUserPassword(u) {
@@ -7419,7 +7439,7 @@ WantedBy=multi-user.target</pre>
                         });
                         if (res.ok) this.toast('Password updated — all sessions killed');
                         else this.toast(await res.text() || 'Failed to set password', 'err');
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Set user password', e); }
                 },
 
                 async deleteUser(u) {
@@ -7436,7 +7456,7 @@ WantedBy=multi-user.target</pre>
                             if (this.selectedUser && this.selectedUser.id === u.id) this.selectedUser = null;
                             await this.loadUsers();
                         } else this.toast(await res.text() || 'Failed to delete user', 'err');
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Delete user', e); }
                 },
 
                 async invalidateUserSessions(u) {
@@ -7444,7 +7464,7 @@ WantedBy=multi-user.target</pre>
                         const res = await fetch('/api/users/' + u.id + '/sessions', { method: 'DELETE' });
                         if (res.ok) this.toast('Sessions killed for ' + u.email);
                         else this.toast('Failed to kill sessions', 'err');
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Invalidate user sessions', e); }
                 },
 
                 get availableHosts() {
@@ -7511,7 +7531,7 @@ WantedBy=multi-user.target</pre>
                             this.toast('Granted ' + (data.added ?? '') + ' host(s) to ' + this.selectedUser.email);
                             await this.loadUserHosts();
                         } else this.toast('Grant all failed', 'err');
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Grant all host access', e); }
                 },
 
                 async revokeAllHostAccess() {
@@ -7527,7 +7547,7 @@ WantedBy=multi-user.target</pre>
                             this.toast('All host access revoked for ' + this.selectedUser.email);
                             await this.loadUserHosts();
                         } else this.toast('Revoke all failed', 'err');
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Revoke all host access', e); }
                 },
 
                 configInstanceLabel: '',
@@ -7649,7 +7669,7 @@ WantedBy=multi-user.target</pre>
                         this.avatarPreview = null;
                         await this.loadMe();
                         this.toast('Profile picture removed');
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Clear avatar', e); }
                 },
 
                 togglePinActivity() {
@@ -7955,7 +7975,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Failed to add host', 'err');
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Add host', e); }
                 },
 
                 // Ghost tile "+ Add Host" on dashboard views (FLEET-56).
@@ -7996,7 +8016,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Failed to regenerate token', 'err');
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Regenerate host token', e); }
                 },
 
                 // ---------- settings ----------
@@ -8016,7 +8036,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Failed to update interval', 'err');
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Update heartbeat interval', e); }
                 },
 
                 // ---------- settings navigation ----------
@@ -8065,29 +8085,24 @@ WantedBy=multi-user.target</pre>
                         level: 'warn',
                     });
                     if (!ok) return;
-                    return this.busy('updateAllAgents',
-                        'Enqueued agent.update on ' + eligible.length + ' host' + (eligible.length === 1 ? '' : 's'),
-                        async () => {
-                            // FLEET-155: cap fan-out at 2 in flight. The server's
-                            // SQLite store is a single WAL writer; 9-wide POSTs
-                            // raced past busy_timeout and returned 500s. The DSN
-                            // fix lands the pool-wide timeout, but client-side
-                            // pacing keeps tail latency predictable.
-                            const results = await this.runWithConcurrency(eligible, 2, h =>
-                                fetch('/api/hosts/' + encodeURIComponent(h.hostname) + '/commands', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ kind: 'agent.update', params: {} }),
-                                }).then(r => r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)))
-                            );
-                            const failed = results.filter(r => r.status === 'rejected');
-                            if (failed.length > 0) {
-                                throw new Error(failed.length + ' of ' + eligible.length + ' failed: ' +
-                                    failed.map(f => f.reason && f.reason.message || 'unknown').slice(0, 3).join('; '));
-                            }
-                            return { ok: true, count: eligible.length };
-                        },
-                        { verb: 'EXEC', target: 'fleet/agent.update' });
+                    // FLEET-157: every host gets its own per-item OPLOG row +
+                    // a summary row that ticks live as items complete. Failed
+                    // hosts are named in the toast — no more bare "Network
+                    // error".
+                    return this.runBatch(eligible, {
+                        key: 'updateAllAgents',
+                        label: 'Update all agents',
+                        verb: 'EXEC',
+                        summaryTarget: 'fleet/agent.update',
+                        itemTarget: h => 'host/' + h.hostname + ':agent.update',
+                        itemLabel: h => h.hostname,
+                        concurrency: 2,
+                    }, h => this.fetchJSONWithDetail(h.hostname,
+                        '/api/hosts/' + encodeURIComponent(h.hostname) + '/commands', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ kind: 'agent.update', params: {} }),
+                        }));
                 },
 
                 // FLEET-154: short OS string for narrow viewports. Strips
@@ -8148,7 +8163,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Failed to ignore', 'err');
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Ignore entity', e); }
                 },
 
                 async unignoreEntity(entityType, entityKey) {
@@ -8165,7 +8180,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Failed to unignore', 'err');
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Unignore entity', e); }
                 },
 
                 async loadIgnoredList() {
@@ -8686,7 +8701,7 @@ WantedBy=multi-user.target</pre>
                         });
                         if (res.ok) this.toast('Host config saved');
                         else this.toast('Failed to save config', 'err');
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Save host config', e); }
                 },
 
                 // ---------- image presets ----------
@@ -8710,7 +8725,7 @@ WantedBy=multi-user.target</pre>
                         const res = await fetch('/api/image-presets', { method: 'POST', body: form });
                         if (res.ok) { this.loadImagePresets(); this.toast('Icon "' + name + '" uploaded'); }
                         else this.toast('Upload failed', 'err');
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Upload preset', e); }
                     input.value = '';
                 },
 
@@ -8724,7 +8739,7 @@ WantedBy=multi-user.target</pre>
                         const res = await fetch('/api/image-presets/' + id, { method: 'DELETE' });
                         if (res.ok) { this.loadImagePresets(); this.toast('Icon deleted'); }
                         else this.toast('Delete failed', 'err');
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Delete preset', e); }
                 },
 
                 exportPresets() {
@@ -9120,7 +9135,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Failed to remove host', 'err');
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Remove host', e); }
                 },
 
                 async loadShares() {
@@ -9867,7 +9882,7 @@ WantedBy=multi-user.target</pre>
                             this.pairableHosts = await res.json() || [];
                             this.showAddGatewayInline = true;
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Load pairable hosts', e); }
                 },
 
                 // List likely gateway-container names on a host, ranked
@@ -9927,7 +9942,7 @@ WantedBy=multi-user.target</pre>
                             const msg = await res.text();
                             this.toast('Pair failed: ' + msg.slice(0, 160), 'err');
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Pair gateway', e); }
                 },
 
                 // QA-AUDIT-FIX: legacy openPairGatewayFromDrawer removed
@@ -9961,7 +9976,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Restart failed: ' + (await res.text()).slice(0, 120), 'err');
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Restart container', e); }
                 },
 
                 // FLEET-60/…: open the command-history drawer for a host.
@@ -9973,7 +9988,7 @@ WantedBy=multi-user.target</pre>
                             const cmds = await res.json() || [];
                             this.commandsByHost = { ...this.commandsByHost, [host]: cmds };
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Open host commands', e); }
                 },
 
                 // Truthy if this host has an in-flight command (pending
@@ -10023,7 +10038,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Cancel failed: ' + (await res.text()).slice(0, 120), 'err');
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Cancel command', e); }
                 },
 
                 // FLEET-63: truthy if any bridge row belongs to this host.
@@ -10355,7 +10370,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Unpair failed', 'err');
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Unpair gateway', e); }
                 },
 
                 // FLEET-131: bridge lifecycle ops.
@@ -10437,7 +10452,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Failed to create share link', 'err');
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Create share', e); }
                 },
 
                 async deleteShare(id) {
@@ -10450,7 +10465,7 @@ WantedBy=multi-user.target</pre>
                         const res = await fetch('/api/shares?id=' + id, { method: 'DELETE' });
                         if (res.ok) { this.loadShares(); this.toast('Share link revoked'); }
                         else this.toast('Failed to revoke', 'err');
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Delete share', e); }
                 },
 
                 // ---------- derived stats (ignored entities excluded) ----------
@@ -10651,7 +10666,7 @@ WantedBy=multi-user.target</pre>
                             const res = await fetch('/api/hosts/' + encodeURIComponent(hostname) + '/update', { method: 'POST' });
                             if (res.ok) this.toast('Update requested for ' + hostname);
                             else this.toast('Failed to request update', 'err');
-                        } catch (_) { this.toast('Network error', 'err'); }
+                        } catch (e) { this._rpcError('Request host update (sub-call)', e); }
                         return;
                     }
                     // FLEET-86/87 path — agent.update command via FLEET-59 channel.
@@ -10672,7 +10687,7 @@ WantedBy=multi-user.target</pre>
                             const text = await res.text().catch(() => '');
                             this.toast('Update rejected: ' + (text.slice(0, 200) || 'HTTP ' + res.status), 'err');
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Request host update', e); }
                 },
                 async requestUpdateAll() {
                     if (!await this.confirmModal({
@@ -10688,7 +10703,7 @@ WantedBy=multi-user.target</pre>
                         } else {
                             this.toast('Failed to request updates', 'err');
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Request update all', e); }
                 },
                 // FLEET-369.1: open the hostname-confirm modal for host.reboot.
                 openRebootConfirm(hostname) {
@@ -10713,7 +10728,7 @@ WantedBy=multi-user.target</pre>
                             const text = await res.text().catch(() => '');
                             this.toast('Reboot rejected: ' + (text.slice(0, 200) || 'HTTP ' + res.status), 'err');
                         }
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Submit reboot', e); }
                 },
                 async setAllowReboot(hostname, on) {
                     try {
@@ -10728,7 +10743,7 @@ WantedBy=multi-user.target</pre>
                         // Optimistic update — host will refresh on next SSE heartbeat.
                         const h = this.hostByName(hostname);
                         if (h) h.allow_reboot = !!on;
-                    } catch (_) { this.toast('Network error', 'err'); }
+                    } catch (e) { this._rpcError('Set allow-reboot', e); }
                 },
                 agentStatus(a) {
                     if (a.status === 'online') return 'ok';
@@ -10925,30 +10940,6 @@ WantedBy=multi-user.target</pre>
                 //     races)
                 //   - re-throws so the caller can do additional cleanup if it
                 //     wants; callers that don't care can ignore the rejection
-                // FLEET-155: small concurrency-limited Promise.allSettled.
-                // Returns an array of {status,value|reason} matching the
-                // input order. Used by updateAllAgents to keep N concurrent
-                // POSTs from racing past the SQLite WAL writer.
-                async runWithConcurrency(items, limit, worker) {
-                    const results = new Array(items.length);
-                    let i = 0;
-                    const next = async () => {
-                        while (true) {
-                            const idx = i++;
-                            if (idx >= items.length) return;
-                            try {
-                                results[idx] = { status: 'fulfilled', value: await worker(items[idx]) };
-                            } catch (e) {
-                                results[idx] = { status: 'rejected', reason: e };
-                            }
-                        }
-                    };
-                    const lanes = [];
-                    for (let k = 0; k < Math.min(limit, items.length); k++) lanes.push(next());
-                    await Promise.all(lanes);
-                    return results;
-                },
-
                 async busy(key, label, fn, opts = {}) {
                     if (this.pending[key]) return; // double-click guard
                     // Object-replacement so Alpine reactivity always sees the change
@@ -11019,6 +11010,212 @@ WantedBy=multi-user.target</pre>
                     throw new Error(msg);
                 },
 
+                // FLEET-158: standardised error toast for legacy RPC sites
+                // that haven't (yet) been migrated to busy(). Replaces the
+                // bare `catch (_) { toast('Network error') }` pattern with
+                // an operation-named, error-message-preserving toast so
+                // the operator always sees what failed. New code should
+                // prefer busy() (full OPLOG instrumentation) or
+                // fetchJSONWithDetail() (typed errors).
+                _rpcError(label, e) {
+                    const msg = (e && e.message) || 'network error';
+                    this.toast(label + ': ' + msg, 'err');
+                },
+
+                // FLEET-157: typed-error fetch helper. Every error message
+                // starts with `<scope>: <class> — <detail>` so toasts and
+                // OPLOG entries always name the offending host/operation
+                // and the error class:
+                //   - network_error : fetch threw (DNS, TCP, TLS, CORS,
+                //                     abort, server-restart)
+                //   - http_error    : non-2xx; includes status + first
+                //                     120 chars of body
+                //   - parse_error   : non-JSON or malformed
+                // Use this anywhere a clear failure attribution matters
+                // (every batch worker, every settings-page write, etc.)
+                // — never write `catch (_) { toast('Network error') }`
+                // again.
+                async fetchJSONWithDetail(scope, url, opts = {}) {
+                    let res;
+                    try {
+                        res = await fetch(url, opts);
+                    } catch (e) {
+                        const msg = (e && e.message) || 'fetch failed';
+                        const err = new Error(scope + ': network error — ' + msg);
+                        err.kind = 'network_error';
+                        err.scope = scope;
+                        throw err;
+                    }
+                    if (!res.ok) {
+                        let body = '';
+                        try {
+                            const text = await res.text();
+                            body = (text || '').trim();
+                            if (body.length > 120) body = body.slice(0, 117) + '…';
+                        } catch (_) {} // silent: pure background load
+                        const err = new Error(scope + ': HTTP ' + res.status + (body ? ' — ' + body : ''));
+                        err.kind = 'http_error';
+                        err.status = res.status;
+                        err.scope = scope;
+                        throw err;
+                    }
+                    // Empty body or 204 → return null. Otherwise parse JSON.
+                    if (res.status === 204) return null;
+                    const ct = (res.headers.get('content-type') || '').toLowerCase();
+                    if (!ct.includes('json')) {
+                        // No JSON expected — caller wants the raw response.
+                        return res;
+                    }
+                    try {
+                        return await res.json();
+                    } catch (e) {
+                        const err = new Error(scope + ': invalid JSON — ' + ((e && e.message) || 'parse failed'));
+                        err.kind = 'parse_error';
+                        err.scope = scope;
+                        throw err;
+                    }
+                },
+
+                // FLEET-157: concurrency-limited batch with per-item OPLOG
+                // rows + live progress updates. One OPLOG row per item
+                // (ok|err) plus one summary row for the whole batch. The
+                // summary row sits in the drawer as 'pend' while the batch
+                // runs and its target_key is updated reactively to show
+                // "fleet/agent.update (3/9)" etc. so the operator sees
+                // real-time progress without leaving the page.
+                //
+                // opts: {
+                //   key:           busy()-style double-click guard
+                //   label:         human-readable batch label for toasts
+                //   verb:          OPLOG verb (default 'EXEC')
+                //   summaryTarget: 'fleet/agent.update' for the summary row
+                //   itemTarget:    (item) => 'host/dsc0:agent.update' for per-item rows
+                //   itemLabel:     (item) => short label used in failure summaries
+                //   concurrency:   default 2
+                // }
+                //
+                // worker(item) must return a Promise. Throw to mark item
+                // failed; the error message bubbles into the per-item
+                // OPLOG row and the final toast.
+                async runBatch(items, opts, worker) {
+                    if (this.pending[opts.key]) return; // double-click guard
+                    this.pending = { ...this.pending, [opts.key]: true };
+
+                    const verb = opts.verb || 'EXEC';
+                    const concurrency = Math.max(1, opts.concurrency || 2);
+                    const total = items.length;
+                    let done = 0, failed = 0;
+                    const failedItems = [];
+                    const startedAt = performance.now();
+
+                    // Optimistic summary row in OPLOG (running state).
+                    const summaryTempId = -(++this._oplogSeq);
+                    const summaryTarget = opts.summaryTarget || '';
+                    let summaryType = '', summaryKey = summaryTarget;
+                    const slash = summaryTarget.indexOf('/');
+                    if (slash > 0) {
+                        summaryType = summaryTarget.slice(0, slash);
+                        summaryKey = summaryTarget.slice(slash + 1);
+                    }
+                    this.oplogList = [{
+                        id: summaryTempId,
+                        ts: new Date().toISOString(),
+                        user_id: this.currentUser ? this.currentUser.id : 0,
+                        user_email: this.currentUser ? this.currentUser.email : '',
+                        verb,
+                        target_type: summaryType,
+                        target_key: summaryKey + ' (0/' + total + ')',
+                        outcome: 'pend',
+                        duration_ms: 0,
+                        error: '',
+                        _fresh: true,
+                    }, ...this.oplogList].slice(0, 200);
+
+                    const updateSummary = (extras) => {
+                        const idx = this.oplogList.findIndex(r => r.id === summaryTempId);
+                        if (idx < 0) return;
+                        const next = this.oplogList.slice();
+                        next[idx] = { ...next[idx], ...extras };
+                        this.oplogList = next;
+                    };
+
+                    const runOne = async (item) => {
+                        const itemStart = performance.now();
+                        const itemTarget = opts.itemTarget ? opts.itemTarget(item) : '';
+                        const itemLabel = opts.itemLabel ? opts.itemLabel(item) : itemTarget;
+                        try {
+                            await worker(item);
+                            const ms = Math.round(performance.now() - itemStart);
+                            done++;
+                            this.recordOplog({ verb, target: itemTarget, outcome: 'ok', duration_ms: ms, error: '' });
+                        } catch (e) {
+                            const ms = Math.round(performance.now() - itemStart);
+                            const msg = (e && e.message) || 'failed';
+                            failed++;
+                            failedItems.push({ label: itemLabel, error: msg });
+                            this.recordOplog({ verb, target: itemTarget, outcome: 'err', duration_ms: ms, error: msg });
+                        } finally {
+                            const finished = done + failed;
+                            updateSummary({
+                                target_key: summaryKey + ' (' + finished + '/' + total + (failed ? ', ' + failed + ' failed' : '') + ')',
+                            });
+                        }
+                    };
+
+                    let i = 0;
+                    const lane = async () => {
+                        while (true) {
+                            const idx = i++;
+                            if (idx >= total) return;
+                            await runOne(items[idx]);
+                        }
+                    };
+                    const lanes = [];
+                    for (let k = 0; k < Math.min(concurrency, total); k++) lanes.push(lane());
+                    await Promise.all(lanes);
+
+                    const ms = Math.round(performance.now() - startedAt);
+                    const ok = failed === 0;
+                    let summaryError = '';
+                    if (!ok) {
+                        const heads = failedItems.slice(0, 3).map(f => f.label + ' (' + f.error + ')').join('; ');
+                        summaryError = failed + ' of ' + total + ' failed: ' + heads + (failedItems.length > 3 ? '; …' : '');
+                    }
+
+                    updateSummary({
+                        outcome: ok ? 'ok' : 'err',
+                        duration_ms: ms,
+                        error: summaryError,
+                        target_key: summaryKey,
+                        verb: ok ? verb : 'FAIL',
+                    });
+                    this.recordOplog({
+                        verb: ok ? verb : 'FAIL',
+                        target: summaryTarget,
+                        outcome: ok ? 'ok' : 'err',
+                        duration_ms: ms,
+                        error: summaryError,
+                    });
+
+                    const label = opts.label || summaryKey || verb;
+                    if (ok) {
+                        this.toast({ level: 'ok', verb, target: summaryTarget, msg: label + ' — ' + total + ' done' });
+                    } else {
+                        this.toast({
+                            level: 'err',
+                            verb: 'FAIL',
+                            target: summaryTarget,
+                            msg: label + ' — ' + summaryError,
+                        });
+                    }
+
+                    const next = { ...this.pending };
+                    delete next[opts.key];
+                    this.pending = next;
+
+                    return { ok, total, done, failed, failedItems };
+                },
+
                 // ---------- FLEET-108 operator log ----------
                 // Toggle the left-edge drawer; lazy-load on first open.
                 toggleOplog() {
@@ -11063,19 +11260,88 @@ WantedBy=multi-user.target</pre>
                     setTimeout(() => {
                         this.oplogList = this.oplogList.map(r => r.id === tempId ? { ...r, _fresh: false } : r);
                     }, 1300);
+                    const payload = { verb, target_type, target_key, outcome, duration_ms, error };
                     try {
                         const res = await fetch('/api/activity', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ verb, target_type, target_key, outcome, duration_ms, error }),
+                            body: JSON.stringify(payload),
                         });
                         if (res.ok) {
                             const body = await res.json();
                             if (body && body.id) {
                                 this.oplogList = this.oplogList.map(r => r.id === tempId ? { ...r, id: body.id } : r);
                             }
+                            // Reachable again — drain any queued entries.
+                            this._oplogBufferReplay();
                         }
+                        // Server reachable but rejected (4xx/5xx) → don't
+                        // buffer; the row would just be rejected again.
+                    } catch (_) {
+                        // FLEET-159: persist on network failure so the OPLOG
+                        // entry isn't lost during real outages (the only
+                        // window where the operator most needs it).
+                        this._oplogBufferPush(payload);
+                    }
+                },
+
+                // FLEET-159: client-side OPLOG buffer with localStorage +
+                // replay on reconnect. When /api/activity itself fails
+                // (deploy windows, real outages) the only persistent
+                // record of the operation is otherwise lost — by
+                // definition the network is down so no row reaches the
+                // server. We buffer locally and drain on the next
+                // successful POST. Caps the queue at 200 entries.
+                _oplogBufferKey: 'fleetcom_oplog_buffer_v1',
+
+                _oplogBufferRead() {
+                    try {
+                        const raw = localStorage.getItem(this._oplogBufferKey);
+                        return raw ? JSON.parse(raw) : [];
+                    } catch (_) { return []; } // silent: pure background load
+                },
+
+                _oplogBufferWrite(buf) {
+                    try {
+                        localStorage.setItem(this._oplogBufferKey, JSON.stringify(buf));
+                        this.oplogQueueSize = buf.length;
                     } catch (_) {} // silent: pure background load
+                },
+
+                _oplogBufferPush(entry) {
+                    const buf = this._oplogBufferRead();
+                    buf.push({ ...entry, queued_at: new Date().toISOString() });
+                    if (buf.length > 200) buf.splice(0, buf.length - 200);
+                    this._oplogBufferWrite(buf);
+                },
+
+                async _oplogBufferReplay() {
+                    if (this._oplogBufferReplaying) return;
+                    const buf = this._oplogBufferRead();
+                    if (buf.length === 0) { this.oplogQueueSize = 0; return; }
+                    this._oplogBufferReplaying = true;
+                    try {
+                        const remaining = buf.slice();
+                        while (remaining.length > 0) {
+                            const head = remaining[0];
+                            try {
+                                const res = await fetch('/api/activity', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(head),
+                                });
+                                if (!res.ok) break; // bail at first failure to preserve order
+                            } catch (_) { break; } // silent: pure background load
+                            remaining.shift();
+                        }
+                        this._oplogBufferWrite(remaining);
+                        if (remaining.length < buf.length) {
+                            // Refresh the OPLOG so replayed rows appear in the drawer.
+                            this.loadOplog();
+                        }
+                    } finally {
+                        this._oplogBufferReplaying = false;
+                    }
                 },
 
                 filteredOplog() {
