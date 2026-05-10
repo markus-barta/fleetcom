@@ -288,6 +288,30 @@ func (s *Store) HostnamesWithAgents() (map[string]bool, error) {
 	return out, rows.Err()
 }
 
+// HostHasAgent reports whether the host's heartbeats have ever named
+// `agentName` as one of its agents (FLEET-149 server-side enforcement).
+// Used by /api/bridges/register so a compromised bridge can't claim a
+// name that doesn't actually live on its host. The bosun side already
+// guards bridge.install, but the server is the last line of defense
+// against bridges deployed out-of-band (manual `docker run`, lateral
+// movement, etc.).
+func (s *Store) HostHasAgent(hostname, agentName string) (bool, error) {
+	var n int
+	err := s.DB.QueryRow(`
+		SELECT 1 FROM agents a
+		INNER JOIN hosts h ON h.id = a.host_id
+		WHERE h.hostname = ? AND a.name = ?
+		LIMIT 1
+	`, hostname, agentName).Scan(&n)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *Store) AllHosts() ([]Host, error) {
 	rows, err := s.DB.Query(`SELECT id, hostname, os, kernel, uptime_seconds, agent_version, last_seen, hw_live, hw_live_at, created_at, update_requested_at, deployment_shape, boot_id, allow_reboot FROM hosts ORDER BY hostname`)
 	if err != nil {

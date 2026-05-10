@@ -223,6 +223,41 @@ func RegisterBridge(store *db.Store, hub *sse.Hub, pusher ConfirmationCodePusher
 			return
 		}
 
+		// FLEET-149: agent-name isolation — server-side guard. The bosun
+		// side rejects bridge.install with mismatched agent_names and
+		// the bridge container refuses to start with empty
+		// BRIDGE_AGENT_NAMES, but a bridge deployed out-of-band (manual
+		// docker run, lateral movement on a compromised host, mistaken
+		// FLEET-131 reinstall with the wrong env) could still try to
+		// register a name that doesn't actually live on the host. The
+		// server is the last line of defense — verify the requested
+		// agent matches one that has been heartbeat-reported by THIS
+		// host. The bearer token already binds the request to the
+		// host; this binds the agent to the host too.
+		if has, err := store.HostHasAgent(hostname, body.Agent); err != nil {
+			log.Printf("register bridge %s/%s: HostHasAgent: %v", hostname, body.Agent, err)
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		} else if !has {
+			log.Printf("register bridge %s/%s: REJECT — host has not reported this agent in heartbeats", hostname, body.Agent)
+			_, _ = store.RecordActivity(db.ActivityEvent{
+				UserID:     0,
+				Verb:       "BRIDGE_AGENT_REJECTED",
+				TargetType: "bridge",
+				TargetKey:  hostname + "/" + body.Agent,
+				Outcome:    "err",
+				Error:      "host has not reported this agent",
+			})
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnprocessableEntity)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"error":  "agent_not_on_host",
+				"reason": "no agent named " + body.Agent + " has been reported by " + hostname + "'s heartbeats",
+				"hint":   "ensure the agent process is running on the host and bosun has heartbeated at least once after it started",
+			})
+			return
+		}
+
 		// FLEET-114: attestation gate runs BEFORE persisting the row so a
 		// rejected registration leaves no trace. Pull the gateway's row
 		// upfront — we need both its pubkey (for verify) and its

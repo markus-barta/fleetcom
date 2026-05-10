@@ -7094,6 +7094,27 @@ WantedBy=multi-user.target</pre>
                     this.initTheme();
                     this.connect();
                     this.startConnWatchdog();
+                    // FLEET-163: global fetch interceptor — any 401 from /api/*
+                    // (FLEET-161 makes the server emit it for missing/expired
+                    // sessions) triggers _handleSessionExpired regardless of
+                    // whether the call site uses fetchJSONWithDetail or raw
+                    // fetch. The interceptor returns the original response
+                    // unchanged so existing error paths keep working; the
+                    // redirect fires after a 600ms toast delay.
+                    {
+                        const app = this;
+                        const _origFetch = window.fetch;
+                        window.fetch = async function(input, init) {
+                            const res = await _origFetch.call(this, input, init);
+                            try {
+                                const url = typeof input === 'string' ? input : (input && input.url) || '';
+                                if (res.status === 401 && url.startsWith('/api/') && !location.pathname.startsWith('/login')) {
+                                    app._handleSessionExpired();
+                                }
+                            } catch (_) {} // silent: pure background load
+                            return res;
+                        };
+                    }
                     // FLEET-159: replay any OPLOG events buffered during a
                     // previous outage. Fire-and-forget — failures simply
                     // leave the queue intact for the next attempt.
@@ -11032,6 +11053,30 @@ WantedBy=multi-user.target</pre>
                     throw new Error(msg);
                 },
 
+                // FLEET-163: handle a 401 from any /api/* call by toasting
+                // briefly and navigating to /login. Idempotent — repeated
+                // 401s during a fan-out (e.g. updateAllAgents) collapse to
+                // a single toast + a single navigation. Returns true so
+                // callers can short-circuit.
+                _sessionExpiredHandled: false,
+                _handleSessionExpired() {
+                    if (this._sessionExpiredHandled) return true;
+                    this._sessionExpiredHandled = true;
+                    this.toast({
+                        level: 'warn',
+                        verb: 'AUTH',
+                        msg: 'Session expired — redirecting to sign-in…',
+                    });
+                    // Brief delay so the toast is readable before the page
+                    // navigates away. The reason for the delay is purely
+                    // perceptual; functionally we could redirect immediately.
+                    setTimeout(() => {
+                        const next = encodeURIComponent(location.pathname + location.search);
+                        location.assign('/login?next=' + next);
+                    }, 600);
+                    return true;
+                },
+
                 // FLEET-158: standardised error toast for legacy RPC sites
                 // that haven't (yet) been migrated to busy(). Replaces the
                 // bare `catch (_) { toast('Network error') }` pattern with
@@ -11080,6 +11125,19 @@ WantedBy=multi-user.target</pre>
                         const msg = (e && e.message) || 'fetch failed';
                         const err = new Error(scope + ': network error — ' + msg);
                         err.kind = 'network_error';
+                        err.scope = scope;
+                        throw err;
+                    }
+                    // FLEET-163: 401 from /api/* (FLEET-161 makes the server
+                    // emit it for missing/expired sessions) means the operator
+                    // is logged out. Briefly toast + send the page to /login
+                    // so the operator isn't stuck on a UI that no longer
+                    // works. Guard against /login itself to avoid loops.
+                    if (res.status === 401 && !location.pathname.startsWith('/login')) {
+                        this._handleSessionExpired();
+                        const err = new Error(scope + ': session expired — redirecting to /login');
+                        err.kind = 'auth_error';
+                        err.status = 401;
                         err.scope = scope;
                         throw err;
                     }
