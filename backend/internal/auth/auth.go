@@ -164,21 +164,36 @@ func (a *Auth) HandleLogout(w http.ResponseWriter, r *http.Request) {
 // FLEET-79: when MaybeAPIToken has already authenticated the request via a
 // fleet_pat_ token, this middleware short-circuits — the user is already
 // attached to the context and there's no cookie to validate.
+//
+// FLEET-161: on missing/invalid session for an /api/* path, return 401
+// JSON instead of a 303 HTML redirect to /login. Browser fetch otherwise
+// silently follows the redirect, the login page returns 200 + HTML, and
+// the client's res.json() chokes with "Unexpected token '<' is not valid
+// JSON". Mirrors the path-aware behaviour RequireTOTP already uses.
 func (a *Auth) RequireSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if IsAPITokenAuth(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
+		denied := func() {
+			if strings.HasPrefix(r.URL.Path, "/api/") {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(`{"error":"unauthorized","message":"session expired — sign in again"}`))
+				return
+			}
+			http.Redirect(w, r, "/login", http.StatusSeeOther)
+		}
 		cookie, err := r.Cookie(sessionCookie)
 		if err != nil {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			denied()
 			return
 		}
 
 		user, err := a.store.ValidateSession(cookie.Value)
 		if err != nil || user == nil {
-			http.Redirect(w, r, "/login", http.StatusSeeOther)
+			denied()
 			return
 		}
 
