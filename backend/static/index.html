@@ -2666,7 +2666,20 @@
         .oplog-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); }
         .oplog-row.o-ok   .oplog-dot { background: var(--ok); }
         .oplog-row.o-err  .oplog-dot { background: var(--crit); }
-        .oplog-row.o-pend .oplog-dot { background: var(--warn); }
+        .oplog-row.o-pend .oplog-dot { background: var(--warn); animation: oplog-pend-pulse 1.4s ease-in-out infinite; }
+        @keyframes oplog-pend-pulse {
+            0%, 100% { opacity: 0.55; transform: scale(0.92); box-shadow: 0 0 0 0 rgba(240, 180, 0, 0); }
+            50%      { opacity: 1;    transform: scale(1.15); box-shadow: 0 0 0 3px rgba(240, 180, 0, 0.18); }
+        }
+        /* FLEET-160: batch-summary row gets a 2px left accent in the
+           verb's color so it visually parents the per-item rows that
+           follow it. Per-item rows in a batch nudge in by 8px to
+           reinforce the grouping without a new component. */
+        .oplog-row.is-batch-summary { border-left-color: currentColor; }
+        .oplog-row.is-batch-summary.o-ok   { border-left-color: var(--ok); }
+        .oplog-row.is-batch-summary.o-err  { border-left-color: var(--crit); }
+        .oplog-row.is-batch-summary.o-pend { border-left-color: var(--warn); }
+        .oplog-row.is-batch-item { padding-left: calc(0.85rem + 8px); }
         .oplog-row.is-error-detail { background: rgba(255, 77, 109, 0.04); border-left-color: var(--crit); }
         .oplog-error { grid-column: 1 / -1; color: var(--crit); font-size: 10px; padding-left: calc(60px + 0.5rem); white-space: pre-wrap; word-break: break-word; }
         .oplog-empty { color: var(--ink-ghost); padding: 1.2rem 1rem; font-style: italic; font-size: 11px; }
@@ -2687,8 +2700,17 @@
         /* FLEET-159: queued-events indicator turns warning-colored to
            signal the operator that some recent activity has not yet
            landed on the server. */
-        .oplog-chip.oplog-queue-chip { color: var(--warn, #f0b400); border-color: var(--warn, #f0b400); margin-left: auto; }
-        .oplog-chip.oplog-queue-chip:hover { background: rgba(240, 180, 0, 0.08); }
+        .oplog-chip.oplog-queue-chip {
+            color: var(--warn, #f0b400);
+            border-color: var(--warn, #f0b400);
+            margin-left: auto;
+            animation: oplog-queue-pulse 2.2s ease-in-out infinite;
+        }
+        .oplog-chip.oplog-queue-chip:hover { background: rgba(240, 180, 0, 0.08); animation: none; }
+        @keyframes oplog-queue-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(240, 180, 0, 0); }
+            50%      { box-shadow: 0 0 0 3px rgba(240, 180, 0, 0.18); }
+        }
         /* Header toggle (left-edge, mirrors the right-edge open buttons). */
         .oplog-toggle {
             background: transparent;
@@ -5952,7 +5974,7 @@ WantedBy=multi-user.target</pre>
                 </template>
                 <div class="oplog-rows">
                     <template x-for="e in filteredOplog()" :key="e.id">
-                        <div class="oplog-row" :class="['o-' + (e.outcome || 'ok'), e._fresh ? 'is-fresh' : '', e.error ? 'is-error-detail' : '']">
+                        <div class="oplog-row" :class="['o-' + (e.outcome || 'ok'), e._fresh ? 'is-fresh' : '', e.error ? 'is-error-detail' : '', e._batch === 'summary' ? 'is-batch-summary' : (e._batch === 'item' ? 'is-batch-item' : '')]">
                             <span class="oplog-ts" x-text="oplogTime(e.ts)"></span>
                             <span class="oplog-verb" x-text="e.verb"></span>
                             <span class="oplog-target" :title="(e.target_type ? e.target_type + '/' : '') + (e.target_key || '')"
@@ -11059,15 +11081,17 @@ WantedBy=multi-user.target</pre>
                         err.scope = scope;
                         throw err;
                     }
-                    // Empty body or 204 → return null. Otherwise parse JSON.
+                    // FLEET-160 I2: 204 No Content → null. Empty body with 200
+                    // → null too (some endpoints write 200 + ""). Anything else
+                    // is parsed as JSON, with parse_error on failure. The
+                    // contract is unambiguous: the helper always returns
+                    // either parsed JSON, null, or throws.
                     if (res.status === 204) return null;
-                    const ct = (res.headers.get('content-type') || '').toLowerCase();
-                    if (!ct.includes('json')) {
-                        // No JSON expected — caller wants the raw response.
-                        return res;
-                    }
+                    let text = '';
+                    try { text = await res.text(); } catch (_) {} // silent: pure background load
+                    if (!text || !text.trim()) return null;
                     try {
-                        return await res.json();
+                        return JSON.parse(text);
                     } catch (e) {
                         const err = new Error(scope + ': invalid JSON — ' + ((e && e.message) || 'parse failed'));
                         err.kind = 'parse_error';
@@ -11099,7 +11123,26 @@ WantedBy=multi-user.target</pre>
                 // OPLOG row and the final toast.
                 async runBatch(items, opts, worker) {
                     if (this.pending[opts.key]) return; // double-click guard
+                    // FLEET-160 B1: ensure pending is always released, even if
+                    // the body throws synchronously (recordOplog DOM crash, etc.)
+                    // — operators must always be able to retry.
                     this.pending = { ...this.pending, [opts.key]: true };
+                    try {
+                        return await this._runBatchInner(items, opts, worker);
+                    } finally {
+                        const next = { ...this.pending };
+                        delete next[opts.key];
+                        this.pending = next;
+                    }
+                },
+
+                async _runBatchInner(items, opts, worker) {
+                    // FLEET-160 I3: short-circuit empty batch — no OPLOG row,
+                    // no toast, no work. Caller is expected to filter, but
+                    // defending here is cheap.
+                    if (!items || items.length === 0) {
+                        return { ok: true, total: 0, done: 0, failed: 0, failedItems: [] };
+                    }
 
                     const verb = opts.verb || 'EXEC';
                     const concurrency = Math.max(1, opts.concurrency || 2);
@@ -11129,6 +11172,7 @@ WantedBy=multi-user.target</pre>
                         duration_ms: 0,
                         error: '',
                         _fresh: true,
+                        _batch: 'summary', // FLEET-160 UX: light visual grouping
                     }, ...this.oplogList].slice(0, 200);
 
                     const updateSummary = (extras) => {
@@ -11147,13 +11191,13 @@ WantedBy=multi-user.target</pre>
                             await worker(item);
                             const ms = Math.round(performance.now() - itemStart);
                             done++;
-                            this.recordOplog({ verb, target: itemTarget, outcome: 'ok', duration_ms: ms, error: '' });
+                            this.recordOplog({ verb, target: itemTarget, outcome: 'ok', duration_ms: ms, error: '', _batch: 'item' });
                         } catch (e) {
                             const ms = Math.round(performance.now() - itemStart);
                             const msg = (e && e.message) || 'failed';
                             failed++;
                             failedItems.push({ label: itemLabel, error: msg });
-                            this.recordOplog({ verb, target: itemTarget, outcome: 'err', duration_ms: ms, error: msg });
+                            this.recordOplog({ verb, target: itemTarget, outcome: 'err', duration_ms: ms, error: msg, _batch: 'item' });
                         } finally {
                             const finished = done + failed;
                             updateSummary({
@@ -11176,10 +11220,18 @@ WantedBy=multi-user.target</pre>
 
                     const ms = Math.round(performance.now() - startedAt);
                     const ok = failed === 0;
+                    // FLEET-160 UX: multi-line failure summary. The OPLOG row's
+                    // single-line variant stays compact; the toast (which has
+                    // pre-wrap) gets the bulleted form so failed hosts are
+                    // scannable instead of buried in a semicolon-joined sentence.
                     let summaryError = '';
+                    let summaryToastMsg = '';
                     if (!ok) {
-                        const heads = failedItems.slice(0, 3).map(f => f.label + ' (' + f.error + ')').join('; ');
-                        summaryError = failed + ' of ' + total + ' failed: ' + heads + (failedItems.length > 3 ? '; …' : '');
+                        const compact = failedItems.slice(0, 3).map(f => f.label + ' (' + f.error + ')').join('; ');
+                        summaryError = failed + ' of ' + total + ' failed: ' + compact + (failedItems.length > 3 ? '; …' : '');
+                        const bulleted = failedItems.slice(0, 5).map(f => '• ' + f.label + ' — ' + f.error).join('\n');
+                        const more = failedItems.length > 5 ? '\n• …and ' + (failedItems.length - 5) + ' more' : '';
+                        summaryToastMsg = failed + ' of ' + total + ' failed\n' + bulleted + more;
                     }
 
                     updateSummary({
@@ -11195,6 +11247,7 @@ WantedBy=multi-user.target</pre>
                         outcome: ok ? 'ok' : 'err',
                         duration_ms: ms,
                         error: summaryError,
+                        _batch: 'summary',
                     });
 
                     const label = opts.label || summaryKey || verb;
@@ -11205,13 +11258,15 @@ WantedBy=multi-user.target</pre>
                             level: 'err',
                             verb: 'FAIL',
                             target: summaryTarget,
-                            msg: label + ' — ' + summaryError,
+                            msg: label + '\n' + summaryToastMsg,
                         });
                     }
 
-                    const next = { ...this.pending };
-                    delete next[opts.key];
-                    this.pending = next;
+                    // FLEET-160 I1: clear the summary row's _fresh flag so the
+                    // flash animation matches per-item rows (1.3s after final
+                    // state). Without this the summary stays highlighted
+                    // forever in the drawer.
+                    setTimeout(() => updateSummary({ _fresh: false }), 1300);
 
                     return { ok, total, done, failed, failedItems };
                 },
@@ -11237,7 +11292,7 @@ WantedBy=multi-user.target</pre>
                 // Called from busy() finally{}. Optimistic prepend + server POST.
                 // Failure to record is non-fatal; the operation already completed
                 // and the toast already fired.
-                async recordOplog({ verb, target, outcome, duration_ms, error }) {
+                async recordOplog({ verb, target, outcome, duration_ms, error, _batch }) {
                     let target_type = '', target_key = target || '';
                     const slash = target_key.indexOf('/');
                     if (slash > 0) {
@@ -11255,6 +11310,7 @@ WantedBy=multi-user.target</pre>
                         duration_ms: duration_ms || 0,
                         error: error || '',
                         _fresh: true,
+                        _batch: _batch || undefined, // FLEET-160 UX: 'summary' | 'item'
                     };
                     this.oplogList = [optimistic, ...this.oplogList].slice(0, 200);
                     setTimeout(() => {
@@ -11317,13 +11373,22 @@ WantedBy=multi-user.target</pre>
 
                 async _oplogBufferReplay() {
                     if (this._oplogBufferReplaying) return;
-                    const buf = this._oplogBufferRead();
-                    if (buf.length === 0) { this.oplogQueueSize = 0; return; }
                     this._oplogBufferReplaying = true;
+                    let drained = 0;
                     try {
-                        const remaining = buf.slice();
-                        while (remaining.length > 0) {
-                            const head = remaining[0];
+                        // FLEET-160 B2: re-read the buffer on every iteration so
+                        // entries pushed during the await aren't clobbered by a
+                        // stale write. JS is single-threaded, so the synchronous
+                        // re-read + shift + write is atomic w.r.t. concurrent
+                        // _oplogBufferPush — they interleave only across awaits.
+                        // Match the head we just drained by its (queued_at,
+                        // verb, target_key, outcome) tuple before shifting, so
+                        // an unrelated mutation can't make us drop the wrong
+                        // entry.
+                        while (true) {
+                            const buf = this._oplogBufferRead();
+                            if (buf.length === 0) break;
+                            const head = buf[0];
                             try {
                                 const res = await fetch('/api/activity', {
                                     method: 'POST',
@@ -11332,10 +11397,24 @@ WantedBy=multi-user.target</pre>
                                 });
                                 if (!res.ok) break; // bail at first failure to preserve order
                             } catch (_) { break; } // silent: pure background load
-                            remaining.shift();
+                            const cur = this._oplogBufferRead();
+                            if (cur.length > 0 &&
+                                cur[0].queued_at === head.queued_at &&
+                                cur[0].verb === head.verb &&
+                                cur[0].target_key === head.target_key &&
+                                cur[0].outcome === head.outcome) {
+                                cur.shift();
+                                this._oplogBufferWrite(cur);
+                                drained++;
+                            } else {
+                                // Another writer re-ordered the queue (e.g. a
+                                // separate tab cleared it). Yield and let the
+                                // next iteration pick up the fresh state.
+                                break;
+                            }
                         }
-                        this._oplogBufferWrite(remaining);
-                        if (remaining.length < buf.length) {
+                        this.oplogQueueSize = this._oplogBufferRead().length;
+                        if (drained > 0) {
                             // Refresh the OPLOG so replayed rows appear in the drawer.
                             this.loadOplog();
                         }
