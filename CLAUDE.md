@@ -9,6 +9,5 @@
   update --remote doctrine`.
 -->
 
-@./doctrine/docs/AGENTS-CORE.md
-@./doctrine/docs/AGENTS-PROFILE-MARKUS.md
+@./doctrine/docs/AGENTS-KERNEL.md
 @./AGENTS.md
