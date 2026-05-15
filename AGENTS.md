@@ -10,6 +10,24 @@
 
 **Read `docs/DEPLOYMENT.md` at every session start.** Every deploy must bump the patch version in `.github/workflows/ci.yml` — never deploy the same version twice.
 
+<!-- KERNEL-MIRROR-BEGIN — auto-mirrored irreducible subset of inspr-modules/docs/AGENTS-KERNEL.md (INSPR-191). Edit upstream + bump submodule, then re-mirror here. For tools that read AGENTS.md but not the kernel via CLAUDE.md @-ref (Cursor, Aider, OpenCode, Codex CLI, Continue, etc.). -->
+
+## Universal must-knows (kernel mirror)
+
+- **Identity**: Markus Barta, `markus@barta.com`, `markus-barta` on GitHub. Never invent placeholders.
+- **Workspace**: `~/Code/`. Repos under `github.com/markus-barta/<name>`. Third-party clones go to `~/Projects/3rdparty/`.
+- **Time awareness**: Run `date` before any time-of-day-coded greeting/farewell ("good evening", 🌙 / ☀️). Knowing the date alone tells you nothing about morning/night. Prefer time-neutral closings ("cheers", "until next time") if a check would be disruptive.
+- **Style**: telegraph, dense, low-fluff. **Long** answers: TL;DR at start AND end. **Short**: TL;DR at end only. **Very short**: omit TL;DR.
+- **Pacing**: ONE STEP AT A TIME for interactive procedures (agenix, ssh, paimos auth, rotation flows). Wait for explicit "done" before next step. Never dump 5- or 10-step playbooks.
+- **Secrets**: NEVER `cat / Read / head / tail / less / bat / xxd / od / sed / grep` files in `~/.inspr/secrets/agents/`, `~/Secrets/`, `~/.ssh/<not-pub>`, `/run/agenix/`, `/run/secrets/`, or any `*.env` / `*.age` / `*.gpg` / `id_*` / `*_rsa` / `*_ed25519`. Source via `( set -a; source FILE; cmd; set +a )`. NEVER run `direnv export`, `direnv status`, `set`, `declare -x/-p`, `compgen -e`, `export -p`, bare `env` / `printenv`, `docker exec ... cat env`, `kubectl describe configmap` after env expansion. If a secret appears in output: **STOP**, name affected vars (not values), rotate before continuing.
+- **Git**: never `reset --hard` / `clean -f` / `restore .` / `branch -D` / `rm` unless asked. Never `--force` push main. Never `--no-verify` / `--no-gpg-sign` / `--amend` unless asked. Never commit secrets (passwords, API keys, .env with real creds, decrypted .age content). `git diff` + `git status` before every commit.
+- **Files & ops**: use `trash` not `rm -rf`. Don't delete or rename unexpected items — STOP and ask. Touch encrypted files only with explicit permission. **NEVER build NixOS configs on macOS** (build remotely via ssh; macOS HM CAN build locally). Never create new `.md` files unless asked.
+- **Naming**: **BYTEPOETS** always all-caps (registered wordmark). **`.cm`** TLD intentional, never auto-correct to `.com`. **INSPR** is the umbrella; Paimos / FleetCom / future tools are inside it.
+
+For full kernel + domain packs: see [`inspr-modules/docs/AGENTS-KERNEL.md`](https://github.com/markus-barta/inspr-modules/blob/main/docs/AGENTS-KERNEL.md). Claude Code agents: run `/inspr` for the TL;DR map of slash commands.
+
+<!-- KERNEL-MIRROR-END -->
+
 ## Project
 
 **FleetCom** — Fleet management & agent monitoring platform.
