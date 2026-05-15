@@ -4,14 +4,9 @@
 > Codex, Continue, and other agentic coding tools all read a file by this
 > name. `CLAUDE.md` in this repo is a symlink to this file (FLEET-81).
 
-> **Doctrine layering** — agents reading this also follow these layered sources (read top-down for full context):
+> **Doctrine layering (post-Phase-6, 2026-05-15)** — kernel auto-loaded; this file is the fleetcom delta. Slash commands `/dev /secrets /nix /ops /ppm /style /incident /inspr` load deeper context on demand. See [AGENTS-INDEX.md](https://github.com/markus-barta/inspr-modules/blob/main/docs/AGENTS-INDEX.md) for the architecture.
 >
-> 1. **[inspr-modules/docs/AGENTS-CORE.md](https://github.com/markus-barta/inspr-modules/blob/main/docs/AGENTS-CORE.md)** — universal rules every agent follows
-> 2. **[inspr-modules/docs/AGENTS-PROFILE-MARKUS.md](https://github.com/markus-barta/inspr-modules/blob/main/docs/AGENTS-PROFILE-MARKUS.md)** — Markus's personal preferences
-> 3. *(if applicable)* role overlay for your agent identity (e.g. AGENTS-AGENT-DEV.md, AGENTS-AGENT-PPM.md)
-> 4. **THIS FILE** — fleetcom project-specific operational reference + per-repo doctrine
->
-> Pure rules (security/secrets-output, git/safety, process/critical-thinking, etc.) live in the upstream layers and are NOT duplicated here. This file holds project-specific stuff: API endpoints, architecture, deploy procedures, debug entry points, project-management process.
+> Pure rules (security/secrets-output, git/safety, process/critical-thinking, etc.) live upstream in `inspr-modules` (kernel + domain packs). This file holds project-specific stuff: API endpoints, architecture, deploy procedures, debug entry points, project-management process.
 
 **Read `docs/DEPLOYMENT.md` at every session start.** Every deploy must bump the patch version in `.github/workflows/ci.yml` — never deploy the same version twice.
 
