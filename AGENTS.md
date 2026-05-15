@@ -58,12 +58,10 @@ All task tracking, planning, and status updates happen in **PPM** at `https://pm
 
 ### Rules
 
-- **Before starting work**: Check PPM for a backing ticket. If none exists, create one first.
-- **Planning**: Create epics and tickets in PPM. Do not create local backlog files.
-- **Status updates**: Update ticket status in PPM as work progresses (new → in-progress → done).
-- **Time tracking**: Start timer when beginning work, stop when done. mba user_id=2.
-- **Done means done**: Mark tickets as `done` in PPM only when acceptance criteria are met.
-- **Reference style**: Always refer to tickets by their human-visible key (e.g. `FLEET-79`, `FLEET-80`, `FLEET-81`) in chat, commits, branch names, and PR titles. The numeric DB id (e.g. `1326`) is for API calls only.
+> Universal PPM workflow rules (backing-ticket-first, status flow, "done means done", time tracking, key-vs-id reference style) live upstream in [`inspr-modules/docs/AGENTS-DOMAIN-PPM.md`](https://github.com/markus-barta/inspr-modules/blob/main/docs/AGENTS-DOMAIN-PPM.md). Run `/ppm` to load them. Below: fleetcom-specific keepers only.
+
+- **Project ID**: `4` (key `FLEET`). Time-tracking user_id for mba: `2`.
+- **Reference prefix**: `FLEET-NN` in chat, commits, branch names, PR titles (e.g. `FLEET-79`, `FLEET-80`). Numeric DB id (e.g. `1326`) is API-call-only.
 
 ### PPM API Access
 
@@ -441,18 +439,20 @@ switch to `fleetcom-bosun`.
 
 > Canonical rules live upstream — see `inspr-modules/docs/AGENTS-CORE.md` topic `security/secrets-output` (and the much fuller `incident-response/secret-leak` topic) for the full doctrine. Quick fleetcom-specific reminder: PPM credentials live at `~/Secrets/ppm/PPMAPIKEY.env` — `source` it, never `cat` it. To verify a secret is set: `test -n "$PPMAPIKEY"`.
 
-## Security
+## Security invariants (fleetcom-specific)
 
-- All communication over HTTPS (Cloudflare edge TLS)
-- Bosun → server: per-host bearer token (SHA-256 hashed in DB)
-- Browser → server: email + bcrypt password + mandatory TOTP, HttpOnly session cookies
-- Agent → server: user-issued `fleet_pat_` tokens (FLEET-79) — SHA-256 hashed, scope-checked, owner-revocable, expiry-optional with UI warning
-- Per-user host permissions (admins bypass, regular users see only assigned hosts)
-- Rate limiting on all auth endpoints (5/10min; api-token-auth bumped to 10/10min)
-- Password reset tokens: SHA-256 hashed, single-use, 60min TTL
-- Session invalidation on password change/reset/user disable
-- Host communication over Tailscale mesh where possible
-- Audit logging on all auth events (including api_token_created / _revoked / _auth_failed)
+> Universal secret-output / leak-response rules live upstream — see kernel mirror above and [`inspr-modules/docs/AGENTS-DOMAIN-SECRETS.md`](https://github.com/markus-barta/inspr-modules/blob/main/docs/AGENTS-DOMAIN-SECRETS.md) (`/secrets`) and [`AGENTS-CORE.md`](https://github.com/markus-barta/inspr-modules/blob/main/docs/AGENTS-CORE.md) topic `incident-response/secret-leak`. Below: project-specific invariants worth knowing for fleetcom code/ops work.
+
+- All transport over HTTPS via Cloudflare edge TLS.
+- Bosun → server: per-host bearer token (SHA-256 hashed in DB).
+- Browser → server: email + bcrypt password + mandatory TOTP, HttpOnly session cookies.
+- Agent → server: user-issued `fleet_pat_` tokens (FLEET-79) — SHA-256 hashed, scope-checked, owner-revocable, expiry-optional with UI warning.
+- Per-user host permissions: admins bypass, regular users see only assigned hosts.
+- Rate limiting on all auth endpoints: 5/10min; `api-token-auth` bumped to 10/10min.
+- Password reset tokens: SHA-256 hashed, single-use, 60min TTL.
+- Session invalidation on password change / reset / user disable.
+- Host ↔ host communication over Tailscale mesh where possible.
+- Audit logging on all auth events (including `api_token_created` / `_revoked` / `_auth_failed`).
 - Bridge → gateway WS: shared-secret short-circuit (FLEET-134). Bosun bind-mounts the gateway's `/run/secrets/gateway-token` into the bridge container at the same path; bridge sends as `auth.token`; gateway's `roleCanSkipDeviceIdentity(role=operator, sharedAuthOk)` lets it through without device-pairing. Read-only intent; co-located blast radius. See `docs/PAIRING-SECURITY-MODEL.md`.
 
 ## Invariants worth knowing (non-obvious)
