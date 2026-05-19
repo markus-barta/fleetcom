@@ -275,7 +275,11 @@ func (c *Client) sendConnect(ctx context.Context) error {
 	sig := c.opts.Identity.Sign(payload)
 
 	params := map[string]interface{}{
-		"minProtocol": 4,
+		// Advertise support for v3 + v4. Gateways on OpenClaw 2026.5.12+
+		// require v4 (FLEET-166); pre-5.12 gateways (e.g. dsc0) still
+		// speak only v3. Letting the gateway pick keeps both worlds
+		// reachable without a flag-day fleet upgrade.
+		"minProtocol": 3,
 		"maxProtocol": 4,
 		"client": map[string]interface{}{
 			"id":           c.opts.ClientID,
