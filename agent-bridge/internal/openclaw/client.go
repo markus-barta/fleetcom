@@ -275,8 +275,8 @@ func (c *Client) sendConnect(ctx context.Context) error {
 	sig := c.opts.Identity.Sign(payload)
 
 	params := map[string]interface{}{
-		"minProtocol": 3,
-		"maxProtocol": 3,
+		"minProtocol": 4,
+		"maxProtocol": 4,
 		"client": map[string]interface{}{
 			"id":           c.opts.ClientID,
 			"version":      c.opts.ClientVersion,
