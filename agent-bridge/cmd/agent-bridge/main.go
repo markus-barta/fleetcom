@@ -9,11 +9,11 @@
 // persists it to a Docker volume, and POSTs its fingerprint to
 // FleetCom at /api/bridges/register using the same bearer token bosun
 // uses. FleetCom's gateway-scoped keypair then auto-approves the
-// pairing on the gateway side. See docs/AGENT-BRIDGE-PAIRING.md in the
-// fleetcom repo for the full picture.
+// pairing on the gateway side. See PPM Knowledge
+// FLEET/guideline/agent_bridge_pairing for the full picture.
 //
-// Schema: see fleetcom/docs/AGENT-OBSERVABILITY.md for the agent-event
-// shape we produce.
+// Schema: see PPM Knowledge FLEET/guideline/agent_observability for
+// the agent-event shape we produce.
 package main
 
 import (

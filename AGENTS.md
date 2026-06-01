@@ -8,7 +8,7 @@
 >
 > Pure rules (security/secrets-output, git/safety, process/critical-thinking, etc.) live upstream in `inspr-modules` (kernel + domain packs). This file holds project-specific stuff: API endpoints, architecture, deploy procedures, debug entry points, project-management process.
 
-**Read `docs/DEPLOYMENT.md` at every session start.** Every deploy must bump the patch version in `.github/workflows/ci.yml` — never deploy the same version twice.
+**Read PPM Knowledge `FLEET/runbook/deployment` at every session start** (`paimos knowledge get runbook deployment --project FLEET`). Every deploy must bump the patch version in `.github/workflows/ci.yml` — never deploy the same version twice.
 
 <!-- KERNEL-MIRROR-BEGIN — auto-mirrored irreducible subset of inspr-modules/docs/AGENTS-KERNEL.md (INSPR-191). Edit upstream + bump submodule, then re-mirror here. For tools that read AGENTS.md but not the kernel via CLAUDE.md @-ref (Cursor, Aider, OpenCode, Codex CLI, Continue, etc.). -->
 
@@ -65,8 +65,8 @@ All task tracking, planning, and status updates happen in **PPM** at `https://pm
 
 ### PPM API Access
 
-Auth: Bearer token via `$PPMAPIKEY` environment variable (loaded from `~/Secrets/ppm/PPMAPIKEY.env`).
-Source it first: `source ~/Secrets/ppm/PPMAPIKEY.env` — then use `$PPMAPIKEY`.
+Auth: prefer the `paimos` CLI (`paimos auth whoami` verifies Keychain auth). For raw curl, use a Bearer token via `$PPMAPIKEY` environment variable.
+Source it first from the available PPM env file (on this workstation: `~/.inspr/secrets/agents/PPMAPIKEY.env`; older notes may use `~/Secrets/ppm/PPMAPIKEY.env`) — then use `$PPMAPIKEY`.
 All requests: `curl -s -H "Authorization: Bearer $PPMAPIKEY" https://pm.barta.cm/api/...`
 
 **NEVER** read, cat, or print the secrets file. Source it and use the variables.
@@ -290,7 +290,7 @@ reflects faults within ~1s without waiting for the next heartbeat.
 ### Agent observability events
 `POST /api/agent-events` — agent-bridge relays per-turn events
 (turn started, first token, replied, tool invocations, errors). See
-`docs/AGENT-OBSERVABILITY.md`.
+PPM Knowledge `FLEET/guideline/agent_observability`.
 
 ### Command results
 `POST /api/command-results` — bosun's reply channel for the pull-based
@@ -437,7 +437,7 @@ switch to `fleetcom-bosun`.
 
 ## Secret Safety
 
-> Canonical rules live upstream — see `inspr-modules/docs/AGENTS-CORE.md` topic `security/secrets-output` (and the much fuller `incident-response/secret-leak` topic) for the full doctrine. Quick fleetcom-specific reminder: PPM credentials live at `~/Secrets/ppm/PPMAPIKEY.env` — `source` it, never `cat` it. To verify a secret is set: `test -n "$PPMAPIKEY"`.
+> Canonical rules live upstream — see `inspr-modules/docs/AGENTS-CORE.md` topic `security/secrets-output` (and the much fuller `incident-response/secret-leak` topic) for the full doctrine. Quick fleetcom-specific reminder: source PPM credentials, never `cat` them. To verify a secret is set: `test -n "$PPMAPIKEY"`.
 
 ## Security invariants (fleetcom-specific)
 
@@ -453,7 +453,7 @@ switch to `fleetcom-bosun`.
 - Session invalidation on password change / reset / user disable.
 - Host ↔ host communication over Tailscale mesh where possible.
 - Audit logging on all auth events (including `api_token_created` / `_revoked` / `_auth_failed`).
-- Bridge → gateway WS: shared-secret short-circuit (FLEET-134). Bosun bind-mounts the gateway's `/run/secrets/gateway-token` into the bridge container at the same path; bridge sends as `auth.token`; gateway's `roleCanSkipDeviceIdentity(role=operator, sharedAuthOk)` lets it through without device-pairing. Read-only intent; co-located blast radius. See `docs/PAIRING-SECURITY-MODEL.md`.
+- Bridge → gateway WS: shared-secret short-circuit (FLEET-134). Bosun bind-mounts the gateway's `/run/secrets/gateway-token` into the bridge container at the same path; bridge sends as `auth.token`; gateway's `roleCanSkipDeviceIdentity(role=operator, sharedAuthOk)` lets it through without device-pairing. Read-only intent; co-located blast radius. See PPM Knowledge `FLEET/guideline/pairing_security_model`.
 
 ## Invariants worth knowing (non-obvious)
 
@@ -483,21 +483,26 @@ docker compose build && docker compose up -d
 
 ## Cross-references
 
-In-repo docs (read these for subsystem detail):
+Canonical project docs live in PPM Knowledge under project `FLEET`:
 
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — system layout, data flow, why-we-chose
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — how to ship a release, version-bump rules, runbooks per host
-- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — local dev loop, conventions
-- [`docs/ADMIN-GUIDE.md`](docs/ADMIN-GUIDE.md) — operator-facing reference (settings, host onboarding, drawer UX)
-- [`docs/AGENT-OBSERVABILITY.md`](docs/AGENT-OBSERVABILITY.md) — `/api/agent-events` shape and dashboard surfacing
-- [`docs/AGENT-BRIDGE-PAIRING.md`](docs/AGENT-BRIDGE-PAIRING.md) — OpenClaw gateway + bridge pairing flow
-- [`docs/OPS.md`](docs/OPS.md) — bosun release runbook, watchtower piggyback, troubleshooting
+- `guideline/architecture` — system layout, data flow, why-we-chose
+- `runbook/deployment` — how to ship a release, version-bump rules, runbooks per host
+- `guideline/development` — local dev loop, conventions
+- `guideline/admin_guide` — operator-facing reference (settings, host onboarding, drawer UX)
+- `guideline/agent_observability` — `/api/agent-events` shape and dashboard surfacing
+- `guideline/agent_bridge_pairing` — OpenClaw gateway + bridge pairing flow
+- `guideline/pairing_security_model` — bridge-pairing threat model
+- `guideline/wizard_design` — pairing wizard UX/design spec
+- `runbook/operations` — bosun release runbook, watchtower piggyback, troubleshooting
+- `guideline/release_1_0` — FleetCom 1.0 release notes
+
+Fetch with `paimos knowledge get <type> <slug> --project FLEET`.
 
 External:
 
 - NixFleet (predecessor): ~/Code/nixfleet — patterns to adopt, not code to fork
 - DSC infra: ~/Code/dsccfg
 - NixCfg infra: ~/Code/nixcfg
-- PPM tool: ~/Code/ppm
+- PPM/paimos tool: ~/Code/paimos
 - BP infra: ~/Code/infracore (BYTEPOETS server docker-compose + nginx)
 - BP PMO: ~/Code/bp-pm (auth patterns reference)

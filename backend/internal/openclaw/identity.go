@@ -6,8 +6,8 @@
 //
 // The wire protocol (handshake payload v3, Ed25519 signature format,
 // base64url encoding rules, RPC envelope shape) was reverse-engineered
-// from OpenClaw's bundled dist/*.js — see docs/AGENT-BRIDGE-PAIRING.md
-// for the full reference.
+// from OpenClaw's bundled dist/*.js — see PPM Knowledge
+// FLEET/guideline/agent_bridge_pairing for the full reference.
 package openclaw
 
 import (
