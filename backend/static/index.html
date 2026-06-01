@@ -2283,6 +2283,32 @@
         .hw-chip .hw-chip-v { color: var(--ink); font-weight: 600; }
         .hw-chip.hot .hw-chip-v { color: var(--warn); }
         .hw-chip.crit .hw-chip-v { color: var(--crit); font-weight: 700; }
+        .backup-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            max-width: 100%;
+            padding: 0.25rem 0.5rem;
+            border: 1px solid var(--line);
+            background: var(--card-overlay);
+            border-radius: 3px;
+            font-size: 10px;
+            color: var(--ink-dim);
+            font-variant-numeric: tabular-nums;
+        }
+        .backup-chip .bk-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--ink-faint);
+            flex: 0 0 auto;
+        }
+        .backup-chip .bk-name { color: var(--ink); font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .backup-chip .bk-age { color: var(--ink-ghost); white-space: nowrap; }
+        .backup-chip.s-ok .bk-dot { background: var(--ok); }
+        .backup-chip.s-warn .bk-dot { background: var(--warn); }
+        .backup-chip.s-crit .bk-dot { background: var(--crit); }
+        .backup-chip.s-unknown .bk-dot { background: var(--ink-faint); }
 
         .hw-toggle {
             background: var(--bg-2);
@@ -3136,7 +3162,7 @@
            ([█][█][░]) is the wizard's signature primitive — reused later
            in FLEET-121's docked-resume chip and first-run banner.
            Aesthetic: 'mission console' — sharp corners, monospace,
-           no border-radius. See docs/WIZARD-DESIGN.md. */
+           no border-radius. See PPM Knowledge FLEET/guideline/wizard_design. */
         .posture-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -3309,7 +3335,7 @@
            fixed-width timestamp + status flag + message + elapsed.
            Status-flag flips ([…] → [OK]) are state-class changes with
            a 200ms color transition for an in-place flip read.
-           See docs/WIZARD-DESIGN.md sketch 3. */
+           See PPM Knowledge FLEET/guideline/wizard_design, sketch 3. */
         .seq {
             background: rgba(0, 0, 0, 0.35);
             border: 1px solid var(--line);
@@ -3884,6 +3910,23 @@
 
                                     <div class="strip-block host-strip" x-init="mountStrip($el, 'host', host.hostname, { kind: 'host' })"></div>
 
+                                    <template x-if="host.backups && host.backups.length > 0">
+                                        <div class="card-section">
+                                            <div class="card-section-label">
+                                                <span>Backups</span><span class="count" x-text="'· ' + countHealthyBackups(host.backups) + '/' + host.backups.length"></span>
+                                            </div>
+                                            <div class="chips">
+                                                <template x-for="b in host.backups" :key="b.name">
+                                                    <div class="backup-chip" :class="'s-' + backupStatus(b)" :title="backupTitle(b)">
+                                                        <span class="bk-dot"></span>
+                                                        <span class="bk-name" x-text="b.name"></span>
+                                                        <span class="bk-age" x-text="backupAgeLabel(b)"></span>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
+
                                     <template x-if="host.containers && host.containers.length > 0">
                                         <div class="card-section">
                                             <div class="card-section-label">
@@ -3959,8 +4002,8 @@
                                         </div>
                                     </template>
 
-                                    <template x-if="(!host.containers || host.containers.length === 0) && (!host.agents || host.agents.length === 0)">
-                                        <div class="card-empty">No containers or agents reported</div>
+                                    <template x-if="(!host.containers || host.containers.length === 0) && (!host.agents || host.agents.length === 0) && (!host.backups || host.backups.length === 0)">
+                                        <div class="card-empty">No containers, agents, or backups reported</div>
                                     </template>
                                 </div>
                             </template>
@@ -4045,6 +4088,23 @@
 
                                     <!-- Host status history — promoted to right under the header. -->
                                     <div class="strip-block host-strip" x-init="mountStrip($el, 'host', host.hostname, { kind: 'host' })"></div>
+
+                                    <template x-if="host.backups && host.backups.length > 0">
+                                        <div class="card-section">
+                                            <div class="card-section-label">
+                                                <span>Backups</span><span class="count" x-text="'· ' + countHealthyBackups(host.backups) + '/' + host.backups.length"></span>
+                                            </div>
+                                            <div class="chips">
+                                                <template x-for="b in host.backups" :key="b.name">
+                                                    <div class="backup-chip" :class="'s-' + backupStatus(b)" :title="backupTitle(b)">
+                                                        <span class="bk-dot"></span>
+                                                        <span class="bk-name" x-text="b.name"></span>
+                                                        <span class="bk-age" x-text="backupAgeLabel(b)"></span>
+                                                    </div>
+                                                </template>
+                                            </div>
+                                        </div>
+                                    </template>
 
                                     <!-- Agents first — the observability info is the main event in Detail. -->
                                     <template x-if="host.agents && host.agents.length > 0">
@@ -4335,7 +4395,7 @@
                         <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'icons' && 'active'" @click="settingsTab = 'icons'; loadImagePresets()">Icons</button>
                         <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'sharing' && 'active'" @click="settingsTab = 'sharing'; loadShares()">Sharing</button>
                         <button class="settings-tab" :class="settingsTab === 'ignored' && 'active'" @click="settingsTab = 'ignored'; loadIgnoredList()">Ignored</button>
-                        <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'config' && 'active'" @click="settingsTab = 'config'">Config</button>
+                        <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'config' && 'active'" @click="settingsTab = 'config'; loadAlertConfig()">Config</button>
                         <button class="settings-tab" :class="settingsTab === 'account' && 'active'" @click="settingsTab = 'account'; loadMySessions(); loadApiTokens()">Account</button>
                         <button class="settings-tab" x-show="currentUser && currentUser.role === 'admin'" :class="settingsTab === 'users' && 'active'" @click="settingsTab = 'users'; loadUsers()">Users</button>
                         <!-- FLEET-377: Settings → Gateways and Bridges tabs removed.
@@ -4547,6 +4607,57 @@
                             <p style="color: var(--ink-ghost); font-size: 10px; letter-spacing: 0.04em; margin-bottom: 1.5rem;">
                                 Agents read this value from the heartbeat response and adapt their reporting cadence automatically.
                             </p>
+                            <template x-if="currentUser && currentUser.role === 'admin'">
+                                <div>
+                                    <h3 style="margin:2rem 0 1rem;color:var(--ink-dim)">Alerting</h3>
+                                    <div class="form-row" style="flex-direction:column;align-items:flex-start;gap:0.65rem;max-width:620px">
+                                        <label style="display:flex;align-items:center;gap:0.5rem;font-size:11px;color:var(--ink-dim);">
+                                            <input type="checkbox" x-model="alertConfig.alerting_enabled">
+                                            <span>Enable alerting</span>
+                                        </label>
+                                        <label style="display:flex;align-items:center;gap:0.5rem;font-size:11px;color:var(--ink-dim);">
+                                            <input type="checkbox" x-model="alertConfig.telegram_enabled">
+                                            <span>Telegram notifier</span>
+                                            <span style="font-size:10px;color:var(--ink-ghost);font-family:'JetBrains Mono',ui-monospace,monospace;"
+                                                  x-text="alertConfig.telegram_token_configured ? '[TOKEN OK]' : '[TOKEN MISSING]'"></span>
+                                        </label>
+                                        <label style="display:flex;align-items:center;gap:0.5rem;font-size:11px;color:var(--ink-dim);width:100%;">
+                                            <span style="width:105px;">Telegram chat</span>
+                                            <input type="text" x-model="alertConfig.telegram_chat_id" placeholder="-100123… or @channel" style="flex:1;max-width:360px;">
+                                        </label>
+                                        <label style="display:flex;align-items:center;gap:0.5rem;font-size:11px;color:var(--ink-dim);">
+                                            <input type="checkbox" x-model="alertConfig.host_down_enabled">
+                                            <span>Host heartbeat rule</span>
+                                            <input type="number" min="60" max="86400" step="60"
+                                                   x-model.number="alertConfig.host_down_grace_seconds"
+                                                   style="width:82px;text-align:right;">
+                                            <span style="font-size:10px;color:var(--ink-ghost);">seconds</span>
+                                        </label>
+                                        <label style="display:flex;align-items:center;gap:0.5rem;font-size:11px;color:var(--ink-dim);">
+                                            <input type="checkbox" x-model="alertConfig.backup_unhealthy_enabled">
+                                            <span>Backup rule</span>
+                                            <input type="number" min="3600" max="2592000" step="3600"
+                                                   x-model.number="alertConfig.backup_stale_seconds"
+                                                   style="width:92px;text-align:right;">
+                                            <span style="font-size:10px;color:var(--ink-ghost);">seconds</span>
+                                        </label>
+                                        <label style="display:flex;align-items:center;gap:0.5rem;font-size:11px;color:var(--ink-dim);width:100%;">
+                                            <span style="width:105px;">Backup hosts</span>
+                                            <input type="text" x-model="alertConfig.backup_expected_hosts" placeholder="hsb0,hsb1,hsb8,hsb9,csb0,csb1" style="flex:1;max-width:360px;">
+                                        </label>
+                                        <div style="display:flex;gap:0.5rem;">
+                                            <button class="btn btn-primary"
+                                                    :data-pending="!!pending['saveAlertConfig']"
+                                                    :disabled="!!pending['saveAlertConfig']"
+                                                    @click="saveAlertConfig()">Save alerting</button>
+                                            <button class="btn"
+                                                    :data-pending="!!pending['sendTestAlert']"
+                                                    :disabled="!!pending['sendTestAlert'] || !alertConfig.telegram_enabled || !alertConfig.telegram_chat_id || !alertConfig.telegram_token_configured"
+                                                    @click="sendTestAlert()">Send test</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
                             <div class="form-row">
                                 <label style="display:flex;align-items:center;gap:0.6rem;font-size:11px;color:var(--ink-dim);">
                                     Card icon size
@@ -5341,6 +5452,23 @@ WantedBy=multi-user.target</pre>
                             <div class="drawer-section-label">Status · last 15 min</div>
                             <div class="strip-block host-strip" x-init="mountStrip($el, 'host', hostDrawerKey, { kind: 'host' })"></div>
                         </div>
+
+                        <template x-if="hostByName(hostDrawerKey).backups && hostByName(hostDrawerKey).backups.length > 0">
+                            <div>
+                                <div class="drawer-section-label">
+                                    Backups · <span x-text="countHealthyBackups(hostByName(hostDrawerKey).backups) + '/' + hostByName(hostDrawerKey).backups.length"></span>
+                                </div>
+                                <div class="chips">
+                                    <template x-for="b in hostByName(hostDrawerKey).backups" :key="b.name">
+                                        <div class="backup-chip" :class="'s-' + backupStatus(b)" :title="backupTitle(b)">
+                                            <span class="bk-dot"></span>
+                                            <span class="bk-name" x-text="b.name"></span>
+                                            <span class="bk-age" x-text="backupAgeLabel(b)"></span>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
 
                         <!-- Agents (rich chips with live state) -->
                         <template x-if="hostByName(hostDrawerKey).agents && hostByName(hostDrawerKey).agents.length > 0">
@@ -6185,7 +6313,7 @@ WantedBy=multi-user.target</pre>
                 <template x-if="!bridgeDeploy.suggestions.on_host?.length && !bridgeDeploy.suggestions.in_fleet?.length && !bridgeDeploy.suggestions.defaults?.length">
                     <p style="font-size:10px;color:var(--ink-ghost);font-style:italic;">
                         No suggestions yet — type names below.
-                        <a href="https://github.com/markus-barta/fleetcom/blob/main/docs/AGENT-BRIDGE-PAIRING.md" target="_blank" rel="noopener" style="color:var(--accent);">docs</a>
+                        <a href="https://pm.barta.cm/projects/4?tab=knowledge" target="_blank" rel="noopener" style="color:var(--accent);">knowledge</a>
                     </p>
                 </template>
             </div>
@@ -6428,7 +6556,7 @@ WantedBy=multi-user.target</pre>
          results as a launch-sequence checklist, then transitions to a live
          pair-progress log when the operator clicks "Pair now". Auto-closes
          on success; stays open on error with an actionable retry. Mission-
-         console aesthetic — see docs/WIZARD-DESIGN.md sketch 3. -->
+         console aesthetic — see PPM Knowledge FLEET/guideline/wizard_design, sketch 3. -->
     <div x-show="pairFlowCtx" x-cloak
          @keydown.escape.window="pairFlowCtx && pairFlowCtx.phase !== 'pairing' && closePairFlow()"
          class="modal-backdrop"
@@ -6686,7 +6814,7 @@ WantedBy=multi-user.target</pre>
     <!-- FLEET-116: 'What is this?' explainer drawer. Plain-language
          3-layer security explainer + 'today's right answer' cheat sheet.
          Opens from the host-drawer Integrations row (admin-only). Content
-         mirrors docs/PAIRING-SECURITY-MODEL.md — when the doc changes,
+         mirrors PPM Knowledge FLEET/guideline/pairing_security_model — when it changes,
          this copy should follow. -->
     <div x-show="pairInfoDrawerOpen" x-cloak
          @keydown.escape.window="pairInfoDrawerOpen = false"
@@ -7011,8 +7139,8 @@ WantedBy=multi-user.target</pre>
                 moreMenuOpen: false,
                 pairListExpanded: {},
                 // FLEET-116: 'What is this?' explainer modal opened from the
-                // host-drawer Integrations row. Mirrors docs/PAIRING-SECURITY-MODEL.md
-                // — engineering doc updates should be reflected here too.
+                // host-drawer Integrations row. Mirrors PPM Knowledge
+                // FLEET/guideline/pairing_security_model.
                 pairInfoDrawerOpen: false,
                 // FLEET-118: pair-flow modal state. null = closed; otherwise
                 // {host, container, phase, preflight, steps, startedAt}.
@@ -7594,6 +7722,17 @@ WantedBy=multi-user.target</pre>
                 },
 
                 configInstanceLabel: '',
+                alertConfig: {
+                    alerting_enabled: false,
+                    telegram_enabled: false,
+                    telegram_token_configured: false,
+                    telegram_chat_id: '',
+                    host_down_enabled: false,
+                    host_down_grace_seconds: 300,
+                    backup_unhealthy_enabled: false,
+                    backup_stale_seconds: 172800,
+                    backup_expected_hosts: '',
+                },
 
                 async saveInstanceLabel() {
                     return this.busy('saveInstanceLabel', 'Instance label saved',
@@ -7628,6 +7767,67 @@ WantedBy=multi-user.target</pre>
                             if (!res.ok && res.status !== 204) await this._checkRes(res, 'Delete failed');
                         },
                         { verb: 'DELETE', target: 'settings/org_logo' });
+                },
+
+                async loadAlertConfig() {
+                    try {
+                        const res = await fetch('/api/alerts/config');
+                        if (!res.ok) return;
+                        const cfg = await res.json();
+                        this.alertConfig = {
+                            alerting_enabled: !!cfg.alerting_enabled,
+                            telegram_enabled: !!cfg.telegram_enabled,
+                            telegram_token_configured: !!cfg.telegram_token_configured,
+                            telegram_chat_id: cfg.telegram_chat_id || '',
+                            host_down_enabled: !!cfg.host_down_enabled,
+                            host_down_grace_seconds: cfg.host_down_grace_seconds || 300,
+                            backup_unhealthy_enabled: !!cfg.backup_unhealthy_enabled,
+                            backup_stale_seconds: cfg.backup_stale_seconds || 172800,
+                            backup_expected_hosts: cfg.backup_expected_hosts || '',
+                        };
+                    } catch (e) { this._rpcError('Load alert config', e); }
+                },
+
+                async saveAlertConfig() {
+                    const grace = parseInt(this.alertConfig.host_down_grace_seconds, 10);
+                    if (!Number.isFinite(grace) || grace < 60 || grace > 86400) {
+                        this.toast('Host heartbeat grace must be 60-86400 seconds', 'err');
+                        return;
+                    }
+                    const backupStale = parseInt(this.alertConfig.backup_stale_seconds, 10);
+                    if (!Number.isFinite(backupStale) || backupStale < 3600 || backupStale > 2592000) {
+                        this.toast('Backup stale threshold must be 3600-2592000 seconds', 'err');
+                        return;
+                    }
+                    return this.busy('saveAlertConfig', 'Alerting settings saved',
+                        async () => {
+                            const res = await fetch('/api/alerts/config', {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    alerting_enabled: !!this.alertConfig.alerting_enabled,
+                                    telegram_enabled: !!this.alertConfig.telegram_enabled,
+                                    telegram_chat_id: this.alertConfig.telegram_chat_id || '',
+                                    host_down_enabled: !!this.alertConfig.host_down_enabled,
+                                    host_down_grace_seconds: grace,
+                                    backup_unhealthy_enabled: !!this.alertConfig.backup_unhealthy_enabled,
+                                    backup_stale_seconds: backupStale,
+                                    backup_expected_hosts: this.alertConfig.backup_expected_hosts || '',
+                                })
+                            });
+                            await this._checkRes(res, 'Save failed');
+                            this.alertConfig = await res.json();
+                        },
+                        { verb: 'UPDATE', target: 'settings/alerting' });
+                },
+
+                async sendTestAlert() {
+                    return this.busy('sendTestAlert', 'Test alert sent',
+                        async () => {
+                            const res = await fetch('/api/alerts/test', { method: 'POST' });
+                            await this._checkRes(res, 'Test alert failed');
+                        },
+                        { verb: 'TEST', target: 'alerts/telegram' });
                 },
 
                 formatBuildTime(iso) {
@@ -8088,6 +8288,7 @@ WantedBy=multi-user.target</pre>
                     if (this.settingsTab === 'hosts') this.loadTokens();
                     else if (this.settingsTab === 'sharing') this.loadShares();
                     else if (this.settingsTab === 'ignored') this.loadIgnoredList();
+                    else if (this.settingsTab === 'config') this.loadAlertConfig();
                     // FLEET-377: gateways/bridges tabs removed; loadGateways /
                     // loadBridges still kept on the Alpine state (called from
                     // SSE handlers + the drawer-initiated pair flow), so no
@@ -8390,7 +8591,8 @@ WantedBy=multi-user.target</pre>
                     if (!running) return '';
                     return running.name + (running.target ? ' → ' + running.target : '');
                 },
-                // STUCK detection (client-side, see docs/AGENT-OBSERVABILITY.md)
+                // STUCK detection (client-side, see PPM Knowledge
+                // FLEET/guideline/agent_observability)
                 isAgentStuck(hostname, name) {
                     const snap = this.agentSnapshotFor(hostname, name);
                     if (!snap || !snap.status) return false;
@@ -10555,6 +10757,9 @@ WantedBy=multi-user.target</pre>
                 countOnlineAgents(agents) {
                     return (agents || []).filter(a => a.status === 'online').length;
                 },
+                countHealthyBackups(backups) {
+                    return (backups || []).filter(b => this.backupStatus(b) === 'ok').length;
+                },
 
                 hostByName(hostname) {
                     return this.hosts.find(h => h.hostname === hostname) || null;
@@ -10577,6 +10782,32 @@ WantedBy=multi-user.target</pre>
                     if (c.state === 'restarting' || c.state === 'paused') return 'warn';
                     if (c.state === 'exited' || c.state === 'dead') return 'crit';
                     return 'dead';
+                },
+                backupStatus(b) {
+                    if (!b) return 'unknown';
+                    const status = String(b.status || '').toLowerCase();
+                    if (status === 'error' || status === 'failed' || status === 'missing') return 'crit';
+                    if (!b.last_success_at) return 'crit';
+                    const last = Date.parse(b.last_success_at);
+                    if (!Number.isFinite(last)) return 'crit';
+                    const threshold = (parseInt(this.alertConfig.backup_stale_seconds, 10) || 172800) * 1000;
+                    const age = Date.now() - last;
+                    if (age > threshold) return 'warn';
+                    return 'ok';
+                },
+                backupAgeLabel(b) {
+                    if (!b || !b.last_success_at) return 'no snapshot';
+                    return this.formatAgo(b.last_success_at);
+                },
+                backupTitle(b) {
+                    if (!b) return '';
+                    const parts = [b.name || 'backup', b.kind || 'backup', this.backupStatus(b)];
+                    if (b.snapshot_id) parts.push('snapshot ' + b.snapshot_id);
+                    if (b.snapshot_host) parts.push('host ' + b.snapshot_host);
+                    if (b.last_success_at) parts.push('success ' + this.formatTs(b.last_success_at));
+                    if (b.last_checked_at) parts.push('checked ' + this.formatTs(b.last_checked_at));
+                    if (b.error) parts.push(b.error);
+                    return parts.join(' · ');
                 },
                 containerHealthLabel(c) {
                     if (c.crash_loop) return 'CrashLoop';

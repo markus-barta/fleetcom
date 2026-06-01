@@ -24,6 +24,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/markus-barta/fleetcom/internal/alerting"
 	"github.com/markus-barta/fleetcom/internal/api"
 	"github.com/markus-barta/fleetcom/internal/auth"
 	"github.com/markus-barta/fleetcom/internal/db"
@@ -40,6 +41,7 @@ type routerDeps struct {
 	auth          *auth.Auth
 	resetHandlers *auth.ResetHandlers
 	ocMgr         *openclaw.Manager
+	alerts        *alerting.Engine
 }
 
 // newRouter builds the configured chi router. Same wiring as the
@@ -51,6 +53,7 @@ func newRouter(d *routerDeps) chi.Router {
 	a := d.auth
 	resetHandlers := d.resetHandlers
 	ocMgr := d.ocMgr
+	alerts := d.alerts
 
 	r := chi.NewRouter()
 	r.Use(middleware.RealIP)
@@ -114,6 +117,7 @@ func newRouter(d *routerDeps) chi.Router {
 		}
 	}
 	r.With(tokenOrSession("read:hosts")).Get("/api/hosts", api.ListHosts(store))
+	r.With(tokenOrSession("read:hosts")).Get("/api/backups", api.ListBackups(store))
 	r.With(tokenOrSession("read:hardware")).Get("/api/hosts/{hostname}/hardware", api.HostHardware(store))
 	r.With(tokenOrSession("read:agents")).Get("/api/agents", api.ListAgents(store))
 	r.With(tokenOrSession("read:agents")).Get("/api/agents/{host}/{name}", api.AgentDetail(store))
@@ -186,6 +190,9 @@ func newRouter(d *routerDeps) chi.Router {
 		r.With(auth.RequireAdmin).Post("/api/shares", api.CreateShareLink(store))
 		r.With(auth.RequireAdmin).Delete("/api/shares", api.DeleteShareLink(store))
 		r.With(auth.RequireAdmin).Put("/api/settings", api.UpdateSettings(store, hub))
+		r.With(auth.RequireAdmin).Get("/api/alerts/config", api.GetAlertConfig(alerts))
+		r.With(auth.RequireAdmin).Put("/api/alerts/config", api.UpdateAlertConfig(store, alerts))
+		r.With(auth.RequireAdmin).Post("/api/alerts/test", api.SendTestAlert(alerts))
 		r.With(auth.RequireAdmin).Put("/api/host-config", api.UpdateHostConfig(store, hub))
 		r.With(auth.RequireAdmin).Post("/api/image-presets", api.UploadImagePreset(store))
 		r.With(auth.RequireAdmin).Delete("/api/image-presets/{id}", api.DeleteImagePreset(store))

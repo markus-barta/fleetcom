@@ -100,7 +100,8 @@ func migrate(db *sql.DB) error {
 		//   'verified' — sig present + valid; gateway endorsed this (host,agent,fp)
 		//   'skipped'  — registration succeeded under attestation_skipped
 		`ALTER TABLE bridge_pairings ADD COLUMN attestation_status TEXT NOT NULL DEFAULT 'unknown'`,
-		// Agent observability (FLEET-36) — see docs/AGENT-OBSERVABILITY.md.
+		// Agent observability (FLEET-36) — see PPM Knowledge
+		// FLEET/guideline/agent_observability.
 		// New tables are created by the schema const; nothing to ALTER here
 		// unless we evolve existing tables later.
 	}
@@ -265,6 +266,25 @@ CREATE TABLE IF NOT EXISTS agents (
 );
 CREATE INDEX IF NOT EXISTS idx_agents_host ON agents(host_id);
 
+CREATE TABLE IF NOT EXISTS backups (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	host_id INTEGER NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,
+	name TEXT NOT NULL,
+	kind TEXT NOT NULL DEFAULT '',
+	status TEXT NOT NULL DEFAULT '',
+	container_name TEXT NOT NULL DEFAULT '',
+	last_success_at TEXT NOT NULL DEFAULT '',
+	last_checked_at TEXT NOT NULL DEFAULT '',
+	snapshot_id TEXT NOT NULL DEFAULT '',
+	snapshot_host TEXT NOT NULL DEFAULT '',
+	paths_json TEXT NOT NULL DEFAULT '[]',
+	error TEXT NOT NULL DEFAULT '',
+	updated_at TEXT NOT NULL DEFAULT '',
+	UNIQUE(host_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_backups_host ON backups(host_id);
+CREATE INDEX IF NOT EXISTS idx_backups_status ON backups(status, last_success_at);
+
 CREATE TABLE IF NOT EXISTS sessions (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	token TEXT NOT NULL UNIQUE,
@@ -410,8 +430,29 @@ CREATE TABLE IF NOT EXISTS activity_events (
 CREATE INDEX IF NOT EXISTS idx_activity_ts ON activity_events(ts DESC);
 CREATE INDEX IF NOT EXISTS idx_activity_user_ts ON activity_events(user_id, ts DESC);
 
+-- FLEET-167: alert rule state. The evaluator writes one row per
+-- (rule, entity) so notifications dedupe across ticks and can send a
+-- recovery when the condition returns to OK.
+CREATE TABLE IF NOT EXISTS alert_states (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	rule_key TEXT NOT NULL,
+	entity_type TEXT NOT NULL,
+	entity_key TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'ok',
+	title TEXT NOT NULL DEFAULT '',
+	summary TEXT NOT NULL DEFAULT '',
+	active_since TEXT NOT NULL DEFAULT '',
+	resolved_at TEXT NOT NULL DEFAULT '',
+	last_sent_at TEXT NOT NULL DEFAULT '',
+	last_error TEXT NOT NULL DEFAULT '',
+	updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+	UNIQUE(rule_key, entity_key)
+);
+CREATE INDEX IF NOT EXISTS idx_alert_states_status ON alert_states(status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_alert_states_entity ON alert_states(entity_type, entity_key);
+
 -- OpenClaw gateway pairing + bridge registry (FLEET-51) —
--- see docs/AGENT-BRIDGE-PAIRING.md.
+-- see PPM Knowledge FLEET/guideline/agent_bridge_pairing.
 CREATE TABLE IF NOT EXISTS openclaw_gateways (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	host TEXT NOT NULL UNIQUE,
@@ -457,7 +498,7 @@ CREATE TABLE IF NOT EXISTS bridge_pairings (
 );
 CREATE INDEX IF NOT EXISTS idx_bridge_pairings_fp ON bridge_pairings(pubkey_fp);
 
--- Agent observability (FLEET-36) — see docs/AGENT-OBSERVABILITY.md.
+-- Agent observability (FLEET-36) — see PPM Knowledge FLEET/guideline/agent_observability.
 CREATE TABLE IF NOT EXISTS agents_obs (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
 	host_id INTEGER NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,

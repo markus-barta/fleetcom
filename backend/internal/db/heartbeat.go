@@ -33,6 +33,7 @@ type Host struct {
 	HwLiveAt    string      `json:"hw_live_at,omitempty"`
 	Containers  []Container `json:"containers"`
 	Agents      []Agent     `json:"agents"`
+	Backups     []Backup    `json:"backups,omitempty"`
 }
 
 // HardwareHeartbeat carries optional hardware/metadata fields from a heartbeat.
@@ -73,7 +74,7 @@ type Agent struct {
 // consumes a pending "update" command if one was flagged for this host.
 // Returns a non-empty command string when the caller should relay a
 // command to the agent in the heartbeat response.
-func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64, agentVersion, deploymentShape, bootID string, containers []Container, agents []Agent, hw *HardwareHeartbeat) (string, error) {
+func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64, agentVersion, deploymentShape, bootID string, containers []Container, agents []Agent, hw *HardwareHeartbeat, backups ...[]Backup) (string, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	tx, err := s.DB.Begin()
@@ -192,6 +193,12 @@ func (s *Store) UpsertHeartbeat(hostname, os, kernel string, uptimeSeconds int64
 
 	if err := recordSamples(tx, now, hostname, containers, agents); err != nil {
 		return "", err
+	}
+
+	if len(backups) > 0 {
+		if err := replaceBackupsTx(tx, hostID, now, backups[0]); err != nil {
+			return "", err
+		}
 	}
 
 	// Consume any pending server-triggered command atomically with the
@@ -333,6 +340,10 @@ func (s *Store) AllHosts() ([]Host, error) {
 		if err != nil {
 			return nil, err
 		}
+		hosts[i].Backups, err = s.backupsForHost(hosts[i].ID)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return hosts, nil
@@ -362,6 +373,10 @@ func (s *Store) HostsForUser(userID int64) ([]Host, error) {
 			return nil, err
 		}
 		hosts[i].Agents, err = s.agentsForHost(hosts[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		hosts[i].Backups, err = s.backupsForHost(hosts[i].ID)
 		if err != nil {
 			return nil, err
 		}

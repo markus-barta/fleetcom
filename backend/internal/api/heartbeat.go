@@ -36,6 +36,9 @@ type HeartbeatPayload struct {
 	// Agent observability (FLEET-36) — bosun attaches one snapshot per
 	// agent scraped from local exporters.
 	AgentStates []db.AgentSnapshot `json:"agent_states,omitempty"`
+	// Backup observability (FLEET-168) — one row per detected backup job.
+	// Omitted by old bosuns; empty array from new bosuns means "none found".
+	Backups []BackupPayload `json:"backups,omitempty"`
 }
 
 type ContainerPayload struct {
@@ -53,6 +56,19 @@ type AgentPayload struct {
 	Name      string `json:"name"`
 	AgentType string `json:"agent_type"`
 	Status    string `json:"status"`
+}
+
+type BackupPayload struct {
+	Name          string   `json:"name"`
+	Kind          string   `json:"kind"`
+	Status        string   `json:"status"`
+	ContainerName string   `json:"container_name"`
+	LastSuccessAt string   `json:"last_success_at,omitempty"`
+	LastCheckedAt string   `json:"last_checked_at,omitempty"`
+	SnapshotID    string   `json:"snapshot_id,omitempty"`
+	SnapshotHost  string   `json:"snapshot_host,omitempty"`
+	Paths         []string `json:"paths,omitempty"`
+	Error         string   `json:"error,omitempty"`
 }
 
 func Heartbeat(store *db.Store, hub *sse.Hub) http.HandlerFunc {
@@ -85,9 +101,15 @@ func Heartbeat(store *db.Store, hub *sse.Hub) http.HandlerFunc {
 			Live:      payload.HwLive,
 			Fastfetch: payload.Fastfetch,
 		}
-		command, err := store.UpsertHeartbeat(payload.Hostname, payload.OS, payload.Kernel, payload.UptimeSeconds, payload.AgentVersion, payload.DeploymentShape, payload.BootID, toDBContainers(payload.Containers), toDBAgents(payload.Agents), hw)
-		if err != nil {
-			log.Printf("heartbeat upsert error: %v", err)
+		var command string
+		var upsertErr error
+		if payload.Backups != nil {
+			command, upsertErr = store.UpsertHeartbeat(payload.Hostname, payload.OS, payload.Kernel, payload.UptimeSeconds, payload.AgentVersion, payload.DeploymentShape, payload.BootID, toDBContainers(payload.Containers), toDBAgents(payload.Agents), hw, toDBBackups(payload.Backups))
+		} else {
+			command, upsertErr = store.UpsertHeartbeat(payload.Hostname, payload.OS, payload.Kernel, payload.UptimeSeconds, payload.AgentVersion, payload.DeploymentShape, payload.BootID, toDBContainers(payload.Containers), toDBAgents(payload.Agents), hw)
+		}
+		if upsertErr != nil {
+			log.Printf("heartbeat upsert error: %v", upsertErr)
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
@@ -217,6 +239,25 @@ func toDBAgents(as []AgentPayload) []db.Agent {
 	out := make([]db.Agent, len(as))
 	for i, a := range as {
 		out[i] = db.Agent{Name: a.Name, AgentType: a.AgentType, Status: a.Status}
+	}
+	return out
+}
+
+func toDBBackups(bs []BackupPayload) []db.Backup {
+	out := make([]db.Backup, len(bs))
+	for i, b := range bs {
+		out[i] = db.Backup{
+			Name:          b.Name,
+			Kind:          b.Kind,
+			Status:        b.Status,
+			ContainerName: b.ContainerName,
+			LastSuccessAt: b.LastSuccessAt,
+			LastCheckedAt: b.LastCheckedAt,
+			SnapshotID:    b.SnapshotID,
+			SnapshotHost:  b.SnapshotHost,
+			Paths:         b.Paths,
+			Error:         b.Error,
+		}
 	}
 	return out
 }

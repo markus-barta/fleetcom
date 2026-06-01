@@ -69,6 +69,7 @@ type HeartbeatPayload struct {
 	HwLive      *HwLive            `json:"hw_live,omitempty"`
 	Fastfetch   json.RawMessage    `json:"fastfetch_json,omitempty"`
 	AgentStates []AgentSnapshot    `json:"agent_states,omitempty"`
+	Backups     []BackupPayload    `json:"backups"`
 }
 
 type ContainerPayload struct {
@@ -86,6 +87,19 @@ type AgentPayload struct {
 	Name      string `json:"name"`
 	AgentType string `json:"agent_type"`
 	Status    string `json:"status"`
+}
+
+type BackupPayload struct {
+	Name          string   `json:"name"`
+	Kind          string   `json:"kind"`
+	Status        string   `json:"status"`
+	ContainerName string   `json:"container_name"`
+	LastSuccessAt string   `json:"last_success_at,omitempty"`
+	LastCheckedAt string   `json:"last_checked_at,omitempty"`
+	SnapshotID    string   `json:"snapshot_id,omitempty"`
+	SnapshotHost  string   `json:"snapshot_host,omitempty"`
+	Paths         []string `json:"paths,omitempty"`
+	Error         string   `json:"error,omitempty"`
 }
 
 // ContainerEventPayload is sent in real-time when a container lifecycle event fires.
@@ -164,9 +178,10 @@ func main() {
 	// Hardware/metadata state: track last static hash + last fastfetch time
 	// so we only send Static on change and refresh fastfetch once a day.
 	hw := &hwState{fastfetchInterval: 24 * time.Hour}
+	backups := &backupState{interval: 15 * time.Minute}
 
 	// Periodic heartbeat
-	sendHeartbeat(serverURL, token, hostname, socketPath, agents, agentVersionStr, &interval, hw)
+	sendHeartbeat(serverURL, token, hostname, socketPath, agents, agentVersionStr, &interval, hw, backups)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -176,7 +191,7 @@ func main() {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			sendHeartbeat(serverURL, token, hostname, socketPath, agents, agentVersionStr, &interval, hw)
+			sendHeartbeat(serverURL, token, hostname, socketPath, agents, agentVersionStr, &interval, hw, backups)
 			if interval != prevInterval {
 				ticker.Reset(interval)
 				prevInterval = interval
@@ -308,7 +323,7 @@ func formatAgentVersion() string {
 	return Version
 }
 
-func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []AgentPayload, agentVersion string, interval *time.Duration, hw *hwState) {
+func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []AgentPayload, agentVersion string, interval *time.Duration, hw *hwState, backups *backupState) {
 	containers := listContainers(socketPath)
 
 	payload := HeartbeatPayload{
@@ -321,6 +336,7 @@ func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []Agent
 		BootID:          getBootID(),
 		Containers:      containers,
 		Agents:          agents,
+		Backups:         []BackupPayload{},
 	}
 
 	// Static first so we have a fresh core count for live's CPU %. Only
@@ -346,6 +362,10 @@ func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []Agent
 
 	// Agent exporter snapshots (FLEET-36) — optional; missing URLs → no-op.
 	payload.AgentStates = scrapeAgentStates()
+
+	if backups != nil {
+		payload.Backups = backups.collect(hostname, containers)
+	}
 
 	if hw != nil {
 
@@ -394,7 +414,7 @@ func sendHeartbeat(serverURL, token, hostname, socketPath string, agents []Agent
 		}
 	}
 
-	log.Printf("heartbeat sent: %d containers, %d agents", len(containers), len(agents))
+	log.Printf("heartbeat sent: %d containers, %d agents, %d backups", len(containers), len(agents), len(payload.Backups))
 }
 
 func doPost(url, token string, body []byte) ([]byte, error) {
