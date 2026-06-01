@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// ---------- Wire types (mirror docs/AGENT-OBSERVABILITY.md schema v1) ----------
+// ---------- Wire types (mirror PPM Knowledge FLEET/guideline/agent_observability schema v1) ----------
 
 // AgentSnapshot is the per-agent state returned by an exporter's
 // /v1/agent-state endpoint and carried inside a heartbeat payload.

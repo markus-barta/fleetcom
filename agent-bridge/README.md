@@ -2,8 +2,8 @@
 
 Reference **agent exporter** for FleetCom. Runs next to an agent
 runtime (OpenClaw on hsb0 is the first target), converts runtime
-activity into the generic agent-observability events defined in
-[`../docs/AGENT-OBSERVABILITY.md`](../docs/AGENT-OBSERVABILITY.md),
+activity into the generic agent-observability events defined in PPM
+Knowledge `FLEET/guideline/agent_observability`,
 and exposes the two surfaces FleetCom needs:
 
 - **`GET /v1/agent-state`** — pulled by Bosun each heartbeat (60s).

@@ -20,8 +20,8 @@ import (
 // operatorTLSClient returns an HTTP client whose TLS config skips hostname
 // verification. Gateway certs are self-signed without SANs; authentication
 // of the peer is the application-layer Ed25519 connect.challenge handshake
-// (see docs/PAIRING-SECURITY-MODEL.md "Layer 0 — transport (TLS)"). TLS is
-// kept for confidentiality + integrity, not for identity.
+// (see PPM Knowledge FLEET/guideline/pairing_security_model, "Layer 0").
+// TLS is kept for confidentiality + integrity, not for identity.
 func operatorTLSClient() *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{

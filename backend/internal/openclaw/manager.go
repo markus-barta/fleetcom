@@ -449,7 +449,7 @@ func (m *Manager) RevokeBridgeOnGateway(ctx context.Context, host, deviceID stri
 // publicKey into openclaw_gateways.gateway_pubkey_b64. This replaces the
 // operator-paste flow that referenced a bogus on-disk path
 // (/var/lib/openclaw/keys/public.pem) which OpenClaw never wrote — see
-// docs/PAIRING-SECURITY-MODEL.md.
+// PPM Knowledge FLEET/guideline/pairing_security_model.
 //
 // Trust model: the publicKey we capture here came from a peer that
 // already proved possession of the matching Ed25519 private key by
