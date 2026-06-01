@@ -99,7 +99,7 @@ var EndpointCatalog = []EndpointInfo{
 
 	// ---------- Bosun write-side (per-host bearer) ----------
 	{Method: "POST", Path: "/api/heartbeat", Auth: []string{"agent_bearer"},
-		Description: "Periodic enriched heartbeat: hosts, containers, agents, deployment_shape, boot_id."},
+		Description: "Periodic enriched heartbeat: hosts, containers, agents, backups, deployment_shape, boot_id."},
 	{Method: "POST", Path: "/api/container-events", Auth: []string{"agent_bearer"},
 		Description: "Real-time container lifecycle events from Docker socket (die, restart, oom, health_status)."},
 	{Method: "POST", Path: "/api/agent-events", Auth: []string{"agent_bearer"},
@@ -117,7 +117,9 @@ var EndpointCatalog = []EndpointInfo{
 
 	// ---------- Token-callable read endpoints (FLEET-79) ----------
 	{Method: "GET", Path: "/api/hosts", Auth: []string{"session", "api_token"}, Scope: "read:hosts",
-		Description: "List hosts the caller has access to, with containers, agents, and live status."},
+		Description: "List hosts the caller has access to, with containers, agents, backups, and live status."},
+	{Method: "GET", Path: "/api/backups", Auth: []string{"session", "api_token"}, Scope: "read:hosts",
+		Description: "List latest backup-observability rows for hosts the caller can access."},
 	{Method: "GET", Path: "/api/hosts/{hostname}/hardware", Auth: []string{"session", "api_token"}, Scope: "read:hardware",
 		Description: "Hardware snapshot + recent live metrics for a single host."},
 	{Method: "GET", Path: "/api/agents", Auth: []string{"session", "api_token"}, Scope: "read:agents",
@@ -246,6 +248,12 @@ var EndpointCatalog = []EndpointInfo{
 		Description: "Delete a share link."},
 	{Method: "PUT", Path: "/api/settings", Auth: []string{"session"}, RequiresAdmin: true,
 		Description: "Update server settings (heartbeat interval, branding, etc.)."},
+	{Method: "GET", Path: "/api/alerts/config", Auth: []string{"session"}, RequiresAdmin: true,
+		Description: "Read alerting settings and Telegram token configured status."},
+	{Method: "PUT", Path: "/api/alerts/config", Auth: []string{"session"}, RequiresAdmin: true,
+		Description: "Update non-secret alerting settings. Telegram bot token remains env/agenix-only."},
+	{Method: "POST", Path: "/api/alerts/test", Auth: []string{"session"}, RequiresAdmin: true,
+		Description: "Send a real Telegram test alert to prove the destination is wired."},
 	{Method: "PUT", Path: "/api/host-config", Auth: []string{"session"}, RequiresAdmin: true,
 		Description: "Update per-host UI config (icon preset, comment)."},
 	{Method: "POST", Path: "/api/image-presets", Auth: []string{"session"}, RequiresAdmin: true,
@@ -294,7 +302,7 @@ var EndpointCatalog = []EndpointInfo{
 // keys to exist in the live router without a catalog entry.
 var ExcludedFromInfo = map[string]string{
 	// Liveness probes for load balancers / nginx — ops concern, not API.
-	"GET /healthz": "liveness probe; documented in DEPLOYMENT.md, not part of the API contract",
+	"GET /healthz": "liveness probe; documented in PPM Knowledge FLEET/runbook/deployment, not part of the API contract",
 	// LICENSE text — not an API.
 	"GET /LICENSE": "static text file; not API",
 	// Static asset server — implementation detail of the SPA shell.

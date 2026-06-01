@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/markus-barta/fleetcom/internal/alerting"
 	"github.com/markus-barta/fleetcom/internal/auth"
 	"github.com/markus-barta/fleetcom/internal/db"
 	"github.com/markus-barta/fleetcom/internal/openclaw"
@@ -59,6 +60,11 @@ func main() {
 	ocCtx, ocCancel := context.WithCancel(context.Background())
 	defer ocCancel()
 	ocMgr.Start(ocCtx)
+
+	alertEngine := alerting.NewEngine(store)
+	alertCtx, alertCancel := context.WithCancel(context.Background())
+	defer alertCancel()
+	alertEngine.Start(alertCtx)
 
 	// Purge samples older than 400 days (covers the 1Y history scale).
 	const sampleRetention = 400 * 24 * time.Hour
@@ -160,6 +166,7 @@ func main() {
 		auth:          a,
 		resetHandlers: resetHandlers,
 		ocMgr:         ocMgr,
+		alerts:        alertEngine,
 	})
 
 	srv := &http.Server{
