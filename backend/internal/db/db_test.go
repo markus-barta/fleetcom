@@ -34,6 +34,17 @@ func TestOpen_PragmasApplied(t *testing.T) {
 	if synchronous != 1 {
 		t.Errorf("synchronous = %d, want 1 (NORMAL)", synchronous)
 	}
+
+	// FLEET-190: foreign-key enforcement must be ON. It's a per-connection
+	// pragma (SQLite defaults it OFF), so this guards that it's in the DSN
+	// _pragma list and not silently dropped via the mattn `_foreign_keys=` key.
+	var foreignKeys int
+	if err := store.DB.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
+		t.Fatalf("query foreign_keys: %v", err)
+	}
+	if foreignKeys != 1 {
+		t.Errorf("foreign_keys = %d, want 1 (ON)", foreignKeys)
+	}
 }
 
 // FLEET-189: the crash-loop COUNT (host_id, container_name, event_type='restart',

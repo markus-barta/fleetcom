@@ -33,13 +33,18 @@ func Open(path string) (*Store, error) {
 	//                      concurrent writers raced past it and hit SQLITE_BUSY).
 	//   synchronous=NORMAL safe + faster under WAL (worst case is losing the last
 	//                      txn on power loss, never corruption).
-	//
-	// NOTE: the old DSN also declared `_foreign_keys=on`, which was likewise a
-	// silent no-op — FK enforcement has been OFF in prod the whole time. Turning
-	// it on is a behavior change (cascade deletes begin firing; inserts against a
-	// missing parent begin failing) and is intentionally OUT OF SCOPE here. Do
-	// not add foreign_keys(on) without a dedicated migration + validation pass.
-	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)")
+	//   foreign_keys=on    enforce the schema's REFERENCES … ON DELETE CASCADE
+	//                      rules (FLEET-190). SQLite defaults this OFF and it is a
+	//                      PER-CONNECTION pragma, so it MUST be in the DSN _pragma
+	//                      list to apply to every pooled connection. It was
+	//                      historically declared via the mattn `_foreign_keys=on`
+	//                      key, which this driver ignores, so FK was silently off
+	//                      for months. The write paths only ever insert children
+	//                      under a parent they just upserted (heartbeat upserts the
+	//                      host, then its containers/agents; container-events looks
+	//                      the host up first), so enabling enforcement is safe;
+	//                      cascade deletes now also fire as the schema intends.
+	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(on)")
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
