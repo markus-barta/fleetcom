@@ -12,13 +12,34 @@ type Store struct {
 }
 
 func Open(path string) (*Store, error) {
-	// FLEET-155: use modernc.org/sqlite's `_pragma` query param so
-	// busy_timeout is applied to *every* new pool connection. The older
-	// `_busy_timeout=5000` form is unreliable across the pool (FLEET-135);
-	// relying on a single db.Exec(`PRAGMA …`) only set the timeout on one
-	// connection, so concurrent writers (e.g. updateAllAgents fan-out)
-	// raced past it and hit SQLITE_BUSY in 1-9ms.
-	db, err := sql.Open("sqlite", path+"?_journal_mode=WAL&_foreign_keys=on&_pragma=busy_timeout(5000)")
+	// modernc.org/sqlite ONLY honors the `_pragma=NAME(VAL)` query form. The
+	// mattn-style keys (`_journal_mode=…`, `_busy_timeout=…`, `_foreign_keys=…`)
+	// are silently dropped by this driver — they parse fine as URL params but the
+	// driver never reads them (it only iterates q["_pragma"]).
+	//
+	// FLEET-188/189: because journal_mode was set via the mattn form, WAL was
+	// NEVER actually enabled — the live DB ran in rollback-journal (DELETE) mode,
+	// where every writer takes an EXCLUSIVE whole-DB lock and freezes all readers
+	// AND writers for the write's duration. On a large DB that produced recurring
+	// multi-second GLOBAL stalls (366× in 4 days): write timeouts, dropped
+	// operator sessions, failed first-attempt bridge registers. The fix is purely
+	// the DSN form below.
+	//
+	//   journal_mode=WAL   readers no longer block on a writer; persistent in the
+	//                      DB header once set, so it survives reopen.
+	//   busy_timeout=5000  writers wait up to 5s for a lock instead of erroring
+	//                      (FLEET-135/155: must be the _pragma form to apply to
+	//                      EVERY pool connection, not just the first — otherwise
+	//                      concurrent writers raced past it and hit SQLITE_BUSY).
+	//   synchronous=NORMAL safe + faster under WAL (worst case is losing the last
+	//                      txn on power loss, never corruption).
+	//
+	// NOTE: the old DSN also declared `_foreign_keys=on`, which was likewise a
+	// silent no-op — FK enforcement has been OFF in prod the whole time. Turning
+	// it on is a behavior change (cascade deletes begin firing; inserts against a
+	// missing parent begin failing) and is intentionally OUT OF SCOPE here. Do
+	// not add foreign_keys(on) without a dedicated migration + validation pass.
+	db, err := sql.Open("sqlite", path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)")
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
@@ -254,7 +275,18 @@ CREATE TABLE IF NOT EXISTS container_events (
 	oom_killed INTEGER NOT NULL DEFAULT 0,
 	ts TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_container_events_host_name ON container_events(host_id, container_name, ts);
+-- FLEET-189: the hot crash-loop COUNT filters host_id + container_name +
+-- event_type='restart' + ts>=cutoff and runs once PER CONTAINER inside
+-- containersForHost(), which AllHosts() calls for every host — fired on every
+-- heartbeat AND every /api/container-events POST (the SSE broadcast rebuilds
+-- the full host list). The old index (host_id, container_name, ts) omitted
+-- event_type, so each call scanned the ts range then filtered. Putting
+-- event_type before ts lets the query seek straight to restart rows. The old
+-- index is a strict redundant subset of the new one, so it's dropped (one less
+-- index to maintain on the hot insert path). DROP+CREATE is idempotent and
+-- runs on every boot via db.Exec(schema) — a no-op on fresh installs.
+DROP INDEX IF EXISTS idx_container_events_host_name;
+CREATE INDEX IF NOT EXISTS idx_container_events_crashloop ON container_events(host_id, container_name, event_type, ts);
 
 CREATE TABLE IF NOT EXISTS agents (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,

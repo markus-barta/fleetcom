@@ -12,7 +12,7 @@ permissions:
   packages: write
 
 env:
-  VERSION: 1.2.0
+  VERSION: 1.2.1
   AGENT_VERSION: 0.7.0
 
 jobs:
