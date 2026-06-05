@@ -33,7 +33,7 @@ For full kernel + domain packs: see [`inspr-modules/docs/AGENTS-KERNEL.md`](http
 **FleetCom** — Fleet management & agent monitoring platform.
 Central hub for managing DSC-AI agent fleet and NixOS infrastructure. Replaces NixFleet (legacy).
 
-- **Domains**: fleet.barta.cm (personal), fleet.bytepoets.com (BYTEPOETS)
+- **Domains**: fleet.barta.cm (personal). _(fleet.bytepoets.com / BYTEPOETS instance **decommissioned 2026-06-05**, FLEET-192 — now a static placeholder.)_
 - **PPM Project**: FleetCom (project ID: 4, key: FLEET)
 - **PPM Epic**: FLEET-1 (FleetCom MVP)
 - **Infra repo**: BYTEPOETS/infracore (BP server docker-compose + nginx)
@@ -112,7 +112,7 @@ All requests: `curl -s -H "Authorization: Bearer $PPMAPIKEY" https://pm.barta.cm
 - **Frontend**: Single HTML file, Alpine.js + Lucide icons (self-hosted), no build step, no npm
 - **Database**: SQLite (WAL mode, pure Go driver)
 - **Auth**: Multi-user (email + bcrypt + TOTP), HttpOnly session cookies (24h, SameSite=Lax, Secure). User-issued `fleet_pat_` API tokens for programmatic agents (FLEET-79).
-- **Deployment**: Docker on csb1 (personal) + BYTEPOETS Hetzner server, behind Cloudflare DNS
+- **Deployment**: Docker on csb1 (personal), behind Cloudflare DNS. _(BYTEPOETS Hetzner instance decommissioned 2026-06-05 — FLEET-192.)_
 - **Bosun**: Go daemon in Docker container — Docker socket event stream + periodic heartbeat
 
 ## Architecture
@@ -301,7 +301,7 @@ command queue (host.reboot, agent.update, etc.).
 ```sh
 # Server logs (deployed via docker)
 ssh csb1 'docker logs --tail=200 -f fleetcom'
-ssh service-user@5.75.130.206 'docker logs --tail=200 -f fleetcom'
+# (BYTEPOETS instance decommissioned 2026-06-05, FLEET-192 — no fleetcom on 5.75.130.206)
 
 # Bosun logs (per host)
 ssh dsc0 'docker logs --tail=200 -f fleetcom-bosun'
@@ -353,13 +353,22 @@ Settings > Account > API Tokens. Mint, list, revoke `fleet_pat_` tokens. Plainte
 - **Deploy**: Push to main → CI builds image → auto-deploys via SSH + `/etc/fleetcom-deploy.sh`
 - **Docker**: `/home/mba/docker/fleetcom/docker-compose.yml`
 
-### BYTEPOETS (fleet.bytepoets.com)
-- **Host**: Hetzner VPS at 5.75.130.206 (Ubuntu, shared with PMO)
-- **Infra repo**: BYTEPOETS/infracore (docker-compose, nginx configs)
-- **Secrets**: `/home/service-user/.fleetcom.env` (mode 600)
-- **Deploy**: Push to main → CI builds image → manually trigger "Deploy to BYTEPOETS" workflow
-- **Nginx**: `/etc/nginx/sites-available/fleet.bytepoets.com` (SSE-aware proxy + Let's Encrypt TLS)
-- **SSH**: `ssh -i ~/.ssh/BP_OPS_Server_SSH_Key service-user@5.75.130.206`
+### BYTEPOETS (fleet.bytepoets.com) — DECOMMISSIONED 2026-06-05 (FLEET-192)
+
+The BYTEPOETS FleetCom instance was retired on 2026-06-05. `fleet.bytepoets.com`
+now serves a static "FleetCom will be back soon…" placeholder (nginx, Let's
+Encrypt TLS preserved); the `fleetcom` container was removed from the shared
+compose on `5.75.130.206` (DB backed up to `~/fleetcom-decom-backup-20260605.db`,
+data volume retained). Full record in FLEET-192.
+
+> **Access note (corrects stale doc):** the previously-listed
+> `~/.ssh/BP_OPS_Server_SSH_Key` is **stale and does not authenticate**. The
+> shared BP box is reachable from M5 via `ssh service-user@5.75.130.206` using
+> M5's `~/.ssh/id_ed25519` (pubkey added to the host's authorized_keys in
+> FLEET-192). `service-user` has **no passwordless sudo** — root ops need the
+> password interactively (`ssh -t`). The box still runs other services
+> (bp-pm, minio, nodered, grafana, adminer, uptime-kuma, watchtower) via
+> `~/docker/docker-compose.yml`.
 
 ### Initial admin setup (new instance)
 1. Set `FLEETCOM_ADMIN_EMAIL` and `FLEETCOM_ADMIN_PASSWORD` in the env file
