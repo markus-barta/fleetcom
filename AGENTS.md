@@ -1,5 +1,12 @@
 # AGENTS.md — FleetCom
 
+> [!IMPORTANT]
+> **FleetCom is retired.** FLEET-199 removed the csb1 runtime on 2026-07-08,
+> and FLEET-202 redirects `fleet.barta.cm` to its successor, Pharos. Do not
+> deploy, restart, or recreate FleetCom. The remaining architecture and
+> operations material below is historical unless a section explicitly says
+> otherwise. Repository release/deploy retirement is tracked in FLEET-205.
+
 > **Cross-tool agent onboarding doc.** Claude Code, Cursor, Aider, OpenAI
 > Codex, Continue, and other agentic coding tools all read a file by this
 > name. `CLAUDE.md` in this repo is a symlink to this file (FLEET-81).
@@ -8,7 +15,7 @@
 >
 > Pure rules (security/secrets-output, git/safety, process/critical-thinking, etc.) live upstream in `inspr-modules` (kernel + domain packs). This file holds project-specific stuff: API endpoints, architecture, deploy procedures, debug entry points, project-management process.
 
-**Read PPM Knowledge `FLEET/runbook/deployment` at every session start** (`paimos knowledge get runbook deployment --project FLEET`). Every deploy must bump the patch version in `.github/workflows/ci.yml` — never deploy the same version twice.
+**Read PPM Knowledge `FLEET/runbook/deployment` at every session start** (`paimos knowledge get runbook deployment --project FLEET`). It is the current retirement notice. Normal pushes may test the historical source but must not publish or deploy it; archival artifact builds require an explicit manual workflow dispatch.
 
 <!-- KERNEL-MIRROR-BEGIN — auto-mirrored irreducible subset of inspr-modules/docs/AGENTS-KERNEL.md (INSPR-191). Edit upstream + bump submodule, then re-mirror here. For tools that read AGENTS.md but not the kernel via CLAUDE.md @-ref (Cursor, Aider, OpenCode, Codex CLI, Continue, etc.). -->
 
@@ -30,10 +37,11 @@ For full kernel + domain packs: see [`inspr-modules/docs/AGENTS-KERNEL.md`](http
 
 ## Project
 
-**FleetCom** — Fleet management & agent monitoring platform.
-Central hub for managing DSC-AI agent fleet and NixOS infrastructure. Replaces NixFleet (legacy).
+**FleetCom** — retired fleet management and agent monitoring platform.
+Pharos is the supported successor and canonical live fleet view.
 
-- **Domains**: fleet.barta.cm (personal). _(fleet.bytepoets.com / BYTEPOETS instance **decommissioned 2026-06-05**, FLEET-192 — now a static placeholder.)_
+- **Former domain**: `fleet.barta.cm` redirects to `pharos.barta.cm` (FLEET-202).
+- **Runtime**: removed from csb1 (FLEET-199); no production FleetCom instance exists.
 - **PPM Project**: FleetCom (project ID: 4, key: FLEET)
 - **PPM Epic**: FLEET-1 (FleetCom MVP)
 - **Infra repo**: BYTEPOETS/infracore (BP server docker-compose + nginx)
