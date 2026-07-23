@@ -29,7 +29,7 @@
 - **Secrets**: NEVER `cat / Read / head / tail / less / bat / xxd / od / sed / grep` files in `~/.inspr/secrets/agents/`, `~/Secrets/`, `~/.ssh/<not-pub>`, `/run/agenix/`, `/run/secrets/`, or any `*.env` / `*.age` / `*.gpg` / `id_*` / `*_rsa` / `*_ed25519`. Source via `( set -a; source FILE; cmd; set +a )`. NEVER run `direnv export`, `direnv status`, `set`, `declare -x/-p`, `compgen -e`, `export -p`, bare `env` / `printenv`, `docker exec ... cat env`, `kubectl describe configmap` after env expansion. If a secret appears in output: **STOP**, name affected vars (not values), rotate before continuing.
 - **Git**: never `reset --hard` / `clean -f` / `restore .` / `branch -D` / `rm` unless asked. Never `--force` push main. Never `--no-verify` / `--no-gpg-sign` / `--amend` unless asked. Never commit secrets (passwords, API keys, .env with real creds, decrypted .age content). `git diff` + `git status` before every commit.
 - **Files & ops**: use `trash` not `rm -rf`. Don't delete or rename unexpected items — STOP and ask. Touch encrypted files only with explicit permission. **NEVER build NixOS configs on macOS** (build remotely via ssh; macOS HM CAN build locally). Never create new `.md` files unless asked — **knowledge (architecture, design, positioning, playbooks, field notes, durable how-tos) goes in PPM Knowledge entries, not local docs** (see `/ppm`). Stays local: README, AGENTS.md/CLAUDE.md + doctrine, RUNBOOK.md, CHANGELOG.md, RESUMING-*, LICENSE, code comments.
-- **Naming**: **BYTEPOETS** always all-caps (registered wordmark). **`.cm`** TLD intentional, never auto-correct to `.com`. **INSPR** is the umbrella; Paimos / FleetCom / future tools are inside it.
+- **Naming**: **`.cm`** TLD intentional, never auto-correct to `.com`. **INSPR** is the umbrella; Paimos / Pharos / Janus / future tools are inside it (FleetCom is archived, superseded by Pharos).
 
 For full kernel + domain packs: see [`inspr-modules/docs/AGENTS-KERNEL.md`](https://github.com/markus-barta/inspr-modules/blob/main/docs/AGENTS-KERNEL.md). Claude Code agents: run `/inspr` for the TL;DR map of slash commands.
 
@@ -44,7 +44,6 @@ Pharos is the supported successor and canonical live fleet view.
 - **Runtime**: removed from csb1 (FLEET-199); no production FleetCom instance exists.
 - **PPM Project**: FleetCom (project ID: 4, key: FLEET)
 - **PPM Epic**: FLEET-1 (FleetCom MVP)
-- **Infra repo**: BYTEPOETS/infracore (BP server docker-compose + nginx)
 
 ## First-contact orientation: discover the API in one curl
 
@@ -120,7 +119,7 @@ All requests: `curl -s -H "Authorization: Bearer $PPMAPIKEY" https://pm.barta.cm
 - **Frontend**: Single HTML file, Alpine.js + Lucide icons (self-hosted), no build step, no npm
 - **Database**: SQLite (WAL mode, pure Go driver)
 - **Auth**: Multi-user (email + bcrypt + TOTP), HttpOnly session cookies (24h, SameSite=Lax, Secure). User-issued `fleet_pat_` API tokens for programmatic agents (FLEET-79).
-- **Deployment**: Docker on csb1 (personal), behind Cloudflare DNS. _(BYTEPOETS Hetzner instance decommissioned 2026-06-05 — FLEET-192.)_
+- **Deployment**: Docker on csb1 (personal), behind Cloudflare DNS. _(the former external second instance was decommissioned 2026-06-05 — FLEET-192.)_
 - **Bosun**: Go daemon in Docker container — Docker socket event stream + periodic heartbeat
 
 ## Architecture
@@ -309,7 +308,7 @@ command queue (host.reboot, agent.update, etc.).
 ```sh
 # Server logs (deployed via docker)
 ssh csb1 'docker logs --tail=200 -f fleetcom'
-# (BYTEPOETS instance decommissioned 2026-06-05, FLEET-192 — no fleetcom on 5.75.130.206)
+# (the former external second instance was decommissioned 2026-06-05, FLEET-192)
 
 # Bosun logs (per host)
 ssh dsc0 'docker logs --tail=200 -f fleetcom-bosun'
@@ -361,22 +360,16 @@ Settings > Account > API Tokens. Mint, list, revoke `fleet_pat_` tokens. Plainte
 - **Deploy**: Push to main → CI builds image → auto-deploys via SSH + `/etc/fleetcom-deploy.sh`
 - **Docker**: `/home/mba/docker/fleetcom/docker-compose.yml`
 
-### BYTEPOETS (fleet.bytepoets.com) — DECOMMISSIONED 2026-06-05 (FLEET-192)
+### Former external second instance — DECOMMISSIONED 2026-06-05 (FLEET-192)
 
-The BYTEPOETS FleetCom instance was retired on 2026-06-05. `fleet.bytepoets.com`
-now serves a static "FleetCom will be back soon…" placeholder (nginx, Let's
-Encrypt TLS preserved); the `fleetcom` container was removed from the shared
-compose on `5.75.130.206` (DB backed up to `~/fleetcom-decom-backup-20260605.db`,
-data volume retained). Full record in FLEET-192.
+The externally hosted FleetCom instance was retired on 2026-06-05; its domain
+now serves a static placeholder and the container was removed from that
+host's shared compose (DB backed up, data volume retained). Full record in
+FLEET-192.
 
-> **Access note (corrects stale doc):** the previously-listed
-> `~/.ssh/BP_OPS_Server_SSH_Key` is **stale and does not authenticate**. The
-> shared BP box is reachable from M5 via `ssh service-user@5.75.130.206` using
-> M5's `~/.ssh/id_ed25519` (pubkey added to the host's authorized_keys in
-> FLEET-192). `service-user` has **no passwordless sudo** — root ops need the
-> password interactively (`ssh -t`). The box still runs other services
-> (bp-pm, minio, nodered, grafana, adminer, uptime-kuma, watchtower) via
-> `~/docker/docker-compose.yml`.
+> **Access note:** any previously documented SSH access to the former
+> external host is retired with the exit — do not attempt it; the full
+> decommission record lives in FLEET-192.
 
 ### Initial admin setup (new instance)
 1. Set `FLEETCOM_ADMIN_EMAIL` and `FLEETCOM_ADMIN_PASSWORD` in the env file
@@ -521,5 +514,3 @@ External:
 - DSC infra: ~/Code/dsccfg
 - NixCfg infra: ~/Code/nixcfg
 - PPM/paimos tool: ~/Code/paimos
-- BP infra: ~/Code/infracore (BYTEPOETS server docker-compose + nginx)
-- BP PMO: ~/Code/bp-pm (auth patterns reference)
